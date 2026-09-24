@@ -1,0 +1,434 @@
+# Bangladesh Council of Scientific and Industrial Research: 3D campus map
+
+An interactive 3D map of the BCSIR campus in Dhaka, built with **MapLibre GL JS** and
+**Three.js**. Everything on the map is controlled by the GeoJSON files in
+`public/data/`: building heights and colours, road and wall thickness, tree lines,
+building photos and GLB models. Routes are calculated with the **original BCSIR routing
+code** (`connection_check.js`) on the original road network.
+
+The search finds buildings, laboratories, research divisions and laboratory testing
+services. Selecting a test opens the building of the laboratory that offers it, and the
+directions panel gives a walking route to it.
+
+The 3D architecture is adapted from the
+[indoormappingt1](https://github.com/jubaerabdullah-io/indoormappingt1) project.
+
+---
+
+## Run it
+
+Requires Node.js 22.15 or newer (tested with Node 24).
+
+```bash
+npm install
+npm run dev           # http://localhost:5173
+npm run build         # production build in dist/
+npm run preview       # serve dist/ at http://localhost:4173
+npm test              # data, search, routing, labels, basemaps (node --test)
+npm run verify        # originals unchanged + routing equivalence + npm test
+npm run data:prepare  # create missing files in public/data (see below)
+npm run data:services # re-import the official INARS testing-service list
+```
+
+Open the URL Vite prints. Do not open `index.html` directly from disk.
+For phone or LAN testing use `npm run dev -- --host`.
+
+## Using the map
+
+| Action | How |
+|---|---|
+| Find a building, laboratory or test | Search bar at the top (for example `Pilot Plant`, `Analytical`, `Calcium`). Arrow keys and Enter work in the list. |
+| Building information | Click a building or its round label. The card shows the photo, names, height, entrance and website. |
+| Test or laboratory information | Choose it in the search. The map flies to the laboratory's building, highlights it and the card shows the test (sample type, method, fee, time, laboratory, source). |
+| Walking directions | **Directions** panel (top right): choose a starting point and a destination by typing, or with the target button and a click on a building. The To field also accepts tests. Swap, clear each field or **Clear route**. |
+| WALK | The WALK tile turns the walking route on or off. It is on by default. |
+| Directions from the card | **Start here** / **Directions to here** in the building card. |
+| Return to the whole campus | **View on Map**: the folded-map button in the right-hand controls. |
+| Street or satellite map | Layers button (right). Satellite shows the imagery with the building labels and the route only; the drawn buildings, roads, gardens, trees, walls and 3D models come back with Street. The same panel has the dark map switch and **Map details**, the layer visibility list. |
+| Pan, rotate, tilt | Drag. Right-drag (or Ctrl + drag) rotates and tilts. Scroll zooms. |
+| Zoom, rotate, tilt buttons | Right-hand controls. Rotate and tilt buttons are hidden on phones and short windows. |
+| Camera presets | **View** menu: Top-down, Isometric, 3D Corner, Front, Free, Follow Direction, Route Up, North Up, Reset. Compass: north up. |
+| First-person walk | **Walk** (bottom left), then click a location on the map: the camera goes down to eye height there. W/A/S/D or arrows to walk, hold Shift to move faster, mouse to look, Esc to exit (or to cancel while choosing). |
+| Deep link | `?buildingid=101` opens building 101 (the format used by the QR codes in `main_QRCode.zip`). |
+
+## Building labels
+
+Each building has one label: a round photo badge (white ring, soft shadow) with the
+building name under it. Badge and name are one MapLibre symbol, so they are clicked,
+placed and hidden together.
+
+- **Photo**: the building's `image` property in `BuildingBoundary.geojson`, for example
+  `"image": "/image/pilot-plant.png"` for `public/image/pilot-plant.png` (PNG, JPG, JPEG,
+  WEBP). The original `image_url` attribute (for example `101.jpg`) is used when that file
+  is in `public/image/`. Without a usable photo the badge shows a neutral building icon. A
+  photo that is not in `public/image/` is never requested; the browser console names the
+  building to fix. The same photo heads the building card opened by clicking the label or
+  the building.
+- **Photos from the original map**: `public/image/<id>.jpg` are the 38 building photos of
+  the original BCSIR map (`https://map-bcsir.srcdrive.com/images/<image_url>`), copied
+  unchanged. The original map links a photo to a building by `image_url`, which is
+  `<building id>.jpg` for every building, so each photo reaches its building through that
+  attribute; `npm test` checks that every `<id>.jpg` belongs to the building with that ID.
+- **Position**: the point of the footprint farthest from its edges (the "pole of
+  inaccessibility"), so the label is inside the building also for L- and U-shaped
+  footprints. It floats just above the roof (`top_m` + 1 m) and stays on the building
+  while the camera zooms, rotates and tilts. Coordinates are only read.
+- **Visibility**: buildings with `labeling_priority` 8 or more show from zoom 15, all
+  others from zoom 17. Higher priority is placed first, and MapLibre hides a label rather
+  than let it overlap another. Labels never hide buildings or GLB models.
+
+## Search, laboratories and testing services
+
+The repository had no laboratory or service data. Two structured files now hold it:
+
+| File | Content |
+|---|---|
+| `public/data/directory/laboratories.json` | Institutes, laboratories, research divisions and sections, each linked to a building |
+| `public/data/directory/testing-services.json` | Laboratory testing services, each linked to a laboratory |
+
+Every record comes from an official BCSIR website and names its source:
+
+- **542 testing services** from the INARS
+  [Service Charge list of Analytical Parameters](https://inars.bcsir.gov.bd/pages/static-pages/6922df91933eb65569e22ced),
+  imported row by row by `npm run data:services`. Test name, sample type, method, fee and
+  duration are kept exactly as published; each record keeps the list's serial number
+  (`source_ref`, for example `SI 517`). The list repeats a few identical rows; the search
+  shows each of them once.
+- **INARS research divisions** (Organic, Inorganic and Environmental Analytical Research
+  Division) from the INARS [research divisions page](https://inars.bcsir.gov.bd/pages/static-pages/6922dcee933eb65569e12cbc).
+- **IFST research divisions and sections** from the [IFST website](https://ifst.bcsir.gov.bd/).
+
+### How a test finds its building
+
+```text
+service.laboratory_id ──► laboratory.building_id ──► BuildingBoundary.geojson feature id
+                          (or the parent unit's building_id, via parent_id)
+```
+
+- INARS is building **102**, "Institute of National Analytical Research & Services".
+  Its `site_url` is `https://inars.bcsir.gov.bd/`, the site that publishes the service list.
+- IFST is building **111**, "Institute of Food Science & Technology".
+- A division without its own `building_id` uses its institute's building. The card says so.
+- A service or laboratory can set its own `building_id` when it is verified to be in a
+  different building; that value is then used.
+- If no building is recorded along the chain, the search shows "Location not recorded",
+  the map does not move, and it cannot be used as a route endpoint. Nothing is guessed.
+
+### Adding verified records
+
+```jsonc
+// laboratories.json → "laboratories"
+{ "id": "igcrt", "name": "Institute of Glass & Ceramic Research & Testing", "short_name": "IGCRT",
+  "type": "institute", "parent_id": null, "building_id": 110, "source_url": "https://igcrt.bcsir.gov.bd/" }
+// type: institute | laboratory | division | section
+
+// testing-services.json → "sources" (once per source) and "services"
+{ "id": "igcrt-xrd", "title": "…", "publisher": "…", "url": "https://…", "retrieved": "2026-09-24" }
+{ "id": "igcrt-1", "name": "X-ray diffraction (XRD)", "sample_type": "Ceramic powder", "method": "…",
+  "fee_bdt": 5000, "duration_days": 7, "laboratory_id": "igcrt", "source": "igcrt-xrd", "source_ref": "…" }
+// optional: "building_id" overrides the laboratory's building; "fee_text" / "duration_text" when not a number
+```
+
+While `npm run dev` runs, saving either file reloads the search. `npm test` checks that
+every record has a source, every laboratory resolves to an existing building and every
+service to an existing laboratory. `npm run data:services` replaces only the INARS
+records and keeps any others.
+
+## Directions and routing
+
+The browser runs the original functions `buildGraph()`, `dijkstra()`,
+`isGraphConnected()` and `findConnectedComponents()`, extracted verbatim from the
+unmodified `connection_check.js` at build time (`scripts/lib/original-routing.mjs`).
+The network is `public/data/ConnectedRoads/v0/r2.json`, the original file, checked by
+sha256. Visual road properties never reach the router. The directions panel, the WALK
+tile and the building card only choose the endpoints; the route itself is unchanged.
+
+- **Endpoints.** A building is routed from or to its recorded `entrance_coords`, snapped
+  to the nearest network node. 47 of 86 buildings have no recorded entrance; for those the
+  route uses the network node nearest to the footprint centre, and the summary says so in
+  words ("No entrance is recorded for … The route ends at the nearest point of the campus
+  road network, 12 m from the building centre."). The short leg between the building and
+  the network is drawn dashed and is never counted as route length or added to the graph.
+- **No connection.** When the network has no path, the panel shows "No walking route" and
+  no line is drawn.
+- **Display.** Red route line on a white casing, drawn above the 3D buildings. Blue pin at
+  the start, red pin at the destination (HTML markers above the map). A small walking
+  figure moves along the route from the start pin to the destination pin and repeats
+  (`route-walker.js`). Walking time assumes 5 km/h.
+
+`npm run verify:routing` runs the **unmodified** `connection_check.js` and compares its
+results with the web route service (connectivity, components, every "No path found"
+pair and every path).
+
+## Basemaps
+
+| Basemap | Source | Attribution shown |
+|---|---|---|
+| Street (default) | OpenStreetMap tiles, the original desaturated `context-map` layer | © OpenStreetMap contributors |
+| Satellite | Esri World Imagery | Powered by Esri, Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community |
+
+Both raster sources are in the same MapLibre style. Switching changes which raster layer
+is visible. Satellite shows the imagery alone: the drawn campus layers (buildings, roads,
+pathways, boundary and internal walls, garden, trees and GLB models) are hidden while it
+is active, and their switches in **Map details** are greyed out. Building labels, the
+route and its pins stay. Switching back to Street restores every layer as it was. MapLibre shows the attribution of the visible basemap only. The choice is
+remembered in the browser. Use of Esri World Imagery is subject to Esri's terms of use.
+
+## Controlling the map with GeoJSON properties
+
+Edit a file in `public/data/` (in QGIS or a text editor), save it, and reload the
+page. While `npm run dev` runs, the open page reloads the changed file by itself.
+For a production build, run `npm run build` again, or edit the same file in `dist/data/`.
+
+### Properties
+
+| Property | Meaning | Used by |
+|---|---|---|
+| `base_m` | Bottom elevation, metres | all layers |
+| `top_m` | Top elevation, metres (must be greater than `base_m`) | all layers |
+| `color` | Colour as a hex code: `"#FF0000"`, `"#f00"` | all layers |
+| `thickness_m` | Physical width in metres of the road or wall built around the line | roads, pathways, boundaries |
+| `fill_color` | Colour of the campus ground inside the boundary | `BCSIRBoundary` |
+| `spacing_m` | Distance between trees along the line | `TreeLine` |
+| `image` | Building photo URL, e.g. `"/image/abc.png"` for `public/image/abc.png` (PNG, JPG, JPEG, WEBP). Shown in the round label and the building card. | `BuildingBoundary` |
+| `model` | GLB/GLTF URL, e.g. `"/models/escalators.glb"` for `public/models/escalators.glb` | any Point/MultiPoint feature |
+| `size`, `scale`, `rotation` | GLB model size, base scale and rotation (see below) | model features |
+| `model_points` | `[[lon, lat], …]` where to place `model` on a line or polygon feature | any feature |
+| `surface_model` | GLB whose top view covers the polygon, e.g. `"/models/grass.glb"` (see below) | `Garden` |
+| `surface_scale` | Metres per model unit of `surface_model` (default 1; `grass.glb` is in centimetres: `0.01`) | `Garden` |
+| `labeling_priority` | Label importance (8 or more: shown from zoom 15) | `BuildingBoundary` |
+
+Example building:
+
+```json
+{ "type": "Feature",
+  "properties": { "id": 104, "name_en": "Pilot Plant & Process Development Centre", "base_m": 0, "top_m": 15, "color": "#E5E7EB", "image": "/image/pilot-plant.png" },
+  "geometry": { … unchanged … } }
+```
+
+How each layer uses them:
+
+| File | Rendering |
+|---|---|
+| `BuildingBoundary.geojson` | 3D building from `base_m` to `top_m` in `color` (walls drawn slightly darker for depth). The existing `color` codes `o`, `r`, `b`, `g` still work and use the QGIS colours; a hex value replaces them. |
+| `ConnectedRoad.geojson` | Road surface, `thickness_m` wide, from `base_m` to `top_m` |
+| `ConnectedRoadsDrawingVersion.geojson` | The wider grey road edge underneath (the QGIS "drawing version" style) |
+| `Pathway.geojson` | Pathways, like roads |
+| `BCSIRBoundary.geojson` | Wall along the boundary (`thickness_m`, `base_m`, `top_m`, `color`) and ground colour `fill_color` |
+| `InternalBoundary.geojson` | Walls along the internal boundary lines |
+| `Garden.geojson` | Garden surface at `top_m`: covered with the top view of `surface_model` (all gardens use `grass.glb`), otherwise from `base_m` to `top_m` in `color` |
+| `TreeLine.geojson` | 3D trees along each line: tree tops at `top_m`, crown `color`, one tree every `spacing_m` (not drawn while `TreeLineModels.geojson` places GLB trees) |
+
+Missing or invalid values fall back to defaults (`src/config.js`, `LAYER_DEFAULTS`) and
+the browser console lists every feature that needs fixing. `npm test` checks all files in
+`public/data/` for valid values.
+
+Roads, pathways and walls are built as 3D strips around the original centre lines.
+The line geometry itself, and therefore the routing network, never changes.
+
+### GLB models
+
+Put the `.glb` file in `public/models/` and add a Point (one model) or MultiPoint
+(one model per point) feature with a `model` property to `public/data/models.geojson`:
+
+```json
+{ "type": "Feature",
+  "properties": { "name": "Escalator", "model": "/models/escalators.glb",
+                  "base_m": 0.5, "top_m": 3.0, "size": 0.0, "rotation": 280 },
+  "geometry": { "type": "Point", "coordinates": [90.38780, 23.74045] } }
+```
+
+- `base_m`: altitude of the model bottom (default 0).
+- `top_m`: optional. If greater than `base_m`, the model is scaled so its height fits between `base_m` and `top_m`.
+- `size`: extra uniform multiplier applied last. `0` or missing = 1 (no change), `2` = double, `0.5` = half. Negative values shrink: `-1` = half, `-3` = quarter.
+- `scale`: base scale used when `top_m` is not set (default 1).
+- `rotation`: degrees around the vertical axis, around the model's own centre.
+
+Models for other layers go in the same way: `public/data/GardenModels.geojson` and
+`public/data/TreeLineModels.geojson` are shown and hidden with the Garden and Tree line
+layers. A Point or MultiPoint feature with `model` in any other data file also works.
+Garden and TreeLine contain polygons and lines; to place a model on one of those
+features without adding a Point, give it `model_points`. Models are never placed at
+guessed positions.
+
+`TreeLineModels.geojson` holds one Point per tree position of `TreeLine.geojson` (the
+start of each line, then every `spacing_m`), each with one of the four tree GLBs in
+`public/models/` chosen at random, and its own `base_m`, `top_m`, `size` and
+`rotation` to edit (`line_id` is the TreeLine line it belongs to). While this file
+places at least one model, the procedural trees are not drawn; empty its `features`
+to bring them back.
+
+A layer's models load the first time the layer is visible. Each GLB file is
+downloaded once, however many features use it. Draco and Meshopt compressed GLBs work.
+
+### Grass on the gardens
+
+Every Garden polygon has `"surface_model": "/models/grass.glb", "surface_scale": 0.01`.
+`grass.glb` is a photo-scanned lawn about 1.2 × 2.8 m (in centimetres, hence 0.01)
+with 300,000 triangles; copies of it over the 24,000 m² of gardens would be billions
+of triangles. Its look is flat, so `npm run models:optimize` renders it once from
+straight above into a seamless tile (`public/models/lod/grass.surface.webp`, 0.13 MB)
+and the map repeats that tile over each polygon at its real size, mirrored at random
+per repeat so the pattern does not show. The polygon geometry is unchanged. Remove
+`surface_model` from a feature to give it its flat `color` again; any other GLB works as
+a surface the same way.
+
+### Optimizing models (run after adding or replacing a GLB)
+
+```bash
+npm run models:optimize
+```
+
+For each `public/models/*.glb` the script:
+
+- keeps the uploaded file unchanged in `backup/models/source/` (`--force` rebuilds from there);
+- replaces `public/models/<name>.glb` with the same geometry, Meshopt-compressed, with WebP
+  textures at the original resolution (GeoJSON keeps using the same URL);
+- writes lighter detail levels `public/models/lod/<name>.lod1-4.glb`: leaves and twigs are
+  thinned and each kept leaf is enlarged so crowns keep their density and colour; trunks
+  are simplified; textures are the matching mipmap levels;
+- writes `public/models/lod/manifest.json`: the levels, the on-screen size each is used
+  from, and the bounding box of the original model, with which every level is fitted, so
+  positions and sizes are the same at every level;
+- bakes the ground tile of every `surface_model`.
+
+A GLB that was not optimized yet is still drawn, from its own file, without detail
+levels. `npm run dev`, `npm run build` and `npm test` report GLBs that are new or were
+replaced since the last run.
+
+### Detail and visibility by zoom level and distance
+
+All GLB models are drawn by one layer, with one draw call per model part and detail
+level (not one per tree). Each model gets the level that matches its height on screen:
+
+| On-screen height | Drawn with |
+|---|---|
+| 400 px and more | the full model (LOD 0) |
+| 150–400 px | LOD 1 |
+| 60–150 px | LOD 2 |
+| 32–60 px | LOD 3 |
+| under 32 px | an impostor: views of the model rendered once in the browser (8 directions × 4 heights, with the model's own lights), shown on a card facing the camera |
+| under 1.5 px, beyond 3 km, outside the view, or map zoom under 14 | not drawn |
+
+The coarsest level of each model loads first, so trees appear quickly; finer levels
+download only when a model is shown large enough. The limits are in `src/config.js`
+(`MODEL_VISIBILITY`) and the level sizes in `scripts/optimize-models.mjs` (`LADDER`).
+Every level was compared with renders of the original model at the largest size it is
+used for (same silhouette area within a few percent, mean colour difference 1–8 of 255;
+the realistic tree's coarsest levels cover about 20 % more area).
+
+## Data files
+
+`public/data/` is the only copy of each dataset. The app loads it and the QGIS project
+`SrcDriveQMapBCSIR.qgz` opens its GeoJSON layers from it, so an edit saved in QGIS
+reaches the map directly.
+
+| File | Notes |
+|---|---|
+| `BCSIRBoundary.geojson`, `BuildingBoundary.geojson`, `ConnectedRoad.geojson`, `ConnectedRoadsDrawingVersion.geojson`, `Pathway.geojson`, `InternalBoundary.geojson` | Original BCSIR layers with their visualization properties. `ConnectedRoadsDrawingVersion` has the same lines as `ConnectedRoad` but its own width and colour (the grey road edge). |
+| `ConnectedRoads/v0/r2.json` | Routing network, the original file (sha256 in `original-files.sha256`) |
+| `Garden.geojson`, `TreeLine.geojson` | Converted from `ShapefileFolder/Garden` and `ShapefileFolder/TreeLine`, which remain the QGIS sources of those two layers |
+| `models.geojson`, `GardenModels.geojson`, `TreeLineModels.geojson` | GLB placements |
+| `directory/laboratories.json`, `directory/testing-services.json` | Laboratories and testing services (see above) |
+
+- **Duplicates removed (2026-09-24).** The repository root held a second copy of the six
+  GeoJSON layers and of `ConnectedRoads/v0/r2.json`. They were removed; a zip of them is
+  in `backup/` (ignored by git), and the QGIS project was repointed to `public/data/`.
+  The original geometry text and attribute values of every feature are fingerprinted in
+  `original-data-fingerprints.json`; `npm test` proves `public/data/` still holds them.
+- All data is WGS 84 longitude/latitude (EPSG:4326), used directly by MapLibre.
+  Coordinates are kept with their original number text.
+- `npm run data:prepare` creates missing model files and reports missing datasets.
+  After editing a shapefile in QGIS, run `npm run data:prepare -- --refresh` to rebuild
+  `Garden.geojson` and `TreeLine.geojson`; their visualization properties are kept.
+
+## Project structure
+
+```text
+├── index.html                   app page
+├── vite.config.js               Vite config (reference settings + BCSIR plugin)
+├── original-files.sha256        checksums of the original BCSIR files
+├── original-data-fingerprints.json  geometry/attribute fingerprints of the original layers
+├── public/
+│   ├── data/                    the datasets (edit these); data/directory/ = labs and tests
+│   ├── models/                  GLB/GLTF files (optimized); models/lod/ = detail levels, grass tile, manifest
+│   └── image/                   building photos
+├── src/
+│   ├── main.js                  start-up and wiring
+│   ├── map.js, basemaps.js      MapLibre map; street and satellite basemaps
+│   ├── config.js                dataset paths and fallback defaults
+│   ├── visual-properties.js     reads and validates base_m, top_m, thickness_m, color, …
+│   ├── bcsir-data.js            loads datasets, builds render copies and label points
+│   ├── bcsir-layers.js          MapLibre layers (buildings, labels, route), layer groups
+│   ├── building-labels.js       round photo badges for the labels
+│   ├── building-images.js       building photo lookup (labels and card)
+│   ├── directory.js             search index, lab/test → building mapping
+│   ├── directory-data.js        loads public/data/directory/
+│   ├── combobox.js              accessible autocomplete list
+│   ├── search-ui.js             main search bar
+│   ├── directions-ui.js         From / To panel and WALK toggle
+│   ├── route-summary.js         walking time and endpoint notes
+│   ├── route-walker.js          walking figure animated along the route
+│   ├── route-markers.js         blue / red route pins
+│   ├── basemap-control.js       Street / Satellite choice
+│   ├── layer-manager.js         layers panel and visibility list
+│   ├── ui.js                    building card, toast, status, theme
+│   ├── interactions.js          hover/select/route endpoints/choose on map
+│   ├── camera-controls.js       camera presets
+│   ├── geo-utils.js             geometry helpers, label anchors
+│   ├── model-placements.js, models3d.js, tree-layer.js, three-shared.js
+│   ├── surface-layer.js         grass (surface_model) on the Garden polygons
+│   ├── walkMode.js, wall-strip.js, paths.js, html.js
+│   ├── routing/route-service.js route calculation with the original functions
+│   └── style.css
+├── scripts/
+│   ├── import-inars-services.mjs  npm run data:services
+│   ├── optimize-models.mjs        npm run models:optimize
+│   ├── prepare-public-data.mjs    npm run data:prepare
+│   ├── vite-plugin-bcsir.mjs      routing module, photo list, live data reload
+│   ├── verify-originals.mjs       npm run verify:originals
+│   ├── verify-routing.mjs         npm run verify:routing
+│   └── lib/                       shapefile reader, public-data helpers, routing extractor
+├── tests/                       node --test suites + GLB fixture generator
+└── (original BCSIR files: QGIS project, shapefiles, connection_check.js, QR helper)
+```
+
+## Known limitations
+
+- **Testing services come from INARS only.** IFST publishes its list as a PDF whose table
+  does not extract reliably, so no IFST tests were imported; other institutes publish no
+  machine-readable list. All 542 imported tests therefore lead to building 102. Add other
+  laboratories' services as verified records (see above).
+- **Service locations are institute-level.** Each INARS test is mapped to the INARS
+  building (102). BCSIR also has a building named "Analytical Service Cell" (135), but no
+  source links it to INARS, so it is not used. Set `building_id` on records once the
+  sample-reception point is verified.
+- **Building photos.** 38 of 86 buildings have a photo. The original map has none for the
+  other 48 (112, 115, 117, 118, 120–122, 132, 133, 201, 202, 204–228, 230–233, 235–237,
+  239–243), so they show the neutral icon and placeholder; add `public/image/<id>.jpg` to
+  fill one in. The original map uses one identical photo for 302 (Secondary Gate) and
+  303 (Internal Residential Gate); it is kept for both, although it can show at most one
+  of them. Building 101's `image` now points to `/image/101.jpg` (it named
+  `public/image/topten.png`, a non-BCSIR logo that still lies unused in `public/image/`).
+- The road network has two disconnected parts. Pathway 223 forms a separate 5-node
+  component. Buildings 305 (Residential School Gate, by its entrance), 230 and 235
+  (by footprint centre) snap to it, so they have no route to the rest of the campus.
+  This matches the original `connection_check.js` output. Fixing it means editing
+  `r2.json` in QGIS.
+- 47 of 86 buildings have no `entrance_coords`; their routes use the network node nearest
+  to the footprint centre, as stated in the route summary.
+- Original edge weights are planar distances in degrees; kept as is. Distances and
+  walking times shown are in metres and minutes.
+- `r2.json` is a merged copy of `ConnectedRoad.geojson` + `Pathway.geojson`. After road
+  edits in QGIS, regenerate `r2.json` the same way, or routing keeps the old network.
+- Map labels use English names (MapLibre cannot shape Bengali on the map); Bengali
+  names appear in the building card and are searchable.
+- Labels need `fonts.openmaptiles.org`; the basemaps need OpenStreetMap and Esri tiles.
+- Where two road or pathway surfaces overlap at the same `top_m`, the overlap can
+  flicker; give them slightly different heights (the defaults do).
+- KTX2 (Basis) compressed textures inside GLBs are not enabled (WebP is used).
+- The gardens show the grass scan's top view as a flat surface; the scan's few centimetres
+  of relief are not modelled.
+- Detail levels and impostors are close to, not identical with, the full models: small
+  trees can look very slightly fuller or lighter. Raise the sizes in `LADDER` /
+  `MODEL_VISIBILITY.impostorPixels` to trade speed for exactness.

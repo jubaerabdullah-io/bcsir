@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "models": {
+    "grass.glb": {
+      "source": {
+        "sha256": "e0ed02255c64f27e3fc3b63a1c4059c43fa6dcaf9edf8c7b005780eda2ba37a9",
+        "bytes": 28718508,
+        "triangles": 300000
+      },
+      "box": {
+        "min": [
+          -45.175688244392134,
+          -19.35996289416572,
+          -140.1732188531184
+        ],
+        "max": [
+          73.17895571807664,
+          34.3678810617413,
+          143.45572487339984
+        ]
+      },
+      "lods": [
+        {
+          "url": "grass.glb",
+          "minPx": 400,
+          "triangles": 300000,
+          "bytes": 4704640
+        },
+        {
+          "url": "lod/grass.lod1.glb",
+          "minPx": 150,
+          "triangles": 120041,
+          "bytes": 2207464
+        },
+        {
+          "url": "lod/grass.lod2.glb",
+          "minPx": 60,
+          "triangles": 86825,
+          "bytes": 1581292
+        },
+        {
+          "url": "lod/grass.lod3.glb",
+          "minPx": 18,
+          "triangles": 15124,
+          "bytes": 233064
+        },
+        {
+          "url": "lod/grass.lod4.glb",
+          "minPx": 0,
+          "triangles": 6142,
+          "bytes": 84184
+        }
+      ],
+      "sha256": "18ba0ebd19d5d7151572760cfde7621a167cc702442f86a1e71ed7fa7664db72",
+      "bytes": 4704640,
+      "surface": {
+        "url": "lod/grass.surface.webp",
+        "width": 72.7017,
+        "height": 174.6265,
+        "pixels": [
+          408,
+          980
+        ],
+        "bytes": 131860
+      }
+    },
+    "mango_tree.glb": {
+      "source": {
+        "sha256": "055e4cb9b5c1edb12830d21d1f74d1bbeb8db39054751e7793b8e918e2ac9683",
+        "bytes": 10982240,
+        "triangles": 130451
+      },
+      "box": {
+        "min": [
+          -3.4414257234016254,
+          -0.07310416016160136,
+          -3.2098668420770813
+        ],
+        "max": [
+          3.2488288153224687,
+          6.784506270972534,
+          3.550819417177548
+        ]
+      },
+      "lods": [
+        {
+          "url": "mango_tree.glb",
+          "minPx": 400,
+          "triangles": 130451,
+          "bytes": 3610380
+        },
+        {
+          "url": "lod/mango_tree.lod1.glb",
+          "minPx": 150,
+          "triangles": 60242,
+          "bytes": 2129828
+        },
+        {
+          "url": "lod/mango_tree.lod2.glb",
+          "minPx": 60,
+          "triangles": 28243,
+          "bytes": 963076
+        },
+        {
+          "url": "lod/mango_tree.lod3.glb",
+          "minPx": 18,
+          "triangles": 11028,
+          "bytes": 399956
+        },
+        {
+          "url": "lod/mango_tree.lod4.glb",
+          "minPx": 0,
+          "triangles": 7604,
+          "bytes": 295312
+        }
+      ],
+      "sha256": "d243f961228854427e983f09e36205695e3c15c4f85659bfe81fe24806d171dd",
+      "bytes": 3610380
+    },
+    "real_tree_models.glb": {
+      "source": {
+        "sha256": "b5d57f6fe9bba7d2c7cea5e86545c27051595c8c53dc088d4c589cd9a48ece6d",
+        "bytes": 7058044,
+        "triangles": 11630
+      },
+      "box": {
+        "min": [
+          -6.076737535072766,
+          -0.019768806254070848,
+          -6.354335185117975
+        ],
+        "max": [
+          5.721438470748694,
+          17.8478145424765,
+          6.506696021556195
+        ]
+      },
+      "lods": [
+        {
+          "url": "real_tree_models.glb",
+          "minPx": 400,
+          "triangles": 11630,
+          "bytes": 1519040
+        },
+        {
+          "url": "lod/real_tree_models.lod1.glb",
+          "minPx": 150,
+          "triangles": 7473,
+          "bytes": 879172
+        },
+        {
+          "url": "lod/real_tree_models.lod2.glb",
+          "minPx": 0,
+          "triangles": 5742,
+          "bytes": 403896
+        }
+      ],
+      "sha256": "e8aa515e7504e61bb6106c53f2a7e237f52be9fe6debe71c4876996978d10b00",
+      "bytes": 1519040
+    },
+    "realistic_tree.glb": {
+      "source": {
+        "sha256": "6adfafe6f6372517718772b00b58056a415c76ec42edd054af47b8d7c547efe3",
+        "bytes": 6830492,
+        "triangles": 19921
+      },
+      "box": {
+        "min": [
+          -7.917979673788402,
+          -0.31440659955735106,
+          -6.260974397840363
+        ],
+        "max": [
+          6.432201585049889,
+          15.74036384064313,
+          5.46377113232849
+        ]
+      },
+      "lods": [
+        {
+          "url": "realistic_tree.glb",
+          "minPx": 400,
+          "triangles": 19921,
+          "bytes": 1532384
+        },
+        {
+          "url": "lod/realistic_tree.lod1.glb",
+          "minPx": 150,
+          "triangles": 9911,
+          "bytes": 1279216
+        },
+        {
+          "url": "lod/realistic_tree.lod2.glb",
+          "minPx": 60,
+          "triangles": 6076,
+          "bytes": 500280
+        },
+        {
+          "url": "lod/realistic_tree.lod3.glb",
+          "minPx": 18,
+          "triangles": 1278,
+          "bytes": 158736
+        },
+        {
+          "url": "lod/realistic_tree.lod4.glb",
+          "minPx": 0,
+          "triangles": 946,
+          "bytes": 70740
+        }
+      ],
+      "sha256": "4952c551ff8b3f67e4683c704a550f7e1ff003a1aa6d1c067e499b8a0ec5af43",
+      "bytes": 1532384
+    },
+    "stylized_tree.glb": {
+      "source": {
+        "sha256": "21d570dc9a743a0e3416ea00b7e2393a24b781468da62ef6bcaf5a1767b1c82c",
+        "bytes": 14893416,
+        "triangles": 182154
+      },
+      "box": {
+        "min": [
+          -0.18911366993679835,
+          -7.502894230970253e-9,
+          -0.19700159916482746
+        ],
+        "max": [
+          0.17871503430496816,
+          0.5639603383569122,
+          0.192007504599199
+        ]
+      },
+      "lods": [
+        {
+          "url": "stylized_tree.glb",
+          "minPx": 400,
+          "triangles": 182154,
+          "bytes": 3427092
+        },
+        {
+          "url": "lod/stylized_tree.lod1.glb",
+          "minPx": 150,
+          "triangles": 84921,
+          "bytes": 1631860
+        },
+        {
+          "url": "lod/stylized_tree.lod2.glb",
+          "minPx": 60,
+          "triangles": 38059,
+          "bytes": 766748
+        },
+        {
+          "url": "lod/stylized_tree.lod3.glb",
+          "minPx": 18,
+          "triangles": 14673,
+          "bytes": 334136
+        },
+        {
+          "url": "lod/stylized_tree.lod4.glb",
+          "minPx": 0,
+          "triangles": 9719,
+          "bytes": 230080
+        }
+      ],
+      "sha256": "2f3ac2eceffa36289f19af3777238822c16bdeaaa97fa8f83915a25e1b41ed96",
+      "bytes": 3427092
+    }
+  }
+}

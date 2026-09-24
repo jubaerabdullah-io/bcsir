@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f7f8" />
+    <meta name="description" content="Interactive 3D campus map of the Bangladesh Council of Scientific and Industrial Research (BCSIR), Dhaka: buildings, laboratories, testing services and walking directions." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>Bangladesh Council of Scientific and Industrial Research</title>
+    <script type="module" src="./src/main.js"></script>
+  </head>
+  <body>
+    <main id="app">
+      <div id="map" aria-label="Interactive 3D map of the BCSIR campus"></div>
+      <div id="walk-look-surface" class="walk-look-surface" aria-hidden="true" hidden></div>
+      <div id="walk-reticle" class="walk-reticle" aria-hidden="true" hidden><span></span><small id="walk-look-hint">Click or drag to look</small></div>
+
+      <div class="app-top">
+        <header class="app-title">
+          <img class="app-logo" src="./bcsir-logo.png" width="40" height="40" alt="" />
+          <h1>Bangladesh Council of Scientific and Industrial Research</h1>
+        </header>
+
+        <form id="campus-search" class="search-bar" role="search" data-combobox autocomplete="off">
+          <span class="search-bar-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></span>
+          <input id="campus-search-input" type="text" enterkeyhint="search" spellcheck="false" placeholder="Search buildings, labs or tests..." aria-label="Search buildings, labs or tests" />
+          <button class="search-bar-button" type="submit">Search</button>
+          <div id="campus-search-results" class="combo-list search-results" hidden></div>
+        </form>
+
+        <section id="directions" class="directions-panel" aria-label="Directions" data-expanded="true">
+          <button id="directions-toggle" class="directions-toggle" type="button" aria-expanded="true" aria-controls="directions-body">
+            <svg class="directions-toggle-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="6" r="2.4"/><path d="M8.3 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.7"/></svg>
+            <span>Directions</span>
+            <svg class="directions-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="directions-body" class="directions-body">
+            <div class="direction-fields">
+              <div class="direction-field" data-combobox>
+                <span class="field-pin field-pin-source" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.4c-3.9 0-7.1 3.1-7.1 7 0 5.3 7.1 12.2 7.1 12.2s7.1-6.9 7.1-12.2c0-3.9-3.2-7-7.1-7Zm0 9.6a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z"/></svg></span>
+                <input id="direction-from" type="text" spellcheck="false" autocomplete="off" placeholder="Choose starting point" aria-label="Starting point" />
+                <button class="field-button" type="button" data-clear="source" aria-label="Clear starting point" title="Clear" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+                <button class="field-button field-pick" type="button" data-pick="source" aria-pressed="false" aria-label="Choose starting point on the map" title="Choose on map"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/><circle cx="12" cy="12" r="1.6"/></svg></button>
+                <div id="direction-from-results" class="combo-list" hidden></div>
+              </div>
+              <div class="direction-field" data-combobox>
+                <span class="field-pin field-pin-destination" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.4c-3.9 0-7.1 3.1-7.1 7 0 5.3 7.1 12.2 7.1 12.2s7.1-6.9 7.1-12.2c0-3.9-3.2-7-7.1-7Zm0 9.6a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z"/></svg></span>
+                <input id="direction-to" type="text" spellcheck="false" autocomplete="off" placeholder="Choose destination" aria-label="Destination" />
+                <button class="field-button" type="button" data-clear="destination" aria-label="Clear destination" title="Clear" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+                <button class="field-button field-pick" type="button" data-pick="destination" aria-pressed="false" aria-label="Choose destination on the map" title="Choose on map"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/><circle cx="12" cy="12" r="1.6"/></svg></button>
+                <div id="direction-to-results" class="combo-list" hidden></div>
+              </div>
+              <button id="direction-swap" class="direction-swap" type="button" aria-label="Swap starting point and destination" title="Swap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4v15M8 19l-3.5-3.5M8 19l3.5-3.5M16 20V5M16 5l-3.5 3.5M16 5l3.5 3.5"/></svg></button>
+            </div>
+            <p id="direction-hint" class="direction-hint" aria-live="polite" hidden></p>
+            <div class="directions-footer">
+              <button id="walk-toggle" class="walk-tile" type="button" aria-pressed="true" title="Walking directions">
+                <svg class="walk-tile-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2ZM9.8 8.9 7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></svg>
+                <span class="walk-tile-label">WALK</span>
+              </button>
+              <div id="route-summary-box" class="route-summary-box" aria-live="polite" data-status="idle">
+                <strong id="route-headline"></strong>
+                <span id="route-detail"></span>
+                <ul id="route-notes" class="route-notes"></ul>
+                <button id="clear-route" class="text-button" type="button" hidden>Clear route</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="map-rail">
+        <div class="layers-control">
+          <button id="layers-button" class="rail-button layers-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="layers-panel" aria-label="Map layers" title="Map layers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.5 8.5 4.6L12 12.7 3.5 8.1 12 3.5Z"/><path d="m3.5 12.1 8.5 4.6 8.5-4.6"/><path d="m3.5 16 8.5 4.6 8.5-4.6"/></svg></button>
+          <div id="layers-panel" class="layers-panel" role="dialog" aria-labelledby="layers-title" hidden>
+            <div class="layers-panel-head"><h2 id="layers-title">Map type</h2><button id="layers-panel-close" class="icon-close" type="button" aria-label="Close map layers">×</button></div>
+            <div id="basemap-options" class="basemap-options"></div>
+            <div class="layers-row"><span id="theme-toggle-label">Dark map</span><button id="theme-toggle" class="theme-toggle" type="button" aria-labelledby="theme-toggle-label" aria-pressed="false"><span class="theme-toggle-knob" aria-hidden="true"></span></button></div>
+            <details class="layer-details"><summary>Map details</summary><div id="layer-list" class="layer-list"></div></details>
+          </div>
+        </div>
+
+        <section class="view-control" aria-label="Camera views">
+          <button id="compass-control" class="compass-control" type="button" aria-label="Return to north-up view" title="North up"><svg class="compass-needle" viewBox="0 0 24 24" aria-hidden="true"><path class="compass-north-half" d="M12 2.5 15.2 12H8.8Z"/><path class="compass-south-half" d="M12 21.5 8.8 12h6.4Z"/></svg></button>
+          <button id="view-toggle" class="view-toggle" type="button" aria-haspopup="menu" aria-expanded="false"><span>View</span><b aria-hidden="true">⌄</b></button>
+          <div id="view-menu" class="view-menu" role="menu" hidden>
+            <button type="button" role="menuitemradio" aria-checked="false" data-camera-mode="top"><span aria-hidden="true">⌖</span>Top-down</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-camera-mode="isometric"><span aria-hidden="true">◈</span>Isometric</button>
+            <button type="button" role="menuitemradio" aria-checked="true" data-camera-mode="corner" class="active"><span aria-hidden="true">◇</span>3D Corner</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-camera-mode="front"><span aria-hidden="true">◩</span>Front</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-camera-mode="free"><span aria-hidden="true">✥</span>Free View</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-camera-mode="follow"><span aria-hidden="true">➤</span>Follow Direction</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-camera-mode="route"><span aria-hidden="true">⇧</span>Route Up</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-camera-mode="north"><span aria-hidden="true">N</span>North Up</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-camera-mode="reset"><span aria-hidden="true">↺</span>Reset View</button>
+          </div>
+        </section>
+
+        <nav class="map-controls" aria-label="Map controls">
+          <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+          <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+          <button class="camera-step" type="button" data-camera-rotate="-22.5" aria-label="Rotate left" title="Rotate left">⟲</button>
+          <button class="camera-step" type="button" data-camera-rotate="22.5" aria-label="Rotate right" title="Rotate right">⟳</button>
+          <button class="camera-step" type="button" data-camera-tilt="10" aria-label="Tilt camera more" title="Tilt more">⤒</button>
+          <button class="camera-step" type="button" data-camera-tilt="-10" aria-label="Tilt camera less" title="Tilt less">⤓</button>
+          <button id="reset-view" type="button" aria-label="Reset map view" title="Reset map view"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 4.5 7.4v9.2L12 21l7.5-4.4V7.4L12 3Zm0 0v18M4.5 7.4 12 12l7.5-4.6"/></svg></button>
+          <button id="view-on-map" class="view-on-map-button" type="button" aria-label="View on Map: show the whole BCSIR campus" title="View on Map"><svg class="view-on-map-icon" viewBox="0 0 24 24" aria-hidden="true"><g class="vom-folds"><path class="vom-fold-light" d="M1.5 11.5 8 9.5v11.5l-6.5 2Z"/><path class="vom-fold-dark" d="m8 9.5 8 2V23l-8-2Z"/><path class="vom-fold-light" d="m16 11.5 6.5-2V21L16 23Z"/><path class="vom-road" d="M1.5 17.6 8 15.7l8 2 6.5-2"/></g><g class="vom-pin-icon"><path d="M12 .8c-2.3 0-4.1 1.8-4.1 4 0 3.1 4.1 6.9 4.1 6.9s4.1-3.8 4.1-6.9c0-2.2-1.8-4-4.1-4Z"/><circle cx="12" cy="4.8" r="1.5"/></g></svg></button>
+        </nav>
+      </div>
+
+      <button id="walk-mode" class="first-person-button" type="button" aria-pressed="false" aria-label="Walk: choose a location on the map to walk from in first-person view" title="Walk (first-person view)">
+        <span class="fp-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2ZM9.8 8.9 7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></svg></span>
+        <span class="walk-button-label">Walk</span>
+      </button>
+
+      <div id="status-chip" class="status-chip" aria-live="polite"><span class="status-dot"></span><span id="map-status">Loading map…</span></div>
+
+      <article id="building-card" class="info-card building-card" role="dialog" aria-labelledby="building-name" aria-live="polite" hidden>
+        <button id="building-card-close" class="card-close" type="button" aria-label="Close building details">×</button>
+        <div class="info-card-media"><img id="building-image" class="info-card-image" alt="Photo of the selected building" /><span id="building-category" class="info-chip">Building</span></div>
+        <section id="card-context" class="card-context" hidden></section>
+        <div class="info-card-heading">
+          <span id="building-located" class="info-eyebrow" hidden>Located in</span>
+          <h2 id="building-name">Building name</h2>
+          <p class="building-name-bn" id="building-name-bn" lang="bn"></p>
+          <p class="building-alias" id="building-alias"></p>
+        </div>
+        <dl class="building-facts">
+          <div><dt>ID</dt><dd id="building-id">—</dd></div>
+          <div><dt>Height</dt><dd id="building-height">—</dd></div>
+          <div><dt>Entrance</dt><dd id="building-entrance">—</dd></div>
+        </dl>
+        <a id="building-site" class="building-site" href="#" target="_blank" rel="noopener" hidden></a>
+        <div class="card-actions">
+          <button id="set-source" class="route-action source-action" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.4c-3.9 0-7.1 3.1-7.1 7 0 5.3 7.1 12.2 7.1 12.2s7.1-6.9 7.1-12.2c0-3.9-3.2-7-7.1-7Zm0 9.6a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z"/></svg><span class="route-label">Start here</span></button>
+          <button id="set-destination" class="route-action destination-action" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.4c-3.9 0-7.1 3.1-7.1 7 0 5.3 7.1 12.2 7.1 12.2s7.1-6.9 7.1-12.2c0-3.9-3.2-7-7.1-7Zm0 9.6a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z"/></svg><span class="route-label">Directions to here</span></button>
+        </div>
+      </article>
+
+      <aside id="walk-panel" class="walk-panel" aria-labelledby="walk-title" hidden>
+        <div class="walk-heading"><div><span class="eyebrow">First person</span><h2 id="walk-title">Walk mode</h2></div><button id="walk-close" class="walk-exit" type="button">Exit</button></div>
+        <p class="walk-help">Use W/A/S/D or the arrow keys. Move the mouse or drag the map to look around; hold Shift to move faster.</p>
+        <div class="walk-pad" aria-label="First-person movement controls">
+          <button type="button" data-walk-key="KeyQ" aria-label="Turn left">↶</button><button type="button" data-walk-key="KeyW" aria-label="Move forward">↑</button><button type="button" data-walk-key="KeyE" aria-label="Turn right">↷</button>
+          <button type="button" data-walk-key="KeyA" aria-label="Move left">←</button><span class="walk-center" aria-hidden="true">+</span><button type="button" data-walk-key="KeyD" aria-label="Move right">→</button>
+          <span></span><button type="button" data-walk-key="KeyS" aria-label="Move backward">↓</button><span></span>
+        </div>
+        <div class="walk-readout"><span><small>Ground / eye</small><strong id="walk-height">Ground · 1.65 m</strong></span><span><small>Heading</small><strong id="walk-heading">0°</strong></span></div>
+      </aside>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+  </body>
+</html>

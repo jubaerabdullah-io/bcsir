@@ -1,0 +1,27 @@
+# SHA-256 of the ORIGINAL BCSIR repository files, recorded before the 3D map was added.
+# Checked by: npm run verify:originals
+# 2026-09-24: BuildingBoundary.geojson re-baselined after the owner changed building 207 "color" from "r" to "#FF9A87"
+#             (previous sha256 588f7c66857258d518e6a8714143d27970aaf9f0c8c960072660e9cfd8acd8e9).
+# 2026-09-24: duplicate data files removed. The root copies of BCSIRBoundary, BuildingBoundary, ConnectedRoad,
+#             ConnectedRoadsDrawingVersion, InternalBoundary and Pathway (.geojson) duplicated public/data/; their
+#             geometry and attributes are fingerprinted in original-data-fingerprints.json and checked by npm test.
+#             ConnectedRoads/v0/r2.json was byte-identical to public/data/ConnectedRoads/v0/r2.json; the routing
+#             network is now checked at that path (same sha256). SrcDriveQMapBCSIR.qgz re-baselined: its six GeoJSON
+#             layer paths now point to ./public/data/ (previous sha256 7ccd13b97eeea5d34280aea75f4dbcb321a8c3b14393e65b5673be7620d29e4a).
+#             A zip of the removed files is in backup/ (ignored by git).
+67405007afc53532267b40bb42b28d5f359a8ec7b98cd1b67e281d279cbe9708 public/data/ConnectedRoads/v0/r2.json
+76b8376991a1288d47e11fbd78e247349dd22e686cf6735d6a958d6b1a9b0e81 ReadMeColor.md
+3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824 ShapefileFolder/Garden/Garden.cpg
+64b70da4969f189363b82ccfddff2b5e64e195bd2a9ca54b2f300b978d10d0fb ShapefileFolder/Garden/Garden.dbf
+a02a27b1d1982c8516d83398e85a3c8b1aef1713c13ef4d84d7bde17430c07c4 ShapefileFolder/Garden/Garden.prj
+aed9b0d614f2a6f0ab5e1ef516d705bf810a0652189cf56b60537b9549d03b11 ShapefileFolder/Garden/Garden.shp
+ea447159eb72604bf0ccef150e0d5c01d2827ae606d2db26af890dd91eb86c25 ShapefileFolder/Garden/Garden.shx
+3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824 ShapefileFolder/TreeLine/TreeLine.cpg
+b1469104b6581647e23a8ff296c14a67649d78782810365d878c5dd645938bd6 ShapefileFolder/TreeLine/TreeLine.dbf
+a02a27b1d1982c8516d83398e85a3c8b1aef1713c13ef4d84d7bde17430c07c4 ShapefileFolder/TreeLine/TreeLine.prj
+5287bee781da518c01c88e0e3f1c7fd56baee0b0804a926377483f1d9e9acf9f ShapefileFolder/TreeLine/TreeLine.shp
+30fd1ad649989af01132f3855894eecb26ab55ee0dbb3273ff6e4a1461cf89dd ShapefileFolder/TreeLine/TreeLine.shx
+7a7a671350f60ca7d1204c861ceb59fee7b1818f59edf85fea6dcd950ef1a84d SrcDriveQMapBCSIR.qgz
+7a394189af28e5c5fa139768694928f509b4e7bd58f5bc31994f0acec8f9fa7c SrcDriveQMapBCSIR.qgz.qto3settings
+cd6f47a6a3e9d4cce4b526363ce95666e51a517b2814a322d62a9786261d25cc connection_check.js
+be5d6b78f3f892fd95d3c191cf85768ef6e3a06706b12d2f138b950bfb1ea7f1 main_QRCode.zip

@@ -1,0 +1,14 @@
+*.png
+*.jpg
+*.jpeg
+images
+GeneratedTiles
+backup
+
+# 3D web map (added)
+node_modules/
+dist/
+
+# Building photos used by the web app (the original rules above ignore *.png/*.jpg/*.jpeg)
+!public/image/
+!public/image/**

@@ -1,0 +1,203 @@
+// From / To directions panel.
+//
+// Both fields autocomplete from the campus directory. The From field offers
+// buildings and laboratories; the To field also offers testing services. A
+// laboratory or test is routed to the building recorded for it (see
+// directory.js). If no building is recorded, it says so and sets no endpoint.
+//
+// The panel does not calculate routes. It sets the endpoints through the
+// existing interaction controller (setSourceFeature / setDestinationFeature),
+// and main.js routes with the original BCSIR routing service as before.
+// The WALK tile is the travel-mode toggle: when it is on (the default) the
+// walking route is drawn; when it is off the endpoints stay selected but no
+// route is drawn.
+import { createCombobox } from "./combobox.js";
+import { escapeHTML } from "./html.js";
+
+const KINDS = ["source", "destination"];
+const ROLE = { source: "starting point", destination: "destination" };
+
+export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, onClearEndpoint, onSwap, onClearRoute, onPick, onWalkChange, onMessage }) {
+  const panel = document.querySelector("#directions");
+  const toggle = document.querySelector("#directions-toggle");
+  const hint = document.querySelector("#direction-hint");
+  const walk = document.querySelector("#walk-toggle");
+  const summary = document.querySelector("#route-summary-box");
+  const headline = document.querySelector("#route-headline");
+  const detail = document.querySelector("#route-detail");
+  const notes = document.querySelector("#route-notes");
+  const clearRoute = document.querySelector("#clear-route");
+  const swap = document.querySelector("#direction-swap");
+  const inputs = { source: document.querySelector("#direction-from"), destination: document.querySelector("#direction-to") };
+  const slots = { source: null, destination: null }; // { entry, feature }
+  let picking = null;
+  let walkOn = true;
+
+  const entryText = (entry) => (entry.kind === "test" && entry.subtitle ? `${entry.title} · ${entry.subtitle}` : entry.title);
+
+  function setExpanded(expanded) {
+    panel.dataset.expanded = String(expanded);
+    toggle.setAttribute("aria-expanded", String(expanded));
+  }
+
+  function updateControls() {
+    KINDS.forEach((kind) => {
+      panel.querySelector(`[data-clear="${kind}"]`).hidden = !inputs[kind].value;
+      const pick = panel.querySelector(`[data-pick="${kind}"]`);
+      pick.setAttribute("aria-pressed", String(picking === kind));
+      pick.classList.toggle("active", picking === kind);
+    });
+    swap.disabled = !slots.source && !slots.destination;
+    clearRoute.hidden = !slots.source && !slots.destination;
+    hint.textContent = picking ? `Click a building on the map to set the ${ROLE[picking]}. Press Esc to cancel.` : "";
+    hint.hidden = !picking;
+  }
+
+  function stopPicking() {
+    if (!picking) return;
+    picking = null;
+    onPick?.(null);
+    updateControls();
+  }
+
+  function choose(kind, entry) {
+    const feature = resolveFeature(entry);
+    if (!feature) {
+      inputs[kind].value = slots[kind] ? entryText(slots[kind].entry) : "";
+      onMessage?.(`The building of “${entry.title}” is not recorded, so it cannot be used as the ${ROLE[kind]}.`);
+      updateControls();
+      return;
+    }
+    stopPicking();
+    slots[kind] = { entry, feature };
+    inputs[kind].value = entryText(entry);
+    updateControls();
+    onSetEndpoint(kind, feature);
+  }
+
+  const combos = {};
+  KINDS.forEach((kind) => {
+    const input = inputs[kind];
+    combos[kind] = createCombobox({
+      input,
+      list: document.querySelector(`#${input.id}-results`),
+      search: (query) => getDirectory().search(query, { kinds: kind === "source" ? ["building", "lab"] : ["building", "lab", "test"], limit: 20 }),
+      onSelect: (entry) => choose(kind, entry),
+      onClear: () => { if (slots[kind]) onClearEndpoint(kind); },
+      emptyText: kind === "source" ? "No buildings or labs" : "No buildings, labs or tests"
+    });
+    input.addEventListener("input", updateControls);
+    // Leaving a field without choosing restores the current endpoint's name.
+    input.addEventListener("blur", () => {
+      setTimeout(() => {
+        if (document.activeElement === input) return;
+        input.value = slots[kind] ? entryText(slots[kind].entry) : "";
+        combos[kind].close();
+        updateControls();
+      }, 150);
+    });
+  });
+
+  panel.addEventListener("click", (event) => {
+    const clear = event.target.closest("[data-clear]");
+    if (clear) {
+      const kind = clear.dataset.clear;
+      inputs[kind].value = "";
+      combos[kind].close();
+      if (slots[kind]) onClearEndpoint(kind); else updateControls();
+      inputs[kind].focus();
+      return;
+    }
+    const pick = event.target.closest("[data-pick]");
+    if (pick) {
+      const kind = pick.dataset.pick;
+      if (picking === kind) { stopPicking(); return; }
+      picking = kind;
+      onPick?.(kind, (feature) => {
+        picking = null;
+        choose(kind, getDirectory().entryForBuilding(feature) || { kind: "building", title: feature.properties?.name_en || "Building", buildingId: String(feature.properties?.id) });
+      });
+      updateControls();
+    }
+  });
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && picking) stopPicking(); });
+
+  swap.addEventListener("click", () => {
+    [slots.source, slots.destination] = [slots.destination, slots.source];
+    inputs.source.value = slots.source ? entryText(slots.source.entry) : "";
+    inputs.destination.value = slots.destination ? entryText(slots.destination.entry) : "";
+    updateControls();
+    onSwap();
+  });
+  clearRoute.addEventListener("click", () => onClearRoute());
+  toggle.addEventListener("click", () => setExpanded(panel.dataset.expanded !== "true"));
+
+  walk.addEventListener("click", () => {
+    walkOn = !walkOn;
+    walk.setAttribute("aria-pressed", String(walkOn));
+    if (walkOn && (!slots.source || !slots.destination)) {
+      const missing = !slots.source ? "source" : "destination";
+      inputs[missing].focus();
+      onMessage?.(`Choose a ${ROLE[missing]} for the walking route`);
+    }
+    onWalkChange?.(walkOn);
+  });
+
+  // Keeps the fields in step with endpoints set elsewhere (building card,
+  // map pick, deep link, swap, clear).
+  function sync(selection) {
+    KINDS.forEach((kind) => {
+      const feature = selection?.[kind] || null;
+      if (!feature) {
+        slots[kind] = null;
+        if (document.activeElement !== inputs[kind]) inputs[kind].value = "";
+      } else if (slots[kind]?.feature !== feature) {
+        const entry = getDirectory().entryForBuilding(feature) || { kind: "building", title: feature.properties?.name_en || "Building" };
+        slots[kind] = { entry, feature };
+        inputs[kind].value = entryText(entry);
+      }
+    });
+    if (selection?.source || selection?.destination) setExpanded(true);
+    updateControls();
+  }
+
+  // Route summary: `description` from route-summary.js, or null.
+  function showRoute(description) {
+    summary.dataset.status = description?.status || "idle";
+    notes.innerHTML = "";
+    if (!slots.source && !slots.destination) {
+      headline.textContent = "";
+      detail.textContent = "";
+    } else if (!slots.source || !slots.destination) {
+      headline.textContent = !slots.source ? "Choose a starting point" : "Choose a destination";
+      detail.textContent = "The walking route appears when both are set.";
+    } else if (!walkOn) {
+      headline.textContent = "Walking route hidden";
+      detail.textContent = "Select WALK to show the walking route.";
+    } else if (description) {
+      headline.textContent = description.headline;
+      detail.textContent = description.detail;
+      notes.innerHTML = description.notes.map((note) => `<li>${escapeHTML(note)}</li>`).join("");
+    }
+    updateControls();
+  }
+
+  // Sets an endpoint from a directory entry (e.g. "Directions to here" on a
+  // test shown in the building card), keeping the entry's own label.
+  function setEndpointEntry(kind, entry) {
+    setExpanded(true);
+    choose(kind, entry);
+  }
+
+  setExpanded(!window.matchMedia("(max-width: 700px)").matches);
+  showRoute(null);
+
+  return {
+    sync,
+    showRoute,
+    setEndpointEntry,
+    setExpanded,
+    isWalkOn: () => walkOn,
+    closeLists() { KINDS.forEach((kind) => combos[kind].close()); stopPicking(); }
+  };
+}
