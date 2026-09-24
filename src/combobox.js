@@ -21,7 +21,9 @@ export function resultItemHTML(entry) {
 
 let comboboxCount = 0;
 
-export function createCombobox({ input, list, search, onSelect, onClear, emptyText = "No matches", renderItem = resultItemHTML }) {
+// fitToScreen: the open list ends at the bottom of the visible screen, which is
+// above the on-screen keyboard on phones (--combo-room in style.css).
+export function createCombobox({ input, list, search, onSelect, onClear, emptyText = "No matches", renderItem = resultItemHTML, fitToScreen = false }) {
   const listId = list.id || `combobox-list-${++comboboxCount}`;
   list.id = listId;
   list.setAttribute("role", "listbox");
@@ -32,11 +34,19 @@ export function createCombobox({ input, list, search, onSelect, onClear, emptyTe
   let items = [];
   let active = -1;
 
+  function fit() {
+    if (!fitToScreen || list.hidden) return;
+    const view = window.visualViewport;
+    const bottom = view ? view.offsetTop + view.height : window.innerHeight;
+    list.style.setProperty("--combo-room", `${Math.max(120, Math.floor(bottom - list.getBoundingClientRect().top - 8))}px`);
+  }
+
   function setOpen(open) {
     list.hidden = !open;
     input.setAttribute("aria-expanded", String(open));
     list.closest("[data-combobox]")?.classList.toggle("combobox-open", open);
-    if (!open) { active = -1; input.removeAttribute("aria-activedescendant"); }
+    if (open) fit();
+    else { active = -1; input.removeAttribute("aria-activedescendant"); }
   }
 
   function highlight(index) {
@@ -103,6 +113,7 @@ export function createCombobox({ input, list, search, onSelect, onClear, emptyTe
   document.addEventListener("pointerdown", (event) => {
     if (!list.hidden && !event.target.closest(`[aria-controls="${listId}"]`) && !list.contains(event.target)) setOpen(false);
   });
+  if (fitToScreen) ["resize", "scroll"].forEach((type) => window.visualViewport?.addEventListener(type, fit));
   setOpen(false);
 
   return {

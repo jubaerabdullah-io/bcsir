@@ -11,6 +11,11 @@
 // The WALK tile is the travel-mode toggle: when it is on (the default) the
 // walking route is drawn; when it is off the endpoints stay selected but no
 // route is drawn.
+//
+// On touch screens a tapped field is emptied for typing (the chosen place stays
+// as its placeholder), and choosing a result moves on to the other field if it
+// is still empty, otherwise it closes the on-screen keyboard. While typing on a
+// phone the panel moves to the top of the screen (.directions-editing).
 import { createCombobox } from "./combobox.js";
 import { escapeHTML } from "./html.js";
 
@@ -33,19 +38,28 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
   const routeActions = document.querySelector("#route-actions");
   const swap = document.querySelector("#direction-swap");
   const inputs = { source: document.querySelector("#direction-from"), destination: document.querySelector("#direction-to") };
+  const placeholders = { source: inputs.source.placeholder, destination: inputs.destination.placeholder };
   const slots = { source: null, destination: null }; // { entry, feature }
+  const touchScreen = window.matchMedia("(hover: none) and (pointer: coarse)");
   let picking = null;
   let walkOn = true;
 
   const entryText = (entry) => (entry.kind === "test" && entry.subtitle ? `${entry.title} · ${entry.subtitle}` : entry.title);
+  const otherKind = (kind) => (kind === "source" ? "destination" : "source");
 
   function setExpanded(expanded) {
     panel.dataset.expanded = String(expanded);
     toggle.setAttribute("aria-expanded", String(expanded));
   }
 
+  function setEditing(editing) {
+    panel.closest(".app-top")?.classList.toggle("directions-editing", editing);
+  }
+
   function updateControls() {
     KINDS.forEach((kind) => {
+      // An emptied field still shows its chosen place until another is chosen.
+      inputs[kind].placeholder = slots[kind] ? entryText(slots[kind].entry) : placeholders[kind];
       panel.querySelector(`[data-clear="${kind}"]`).hidden = !inputs[kind].value;
       const pick = panel.querySelector(`[data-pick="${kind}"]`);
       pick.setAttribute("aria-pressed", String(picking === kind));
@@ -86,17 +100,32 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
       input,
       list: document.querySelector(`#${input.id}-results`),
       search: (query) => getDirectory().search(query, { kinds: kind === "source" ? ["building", "lab"] : ["building", "lab", "test"], limit: 20 }),
-      onSelect: (entry) => choose(kind, entry),
+      onSelect: (entry) => {
+        choose(kind, entry);
+        if (!touchScreen.matches) return;
+        if (slots[kind] && !slots[otherKind(kind)]) inputs[otherKind(kind)].focus();
+        else input.blur();
+      },
       onClear: () => { if (slots[kind]) onClearEndpoint(kind); },
-      emptyText: kind === "source" ? "No buildings or labs" : "No buildings, labs or tests"
+      emptyText: kind === "source" ? "No buildings or labs" : "No buildings, labs or tests",
+      fitToScreen: true
     });
-    input.addEventListener("input", updateControls);
+    input.addEventListener("focus", () => {
+      if (!touchScreen.matches || !slots[kind] || input.value !== entryText(slots[kind].entry)) return;
+      input.value = "";
+      combos[kind].close();
+      updateControls();
+    });
+    // Set on typing, not on focus: moving the panel under a tap that is still
+    // in progress would send its click to whatever moved beneath the finger.
+    input.addEventListener("input", () => { setEditing(true); updateControls(); });
     // Leaving a field without choosing restores the current endpoint's name.
     input.addEventListener("blur", () => {
       setTimeout(() => {
         if (document.activeElement === input) return;
         input.value = slots[kind] ? entryText(slots[kind].entry) : "";
         combos[kind].close();
+        setEditing(KINDS.some((other) => document.activeElement === inputs[other]));
         updateControls();
       }, 150);
     });
