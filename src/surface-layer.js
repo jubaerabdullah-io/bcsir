@@ -17,8 +17,13 @@
 // Built on the custom-layer pattern of tree-layer.js: a local metric frame anchored
 // at a MercatorCoordinate origin, projected with MapLibre's mainMatrix; one mesh and
 // one draw call per surface model.
+//
+// SURFACE_APPEARANCE (config.js) can tint, lighten and fade a model's surface
+// (used for grass.glb only). The fade keeps the canvas alpha at 1 (see the
+// impostor note in models3d.js), so the page never shows through.
 import * as THREE from "three";
 import { MercatorCoordinate } from "maplibre-gl";
+import { SURFACE_APPEARANCE } from "./config.js";
 import { modelManifestEntry } from "./models3d.js";
 import { publicAssetUrl } from "./paths.js";
 import { acquireRenderer, releaseRenderer } from "./three-shared.js";
@@ -33,7 +38,66 @@ const MAP_FRAGMENT = `
 	vec2 bcsirSign = 1.0 - 2.0 * bcsirFlip;
 	vec2 bcsirUv = mix( vMapUv - bcsirCell, 1.0 - ( vMapUv - bcsirCell ), bcsirFlip );
 	diffuseColor *= textureGrad( map, bcsirUv, dFdx( vMapUv ) * bcsirSign, dFdy( vMapUv ) * bcsirSign );
+#endif
+#ifdef BCSIR_APPEARANCE
+	// Recolour: the tile's light and dark detail around the tint colour.
+	float bcsirLuma = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+	vec3 bcsirRecoloured = bcsirTint * clamp( mix( 1.0, bcsirLuma / bcsirMeanLuma, 0.6 ), 0.7, 1.3 );
+	diffuseColor.rgb = mix( diffuseColor.rgb, bcsirRecoloured, bcsirTintAmount );
+	diffuseColor.rgb += ( 1.0 - diffuseColor.rgb ) * bcsirLighten;
 #endif`;
+
+// Mean linear luminance of a texture image (sampled at 32 x 32), for the recolour.
+function meanLuminance(image) {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 32;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(image, 0, 0, 32, 32);
+    const { data } = ctx.getImageData(0, 0, 32, 32);
+    const linear = (v) => { const c = v / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4) sum += 0.2126 * linear(data[i]) + 0.7152 * linear(data[i + 1]) + 0.0722 * linear(data[i + 2]);
+    return Math.max(0.005, sum / (data.length / 4));
+  } catch {
+    return 0.05;
+  }
+}
+
+function modelFileName(model) {
+  return decodeURIComponent(String(model).split(/[?#]/)[0].split("/").pop() || "").toLowerCase();
+}
+
+// Material for one surface model, with its SURFACE_APPEARANCE entry if any.
+function surfaceMaterial(texture, model) {
+  const appearance = Object.entries(SURFACE_APPEARANCE).find(([name]) => name.toLowerCase() === modelFileName(model))?.[1];
+  const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const opacity = Math.min(1, Math.max(0, Number(appearance?.opacity ?? 1)));
+  if (opacity < 1) {
+    material.transparent = true;
+    material.opacity = opacity;
+    material.blending = THREE.CustomBlending;
+    material.blendSrc = THREE.SrcAlphaFactor;
+    material.blendDst = THREE.OneMinusSrcAlphaFactor;
+    material.blendSrcAlpha = THREE.ZeroFactor;
+    material.blendDstAlpha = THREE.OneFactor;
+  }
+  const uniforms = appearance ? {
+    bcsirTint: { value: new THREE.Color(appearance.tint || "#ffffff") },
+    bcsirTintAmount: { value: Number(appearance.tintAmount) || 0 },
+    bcsirLighten: { value: Number(appearance.lighten) || 0 },
+    bcsirMeanLuma: { value: meanLuminance(texture.image) }
+  } : null;
+  material.onBeforeCompile = (shader) => {
+    if (uniforms) {
+      Object.assign(shader.uniforms, uniforms);
+      shader.fragmentShader = `#define BCSIR_APPEARANCE\nuniform vec3 bcsirTint;\nuniform float bcsirTintAmount;\nuniform float bcsirLighten;\nuniform float bcsirMeanLuma;\n${shader.fragmentShader}`;
+    }
+    shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", MAP_FRAGMENT);
+  };
+  material.customProgramCacheKey = () => (uniforms ? "bcsir-surface-appearance" : "bcsir-surface");
+  return material;
+}
 
 function surfaceOf(feature) {
   const p = feature?.properties || {};
@@ -134,9 +198,7 @@ export function surfaceLayer(id, collection, { coveredLayerId } = {}) {
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
         texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-        const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-        material.onBeforeCompile = (shader) => { shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", MAP_FRAGMENT); };
-        material.customProgramCacheKey = () => "bcsir-surface";
+        const material = surfaceMaterial(texture, model);
         const mesh = new THREE.Mesh(buildGeometry(features, tile), material);
         mesh.frustumCulled = false;
         scene.add(mesh);

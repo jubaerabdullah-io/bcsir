@@ -31,7 +31,23 @@ npm run data:services # re-import the official INARS testing-service list
 ```
 
 Open the URL Vite prints. Do not open `index.html` directly from disk.
-For phone or LAN testing use `npm run dev -- --host`.
+For phone or LAN testing use `npm run dev -- --host` (live navigation needs GPS, which
+browsers give only to `https://` pages and `localhost`).
+
+### Deploying (GitHub Pages)
+
+`npm run build` writes `dist/`. The build uses relative URLs (`base: "./"`), so it works
+at any sub-path, such as `https://<user>.github.io/indoormappingt1/`, and locally.
+`BASE_PATH=/indoormappingt1/ npm run build` gives absolute URLs instead. Every file in
+`public/` is published; image and model paths are URL-encoded and building photos are
+matched to their real file names (GitHub Pages is case-sensitive, Windows is not).
+`public/.nojekyll` stops a branch-based Pages build from dropping files.
+
+Everything in `public/` must be committed. The original `.gitignore` ignored every
+`*.png`, which kept `public/route-walker.png` (the figure on the route) and
+`public/bcsir-logo.png` out of the repository: they worked locally but were missing
+(404, broken images) on a site built from the repository. `.gitignore` now ends with
+`!public/**`, and `npm test` checks it.
 
 ## Using the map
 
@@ -48,7 +64,9 @@ For phone or LAN testing use `npm run dev -- --host`.
 | Pan, rotate, tilt | Drag. Right-drag (or Ctrl + drag) rotates and tilts. Scroll zooms. |
 | Zoom, rotate, tilt buttons | Right-hand controls. Rotate and tilt buttons are hidden on phones and short windows. |
 | Camera presets | **View** menu: Top-down, Isometric, 3D Corner, Front, Free, Follow Direction, Route Up, North Up, Reset. Compass: north up. |
-| First-person walk | **Walk** (bottom left), then click a location on the map: the camera goes down to eye height there. W/A/S/D or arrows to walk, hold Shift to move faster, mouse to look, Esc to exit (or to cancel while choosing). |
+| First-person walk | **Walk** (bottom left), then click a location on the map: the camera goes down to eye height there. W/A/S/D or arrows to walk, hold Shift to move faster, mouse to look, Esc to exit (or to cancel while choosing). On phones: hold the arrow buttons (bottom right), drag the view to look. Walls and buildings cannot be walked through; a circular minimap (bottom left) shows the surroundings, the route and the destination. |
+| Live navigation | With a route drawn, **Start** under the route summary: follows the phone's GPS along the route, turns the map with its compass, shows the next turn and the remaining distance and time. See [Live navigation](#live-navigation-and-3d-mode). |
+| 3D mode | **3D mode** under the route summary: walk the route in first-person view with the same guidance. |
 | Deep link | `?buildingid=101` opens building 101 (the format used by the QR codes in `main_QRCode.zip`). |
 
 ## Building labels
@@ -155,10 +173,64 @@ tile and the building card only choose the endpoints; the route itself is unchan
   the start, red pin at the destination (HTML markers above the map). A small walking
   figure moves along the route from the start pin to the destination pin and repeats
   (`route-walker.js`). Walking time assumes 5 km/h.
+- **Buildings in front of the route** become see-through (30 % opacity) while they hide
+  it, and return to normal when the camera moves on or the route is cleared
+  (`route-occlusion.js`). Only those buildings change. Because the line is drawn above
+  the 3D layers, a route passing behind a building would otherwise be painted across it
+  as if it went through it.
+- **Drawn geometry around buildings** (`navigation/route-detour.js`). No building has
+  an indoor passage, so the drawn line is led around footprints it would cross, along
+  their outline at about 1 m clearance: one network edge clips a corner of Dhaka
+  Laboratories (126), and 15 of the dashed access legs cross a neighbouring building.
+  The node path from the original `dijkstra()` is not changed; the summary notes the
+  detour and its distance includes it. The Water Tank (109) stands inside the footprint
+  of the Pilot Plant (104), so its access line cannot avoid that building; the summary
+  says so.
 
 `npm run verify:routing` runs the **unmodified** `connection_check.js` and compares its
 results with the web route service (connectivity, components, every "No path found"
 pair and every path).
+
+## Live navigation and 3D mode
+
+**Start** (under the route summary) begins live guidance on the phone:
+
+- The position comes from GPS (`navigator.geolocation`, high accuracy). The map follows
+  it with the position in the lower part of the screen, turned so the phone's heading
+  points up; a blue dot with a view cone marks it, and a circle shows the GPS accuracy.
+  Dragging the map pauses following; **Recenter** resumes it.
+- The heading comes from the compass. On iPhone the browser asks for permission when
+  Start is tapped. Without a compass, when permission is refused, or while iOS reports
+  it as uncalibrated, the map turns with the walking direction instead, and the sheet
+  says why.
+- The banner shows the next turn (a turn is a change of direction of 28° or more,
+  judged over 7 m, so curved paths do not produce a turn at every vertex), its distance
+  and the turn after it when close. The sheet shows the remaining time and distance.
+- More than 12 m from the route (more when GPS is inaccurate) for 2.5 s: **Off route**,
+  with the direction and distance back to it. After 8 s off route, the route is
+  calculated again from the current position with the original algorithm.
+- Missing, refused or weak GPS (±30 m or worse), or a position far from the campus: the
+  alert says so and offers **Set position** (tap the map where you are), or 3D mode.
+  Location needs an `https://` address (GitHub Pages is), or `localhost`.
+- Arrival is at the destination's recorded entrance, or where the route reaches the
+  building when no entrance is recorded.
+
+**3D mode** (under the route summary, or on the navigation sheet) opens the first-person
+walk mode on the same route: the camera starts at the route start (or at the GPS
+position), facing along the route; the route stays drawn; the banner keeps giving the
+next turn. Walking forward turns the view gently towards the route ahead, so holding
+the forward button follows it. **Follow GPS** in the walk panel lets GPS and the
+compass move the walker instead; touching the controls hands it back. Exit (or Esc)
+returns to the map view; × in the banner or **End** ends navigation and restores the
+previous view.
+
+**Indoors:** no building has indoor map data (floor plans, walkable areas, entrances per
+level), and GPS cannot tell floors or rooms, so guidance ends at the building and says
+so. Buildings cannot be entered in walk mode. `navigation/collision.js` already accepts
+indoor areas (`{ buildingId, level, walkable, entrances }`): a building with them can be
+entered only through an entrance, and movement then stays on the walkable areas of the
+selected level. Using them needs that data, a level selector, and an indoor positioning
+source (for example Wi-Fi RTT or BLE beacons) for live guidance inside.
 
 ## Basemaps
 
@@ -273,6 +345,12 @@ per repeat so the pattern does not show. The polygon geometry is unchanged. Remo
 `surface_model` from a feature to give it its flat `color` again; any other GLB works as
 a surface the same way.
 
+The scanned lawn is much darker than the pastel map. `SURFACE_APPEARANCE` in
+`src/config.js` recolours `grass.glb`'s surface only: its light and dark blades are kept
+around a pastel green (`tint`, `tintAmount`), slightly lightened, and drawn at 88 %
+opacity over the campus ground. Other models and surfaces are not affected; delete the
+entry for the original look.
+
 ### Optimizing models (run after adding or replacing a GLB)
 
 ```bash
@@ -378,7 +456,11 @@ reaches the map directly.
 │   ├── geo-utils.js             geometry helpers, label anchors
 │   ├── model-placements.js, models3d.js, tree-layer.js, three-shared.js
 │   ├── surface-layer.js         grass (surface_model) on the Garden polygons
-│   ├── walkMode.js, wall-strip.js, paths.js, html.js
+│   ├── route-occlusion.js       see-through buildings in front of the route
+│   ├── walkMode.js, wall-strip.js, paths.js, asset-paths.js, html.js
+│   ├── navigation/              live navigation (live-navigation.js), compass, turn
+│   │                            guidance (route-progress.js), walk collision,
+│   │                            route geometry around buildings, walk minimap
 │   ├── routing/route-service.js route calculation with the original functions
 │   └── style.css
 ├── scripts/
@@ -432,3 +514,11 @@ reaches the map directly.
 - Detail levels and impostors are close to, not identical with, the full models: small
   trees can look very slightly fuller or lighter. Raise the sizes in `LADDER` /
   `MODEL_VISIBILITY.impostorPixels` to trade speed for exactness.
+- **Indoor navigation needs data that does not exist yet:** floor plans with walkable
+  areas and entrances per level, and an indoor positioning source. Until then every
+  building is solid in walk mode and guidance ends at the building.
+- Walk-mode collision covers building footprints (0.5 m or taller) and the boundary and
+  internal walls. Flat areas drawn 0.3 m high (research field, Spirulina Pond, play
+  ground) stay walkable, as do trees and GLB models.
+- GPS on campus is typically accurate to 5–15 m outdoors and much worse beside tall
+  buildings; off-route warnings wait for 2.5 s and allow for the reported accuracy.

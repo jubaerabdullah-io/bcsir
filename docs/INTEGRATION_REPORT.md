@@ -9,7 +9,9 @@ the app, the GeoJSON properties and the project layout, see [README.md](../READM
 > `public/data/` and removed the model-manager interface and its upload API.
 > Section 11 describes the interface, search and directions update and the
 > removal of the duplicate data files. Section 12 describes the building photos
-> taken from the original map.
+> taken from the original map. Section 13 covers the grass and 3D performance;
+> section 14 live navigation, walk collision, the minimap, route visibility and the
+> images missing on GitHub Pages.
 
 ## 1. The original BCSIR repository
 
@@ -486,3 +488,71 @@ decoding, shader compilation and the impostor views replace the saved transfer t
 
 During the session `BCSIRBoundary.geojson` (`color`, `top_m`) and `InternalBoundary.geojson`
 (`top_m`, `thickness_m`) were edited outside this work; those edits were left as they are.
+
+## 14. Update: live navigation, 3D walk, collision, minimap, route visibility, grass and deployed images (2026-09-25)
+
+### Images missing on GitHub Pages (root cause)
+
+- The original `.gitignore` ignores every `*.png` (and `*.jpg`, `*.jpeg`); only
+  `public/image/` had been excepted. `public/route-walker.png` (the walking figure on
+  the route) and `public/bcsir-logo.png` (header logo) were therefore never committed.
+  They load locally, where the files exist, but a site built from the repository has
+  neither: both return 404 and show as broken images. The broken image on the route in
+  the report's screenshot is the walking figure.
+- Checked by building the committed tree (`git archive HEAD`) and serving it under
+  `/indoormappingt1/` with a case-sensitive server: both PNGs 404. The same check on the
+  files git includes after the fix: both 200, as are all 38 building photos, with the
+  relative base, with `BASE_PATH=/indoormappingt1/`, and without the trailing slash.
+- Fix: `.gitignore` ends with `!public/**`. Also: public paths are URL-encoded once
+  (`asset-paths.js`, used by `publicAssetUrl()`); a building photo is matched to its
+  real file name ignoring capitalisation and encoding (GitHub Pages is case-sensitive,
+  Windows is not); the walking figure falls back to a drawn figure and the logo to the
+  favicon if a file is missing; `public/.nojekyll`; optional `BASE_PATH` for an absolute
+  base. `publicAssetUrl()` and the relative base were already correct.
+
+### New and changed files
+
+| File | Change |
+|---|---|
+| `src/navigation/live-navigation.js` | New: live guidance (GPS, compass, follow camera, banner and sheet, off-route, re-route, manual position, 3D mode switch) |
+| `src/navigation/route-progress.js` | New: route measurement, turns, position on the route, guidance text (pure) |
+| `src/navigation/collision.js` | New: walk-mode collision with buildings and walls; indoor areas entered only through entrances (pure) |
+| `src/navigation/route-detour.js` | New: drawn route geometry around buildings; node path unchanged (pure) |
+| `src/navigation/compass.js`, `minimap.js`, `local-frame.js` | New: compass readings and permission; walk-mode minimap; metric helpers |
+| `src/route-occlusion.js` | New: see-through buildings in front of the route |
+| `src/asset-paths.js` | New: URL encoding and file-name matching for public assets (pure) |
+| `src/walkMode.js` | Optional hooks: collision, start outside buildings, pose, state, manual input, route assist, `open(position, { heading })`, `getPose`/`setPose`; frame loop only while a control is held |
+| `src/main.js` | Wiring; `displayRoute` (corrected geometry) drawn instead of `lastRoute`, which is kept for the test hooks |
+| `src/bcsir-layers.js`, `src/interactions.js` | See-through copies of the building layers (empty until needed), clickable |
+| `src/routing/route-service.js` | `routeFromPoint()` for re-routing (same original `dijkstra()`); `route()` unchanged in behaviour; corrected access legs drawn when present |
+| `src/surface-layer.js`, `src/config.js` | Grass recolour and opacity (`SURFACE_APPEARANCE`); `STYLE.routeObscuringOpacity` |
+| `src/route-walker.js`, `src/building-images.js`, `src/paths.js` | Image fallbacks and path handling (above); walker hidden while navigating |
+| `src/directions-ui.js`, `src/camera-controls.js` | Start / 3D mode buttons; `release()` stops Follow Direction |
+| `index.html`, `src/style.css` | Navigation banner, sheet, alert, minimap, route buttons; phone layouts (portrait and landscape) |
+| `.gitignore`, `public/.nojekyll`, `vite.config.js` | Deployment (above) |
+| `tests/navigation.test.mjs` | New: 10 tests |
+
+### Route geometry
+
+- Every network edge and every building's access leg was tested against the footprints
+  (6,812 building-to-building routes). One network edge clips Dhaka Laboratories (126,
+  4.7 m inside); 15 access legs cross a neighbouring building (up to 20 m). These are now
+  drawn around the buildings; the longest detour adds 3.8 m. The node paths are the
+  original algorithm's (`verify:routing` 2,080/2,080). The Water Tank (109) stands inside
+  the Pilot Plant's (104) footprint, so its leg cannot avoid it; the summary says so.
+- No network edge crosses the boundary or internal walls.
+
+### Tests
+
+Environment: Windows 10, Node 24.21, Chrome 153 headless on the owner's Intel UHD GPU.
+
+| Suite | Result |
+|---|---|
+| `npm run verify:originals` | 16/16 unchanged |
+| `npm run verify:routing` | 9/9; 2,080/2,080 paths equal the unmodified `connection_check.js` |
+| `npm test` | 55/56: the 10 new tests pass; the failure is the one already present (building 102 `top_m`) |
+| `npm run build` | success |
+| Desktop browser suite (production build and dev server) | 41/41 each: 3D mode from the route, guidance banner, idle view not re-rendered, forward walk follows the route, minimap enlarge/fold, Esc back to map navigation, End; walking into IGCRT blocked with a message; a start inside a building moved out; live guidance with emulated GPS; camera follows; compass turns the map; no rendering once settled; off route after 2.5 s; re-route; arrival with the indoor note; pan pauses following, Recenter resumes; GPS refused → Set position; routes past 126 drawn around it; clearing the route restores every building; all local images 200; no GLB downloaded twice; no console errors |
+| Phone suite, 390×844, 360×740 and 844×390 (touch) | 20/20 each: controls on screen and not overlapping, touch targets ≥ 44 px (pad 48 px), touch pad walks, drag turns, minimap tap, navigation sheet, interface restored |
+| Existing features, HEAD vs new build | identical: deep link, card and photo, search, feature counts, routes 101 → 119 (11 nodes, 249 m) and 102 → 301, no-path case, WALK toggle, pick on map, layer switches, satellite/street, dark theme, View presets, models, 38 label photos |
+| Walk smoothness, phone viewport, CPU ×4 (3 runs each) | plain walk: HEAD 16.0–20.6 fps, new 14.0–18.2 fps (within run-to-run noise; bound by map rendering); longest task HEAD 130–192 ms, new 96–106 ms. With a route in 3D mode: 14.0–15.8 fps; see-through checks cost 6–7 ms per second |

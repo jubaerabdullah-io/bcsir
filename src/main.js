@@ -11,7 +11,7 @@ import { createMap, waitForMap } from "./map.js";
 import { DATASET_BY_FILE, INITIAL_VIEW } from "./config.js";
 import { DATASET_LABELS, fetchDataset, loadAllData, prepareDataset } from "./bcsir-data.js";
 import { addBcsirLayers, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setRouteData, updateDatasetLayers } from "./bcsir-layers.js";
-import { calculateBounds } from "./geo-utils.js";
+import { calculateBounds, lineStrips } from "./geo-utils.js";
 import { setupInteractions } from "./interactions.js";
 import { createUI } from "./ui.js";
 import { createModelGroups } from "./model-placements.js";
@@ -29,6 +29,11 @@ import { createRouteMarkers } from "./route-markers.js";
 import { createRouteWalker, routePathCoordinates } from "./route-walker.js";
 import { createBasemapControl, savedBasemap } from "./basemap-control.js";
 import { describeRoute } from "./route-summary.js";
+import { createRouteOcclusion } from "./route-occlusion.js";
+import { blocksWalking, collisionBlockers, createCollisionWorld } from "./navigation/collision.js";
+import { correctRouteResult, prepareObstacles } from "./navigation/route-detour.js";
+import { createLiveNavigation } from "./navigation/live-navigation.js";
+import { createMinimap } from "./navigation/minimap.js";
 
 const map = createMap("map", { basemap: savedBasemap() });
 let data;
@@ -51,6 +56,53 @@ let homeView;
 const heightScale = 1; // GeoJSON heights are drawn exactly (the height-scale slider was removed)
 let lastRoute = null;
 let buildingsById = new Map();
+// Drawn route: lastRoute with its geometry led around buildings
+// (navigation/route-detour.js); the node path is lastRoute's.
+let displayRoute = null;
+let obstacles = null;
+let collisionWorld = null;
+let walkIndoorState = {};
+let routeOcclusion;
+let minimap;
+let navigation;
+
+// Buildings and walls for route correction, walk collision and the minimap.
+function buildNavigationGeometry() {
+  obstacles = prepareObstacles(data.render.buildings, { blocks: blocksWalking });
+  collisionWorld = createCollisionWorld({
+    frame: obstacles.frame,
+    blockers: collisionBlockers({
+      buildings: data.render.buildings,
+      walls: [
+        { collection: lineStrips(data.render.internal), kind: "wall", name: "An internal wall" },
+        { collection: lineStrips(data.render.boundary), kind: "wall", name: "The campus boundary wall" }
+      ]
+    })
+    // indoor: no building has indoor map data yet, so every building is solid.
+  });
+  minimap?.setData({ buildings: data.render.buildings, garden: data.render.garden, roads: data.render.roads, pathways: data.render.pathways });
+}
+
+// Draws a route result (or nothing): the route line, the see-through buildings
+// in front of it and the minimap route.
+function showRouteGeometry(result) {
+  const geojson = result ? routeToGeoJSON(result) : null;
+  setRouteData(map, geojson);
+  routeOcclusion?.setRoute(geojson ? geojson.features.map((feature) => feature.geometry.coordinates) : null);
+  minimap?.setRoute(result?.ok ? routePathCoordinates(result) : null, result?.destination?.point || null);
+}
+
+const listNames = (items) => items.map((item) => item.name || `building ${item.id}`).join(", ");
+
+// Route summary for the drawn route, with notes on corrected geometry.
+function describeDisplayRoute(result) {
+  const description = describeRoute(result);
+  if (!description) return description;
+  const notes = [...description.notes];
+  if (result.detours?.length) notes.push(`The route line goes around ${listNames(result.detours)}: no building here has an indoor passage.`);
+  if (result.unresolved?.length) notes.push(`The route line crosses ${listNames(result.unresolved)}: the endpoint lies inside that building's footprint, so no outdoor path to it is mapped.`);
+  return { ...description, notes, navigable: Boolean(result.ok && result.networkDistanceM > 0) };
+}
 
 function indexBuildings() {
   buildingsById = new Map(data.render.buildings.features.map((feature) => [String(feature.properties.render_id), feature]));
@@ -123,25 +175,29 @@ function updateRoute(selection) {
   cameraController?.updateRoute(selection);
   if (!selection.source || !selection.destination) {
     lastRoute = null;
-    setRouteData(map, null);
+    displayRoute = null;
+    showRouteGeometry(null);
     routeMarkers.set({ source: pinFor(selection.source), destination: pinFor(selection.destination) });
     routeWalker.set(null);
     directions.showRoute(null);
+    navigation?.setRoute(null);
     return;
   }
   lastRoute = routeService.route(selection.source, selection.destination);
+  displayRoute = correctRouteResult(lastRoute, obstacles);
   routeMarkers.set({ source: pinFor(selection.source, lastRoute.source), destination: pinFor(selection.destination, lastRoute.destination) });
   const walking = directions.isWalkOn();
-  setRouteData(map, walking ? routeToGeoJSON(lastRoute) : null);
+  showRouteGeometry(walking ? displayRoute : null);
   // A walking figure moves from the start to the destination along the route.
-  routeWalker.set(walking ? routePathCoordinates(lastRoute) : null);
-  directions.showRoute(describeRoute(lastRoute));
+  routeWalker.set(walking ? routePathCoordinates(displayRoute) : null);
+  directions.showRoute(describeDisplayRoute(displayRoute));
+  navigation?.setRoute(walking ? displayRoute : null);
   if (!walking) return;
   if (lastRoute.ok) {
-    cameraController?.setRouteCoordinates(lastRoute.coordinates, 0);
+    cameraController?.setRouteCoordinates(displayRoute.coordinates, 0);
     const bounds = new maplibregl.LngLatBounds();
-    [...lastRoute.coordinates, lastRoute.source.point, lastRoute.destination.point].forEach((coordinate) => bounds.extend(coordinate));
-    if (!walkController?.isActive()) map.fitBounds(bounds, { padding: window.innerWidth < 700 ? 60 : 140, maxZoom: 18.6, pitch: map.getPitch(), bearing: map.getBearing(), duration: 900, essential: true });
+    [...displayRoute.coordinates, lastRoute.source.point, lastRoute.destination.point].forEach((coordinate) => bounds.extend(coordinate));
+    if (!walkController?.isActive() && !navigation?.isActive()) map.fitBounds(bounds, { padding: window.innerWidth < 700 ? 60 : 140, maxZoom: 18.6, pitch: map.getPitch(), bearing: map.getBearing(), duration: 900, essential: true });
   } else {
     ui.showToast("No connected walking path in the campus road network");
   }
@@ -180,6 +236,10 @@ async function reloadDataset(file) {
       interactionController?.reapplyStates();
       labels.load(data.render.buildings);
     }
+    if (["buildings", "internal", "boundary", "garden", "roads", "pathways"].includes(key)) {
+      buildNavigationGeometry();
+      if (lastRoute && key === "buildings") updateRoute(interactionController.getRouteSelection());
+    }
     await modelGroups.refreshDataset(key);
     ui.showToast(`${DATASET_LABELS[key]} reloaded`);
   } catch (error) {
@@ -206,6 +266,12 @@ async function start() {
   labels.load(data.render.buildings);
   routeMarkers = createRouteMarkers(map);
   routeWalker = createRouteWalker(map);
+  routeOcclusion = createRouteOcclusion(map, {
+    getFeature: (id) => buildingsById.get(String(id)),
+    getViewpoint: () => (walkController?.isActive() ? walkController.getPose() : null)
+  });
+  minimap = createMinimap({ container: document.querySelector("#walk-minimap") });
+  buildNavigationGeometry();
   directoryData = await directoryLoad;
   rebuildDirectory();
 
@@ -245,6 +311,7 @@ async function start() {
       if (kind) { walkController?.cancelChoosing(); interactionController.clearSelection(); ui.showToast(`Click a building to set the ${kind === "source" ? "starting point" : "destination"}`); }
     },
     onWalkChange: () => updateRoute(interactionController.getRouteSelection()),
+    onNavigate: (view) => navigation?.start({ view }),
     onMessage: ui.showToast
   });
 
@@ -257,8 +324,9 @@ async function start() {
 
   interactionController = setupInteractions(map, {
     resolveFeature: (id) => buildingsById.get(String(id)),
-    // Off in walk mode and while a first-person location is being chosen.
-    isEnabled: () => !walkController?.isActive() && !walkController?.isChoosing(),
+    // Off in walk mode, while a first-person location is being chosen and while
+    // the navigation position is being set on the map.
+    isEnabled: () => !walkController?.isActive() && !walkController?.isChoosing() && !navigation?.isPickingPosition(),
     onSelect: ui.showBuilding,
     onClear: ui.hideBuilding,
     onRouteChange: updateRoute
@@ -269,6 +337,57 @@ async function start() {
     getFloorElevation: () => 0,
     getLevelLabel: () => "Ground",
     beforeOpen: () => { interactionController?.clearSelection(); directions?.closeLists(); return true; },
+    onToast: ui.showToast,
+    // Walls and buildings without an indoor map cannot be walked through.
+    resolveMove: (from, to) => collisionWorld.resolveMove(from, to, walkIndoorState),
+    resolveStart: (position) => {
+      const blocker = collisionWorld.blockerAt(position);
+      if (!blocker) return null;
+      return {
+        position: collisionWorld.nearestFree(position),
+        message: blocker.kind === "building" ? `${blocker.name || "That building"} has no indoor map, so the walk starts outside it.` : "The walk starts beside the wall."
+      };
+    },
+    onPose: (pose) => { minimap?.update(pose.position, pose.heading); navigation?.onWalkPose(pose); },
+    onStateChange: (state) => {
+      if (state === "entering") walkIndoorState = {};
+      minimap?.show(state === "active");
+      routeWalker.setSuppressed(state !== "idle" || Boolean(navigation?.isActive()));
+      navigation?.onWalkState(state);
+    },
+    onManualInput: () => navigation?.onManualInput(),
+    steer: (context) => navigation?.steer(context) || 0
+  });
+
+  const campusBounds = calculateBounds(campusExtent(), maplibregl.LngLatBounds);
+  navigation = createLiveNavigation({
+    map,
+    walk: walkController,
+    collision: { nearestFree: (point) => collisionWorld.nearestFree(point), hasIndoor: (id) => collisionWorld.hasIndoor(id) },
+    campusCenter: campusBounds.isEmpty() ? null : campusBounds.getCenter().toArray(),
+    cameraController,
+    getRoute: () => (directions.isWalkOn() ? displayRoute : null),
+    // Off the route for a while: a new route from the position to the same
+    // destination, with the original routing algorithm.
+    reroute: (position) => {
+      const destination = interactionController.getRouteSelection().destination;
+      if (!destination) return null;
+      const result = correctRouteResult(routeService.routeFromPoint(position, destination), obstacles);
+      if (result.ok) showRouteGeometry(result);
+      return result;
+    },
+    onSession: (active) => {
+      routeWalker.setSuppressed(active || walkController.isActive());
+      if (active) {
+        interactionController.clearSelection();
+        interactionController.setPickHandler(null);
+        search.close();
+        directions.closeLists();
+        layerManager?.setOpen(false);
+      } else {
+        showRouteGeometry(directions.isWalkOn() ? displayRoute : null); // a re-routed line goes back to the chosen route
+      }
+    },
     onToast: ui.showToast
   });
 
@@ -339,7 +458,20 @@ async function start() {
       interactionController.setSourceFeature(find(a));
       interactionController.setDestinationFeature(find(b));
       return lastRoute;
-    }
+    },
+    displayRoute: () => displayRoute,
+    fadedBuildings: () => routeOcclusion.fadedIds(),
+    walkPose: () => walkController.getPose(),
+    walkOpen: (position, heading) => walkController.open(position, { heading }),
+    walkClose: () => walkController.close(),
+    blockerAt: (position) => collisionWorld.blockerAt(position),
+    navigation: Object.freeze({
+      start: (view = "map") => navigation.start({ view }),
+      end: () => navigation.end(),
+      state: () => navigation.state(),
+      feedPosition: (lngLat, options) => navigation.feedPosition(lngLat, options),
+      feedCompass: (heading, accuracy) => navigation.feedCompass(heading, accuracy)
+    })
   });
 }
 

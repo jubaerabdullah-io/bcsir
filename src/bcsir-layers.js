@@ -36,8 +36,13 @@ const state = (name) => ["boolean", ["feature-state", name], false];
 // Layer groups used by the layer manager. `layers` are MapLibre layer ids;
 // `custom` names are toggled through their own APIs; `models` lists the datasets
 // whose Point/MultiPoint features (or model_points) place GLB models.
+// See-through copies of the building layers. route-occlusion.js moves the
+// buildings that hide the drawn route into them (by filter); they hold no
+// building otherwise.
+export const ROUTE_FADED_LAYERS = { body: "buildings-body-route-faded", roof: "buildings-roof-route-faded" };
+
 export const LAYER_GROUPS = [
-  { id: "buildings", label: "Buildings (3D)", source: "BuildingBoundary.geojson", layers: ["buildings-footprint", "buildings-body", "buildings-roof", "buildings-roof-seams", "buildings-corners"], models: ["buildings"] },
+  { id: "buildings", label: "Buildings (3D)", source: "BuildingBoundary.geojson", layers: ["buildings-footprint", "buildings-body", "buildings-roof", "buildings-roof-seams", "buildings-corners", ROUTE_FADED_LAYERS.body, ROUTE_FADED_LAYERS.roof], models: ["buildings"] },
   { id: "labels", label: "Building labels", source: "BuildingBoundary.geojson", layers: ["building-labels-major", "building-labels-minor"] },
   { id: "roads", label: "Connected roads", source: "ConnectedRoad.geojson", layers: ["roads-3d"], models: ["roads"] },
   { id: "roadsDrawing", label: "Connected roads (drawing version)", source: "ConnectedRoadsDrawingVersion.geojson", layers: ["roads-drawing-3d"], models: ["roadsDrawing"] },
@@ -142,6 +147,17 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
   map.addLayer({
     id: "buildings-corners", type: "fill-extrusion", source: "building-corners", minzoom: 16.5,
     paint: { "fill-extrusion-color": color, "fill-extrusion-base": base, "fill-extrusion-height": top, "fill-extrusion-opacity": 0.6, "fill-extrusion-vertical-gradient": false }
+  });
+  // Same as buildings-body / buildings-roof, see-through, empty until a building
+  // hides the route. Drawn after the opaque buildings so those show through.
+  const noBuilding = ["in", ["get", "render_id"], ["literal", []]];
+  map.addLayer({
+    id: ROUTE_FADED_LAYERS.body, type: "fill-extrusion", source: "buildings", filter: noBuilding,
+    paint: { "fill-extrusion-color": highlight(["get", "render_side_color"]), "fill-extrusion-base": base, "fill-extrusion-height": roofBase, "fill-extrusion-opacity": STYLE.routeObscuringOpacity, "fill-extrusion-vertical-gradient": false }
+  });
+  map.addLayer({
+    id: ROUTE_FADED_LAYERS.roof, type: "fill-extrusion", source: "buildings", filter: noBuilding,
+    paint: { "fill-extrusion-color": highlight(color), "fill-extrusion-base": roofBase, "fill-extrusion-height": top, "fill-extrusion-opacity": STYLE.routeObscuringOpacity, "fill-extrusion-vertical-gradient": false }
   });
 
   const trees = treeLayer("trees-3d", render.treeLine, { trunkColor: STYLE.treeTrunk });

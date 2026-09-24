@@ -36,6 +36,17 @@ export const MODEL_VISIBILITY = {
   impostorPixels: 32 // models smaller than this are drawn as pre-rendered views (impostors)
 };
 
+// Look of the ground surfaces made from a GLB (surface-layer.js), by model file
+// name. Only grass.glb is listed, so no other model changes. The photo-scanned
+// lawn is much darker than the pastel map: it is recoloured towards a pastel
+// green (its light and dark blades kept), and drawn slightly see-through.
+//   tint / tintAmount  colour the texture's detail is centred on (0 = original, 1 = fully recoloured)
+//   lighten            share of the remaining way to white (0 = none)
+//   opacity            1 = opaque
+export const SURFACE_APPEARANCE = {
+  "grass.glb": { tint: "#BFE0A1", tintAmount: 0.8, lighten: 0.04, opacity: 0.88 }
+};
+
 // Fallbacks for missing or invalid feature properties, per dataset.
 export const LAYER_DEFAULTS = {
   boundary: { base_m: 0, top_m: 3, thickness_m: 0.25, color: "#FFFFFF", fill_color: "#FFFFE6" },
@@ -80,5 +91,8 @@ export const STYLE = {
   selected: "#fbbf24",
   hover: "#fde68a",
   routeSource: "#7fb2f0",
-  routeDestination: "#f28b82"
+  routeDestination: "#f28b82",
+  // Opacity of a building while it stands between the camera and the drawn
+  // route (route-occlusion.js); every other building stays opaque.
+  routeObscuringOpacity: 0.3
 };

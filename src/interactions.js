@@ -8,7 +8,9 @@
 // panel ("choose on map") instead of being selected.
 import { polygonCentroid } from "./geo-utils.js";
 
-const BUILDING_LAYERS = ["buildings-roof", "buildings-body", "building-labels-major", "building-labels-minor"];
+// The *-route-faded layers hold the buildings that are shown see-through
+// because they hide the drawn route (route-occlusion.js).
+const BUILDING_LAYERS = ["buildings-roof", "buildings-body", "buildings-roof-route-faded", "buildings-body-route-faded", "building-labels-major", "building-labels-minor"];
 const featureId = (feature) => feature?.properties?.render_id ?? feature?.id ?? null;
 
 export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHover, onHoverLeave, onRouteChange, isEnabled = () => true }) {
@@ -83,7 +85,7 @@ export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHo
     const layers = BUILDING_LAYERS.filter((id) => map.getLayer(id));
     const hits = map.queryRenderedFeatures(point, { layers });
     const byLayer = (id) => hits.find((feature) => feature.layer?.id === id);
-    return byLayer("building-labels-major") || byLayer("building-labels-minor") || byLayer("buildings-body") || byLayer("buildings-roof") || null;
+    return byLayer("building-labels-major") || byLayer("building-labels-minor") || byLayer("buildings-body") || byLayer("buildings-body-route-faded") || byLayer("buildings-roof") || byLayer("buildings-roof-route-faded") || null;
   }
   function move(event) {
     if (!isEnabled()) return;

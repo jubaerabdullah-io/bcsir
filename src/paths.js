@@ -1,3 +1,5 @@
+import { encodeAssetPath } from "./asset-paths.js";
+
 /**
  * Resolve a file from Vite's public/ directory in a way that works both:
  *   - locally with `npm run dev`
@@ -5,6 +7,8 @@
  *
  * Vite replaces import.meta.env.BASE_URL at build time. Using document.baseURI
  * keeps relative builds portable instead of hard-coding a repository name.
+ * Each path segment is URL-encoded (spaces, #, non-ASCII names), because GitHub
+ * Pages does not accept the raw names that the local dev server tolerates.
  */
 export function publicAssetUrl(assetPath) {
   const value = String(assetPath ?? "").trim();
@@ -14,7 +18,7 @@ export function publicAssetUrl(assetPath) {
     return value;
   }
 
-  const cleanPath = value.replace(/^\/+/, "");
+  const cleanPath = encodeAssetPath(value.replace(/^\/+/, ""));
   const base = import.meta.env.BASE_URL || "./";
   return new URL(`${base}${cleanPath}`, document.baseURI).href;
 }

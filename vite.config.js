@@ -5,9 +5,11 @@ import { bcsirPlugin } from "./scripts/vite-plugin-bcsir.mjs";
 // - Data, GLB models and images are served from public/ (public/data,
 //   public/models, public/image); bcsirPlugin() adds the original routing
 //   bridge, the building-photo list and live data reload.
-// - base is relative so the build works from any folder or sub-path.
+// - base is relative so the build works from any folder or sub-path, including a
+//   GitHub Pages project site such as https://<user>.github.io/indoormappingt1/.
+//   BASE_PATH=/indoormappingt1/ npm run build gives absolute URLs instead.
 export default defineConfig({
-  base: "./",
+  base: process.env.BASE_PATH || "./",
   plugins: [bcsirPlugin()],
 
   // Same as the reference project: MapLibre ships its renderer as a separate

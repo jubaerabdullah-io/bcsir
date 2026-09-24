@@ -17,7 +17,10 @@ import { escapeHTML } from "./html.js";
 const KINDS = ["source", "destination"];
 const ROLE = { source: "starting point", destination: "destination" };
 
-export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, onClearEndpoint, onSwap, onClearRoute, onPick, onWalkChange, onMessage }) {
+// onNavigate(view) starts live guidance ("map") or the first-person 3D mode
+// ("walk") on the drawn route; the Start / 3D mode buttons show only when a
+// walking route is drawn (description.navigable).
+export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, onClearEndpoint, onSwap, onClearRoute, onPick, onWalkChange, onMessage, onNavigate }) {
   const panel = document.querySelector("#directions");
   const toggle = document.querySelector("#directions-toggle");
   const hint = document.querySelector("#direction-hint");
@@ -27,6 +30,7 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
   const detail = document.querySelector("#route-detail");
   const notes = document.querySelector("#route-notes");
   const clearRoute = document.querySelector("#clear-route");
+  const routeActions = document.querySelector("#route-actions");
   const swap = document.querySelector("#direction-swap");
   const inputs = { source: document.querySelector("#direction-from"), destination: document.querySelector("#direction-to") };
   const slots = { source: null, destination: null }; // { entry, feature }
@@ -130,6 +134,10 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
     onSwap();
   });
   clearRoute.addEventListener("click", () => onClearRoute());
+  routeActions?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-navigate]");
+    if (button) onNavigate?.(button.dataset.navigate);
+  });
   toggle.addEventListener("click", () => setExpanded(panel.dataset.expanded !== "true"));
 
   walk.addEventListener("click", () => {
@@ -165,6 +173,7 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
   function showRoute(description) {
     summary.dataset.status = description?.status || "idle";
     notes.innerHTML = "";
+    if (routeActions) routeActions.hidden = !(description?.navigable && walkOn && slots.source && slots.destination);
     if (!slots.source && !slots.destination) {
       headline.textContent = "";
       detail.textContent = "";

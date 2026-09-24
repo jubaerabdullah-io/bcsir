@@ -12,3 +12,9 @@ dist/
 # Building photos used by the web app (the original rules above ignore *.png/*.jpg/*.jpeg)
 !public/image/
 !public/image/**
+
+# Everything in public/ is part of the deployed site. The rules above ignore
+# every *.png/*.jpg/*.jpeg, which kept public/route-walker.png and
+# public/bcsir-logo.png out of the repository, so a GitHub Pages build made
+# from it had no such files (broken images). Nothing in public/ is ignored.
+!public/**

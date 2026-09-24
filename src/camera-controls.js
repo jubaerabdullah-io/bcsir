@@ -333,6 +333,9 @@ export function createCameraController(map, {
     // "View on Map" frames the campus itself; this only marks the default
     // (3D corner) mode in the View menu and stops heading follow.
     markDefaultView: () => { stopFollowModes("corner"); setMenuOpen(false); },
+    // Live navigation drives the camera: stop following the device heading
+    // (Follow Direction) and mark the free camera.
+    release: () => { stopFollowModes("free"); setMenuOpen(false); },
     closeMenu: () => setMenuOpen(false),
     updateTarget(collection) {
       const next = getCollectionCameraTarget(collection);

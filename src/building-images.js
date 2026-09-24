@@ -8,6 +8,10 @@
 // data/building-images.json lists the files in public/image/ (written by the
 // Vite plugin), so a photo that is not there is never requested: the map shows
 // the neutral placeholder and the console names the building to fix.
+// Names are matched to that listing ignoring capitalisation and URL encoding,
+// and the file's own spelling is requested: Windows and the dev server accept
+// "Photo.PNG" for "photo.png", GitHub Pages does not.
+import { findListedFile } from "./asset-paths.js";
 import { publicAssetUrl } from "./paths.js";
 
 const IMAGE_EXTENSION = /\.(png|jpe?g|webp)(?:[?#].*)?$/i;
@@ -39,13 +43,17 @@ export function buildingImageCandidates(properties = {}) {
   const image = typeof properties.image === "string" ? properties.image.trim() : "";
   if (image) {
     const local = localImagePath(image);
+    const listed = local !== null && available ? findListedFile(local, available) : null;
     if (!IMAGE_EXTENSION.test(image)) warnOnce(`Building ${properties.id}: image must be a .png, .jpg, .jpeg or .webp URL, got ${JSON.stringify(properties.image)}`);
-    else if (local !== null && available && !available.has(local)) warnOnce(`Building ${properties.id}: image ${JSON.stringify(image)} is not in public/image/, so the placeholder is shown.`);
-    else candidates.push(image);
+    else if (local !== null && available && !listed) warnOnce(`Building ${properties.id}: image ${JSON.stringify(image)} is not in public/image/, so the placeholder is shown.`);
+    else if (listed && listed !== local) {
+      warnOnce(`Building ${properties.id}: image ${JSON.stringify(image)} is spelled "${listed}" in public/image/; using that file (GitHub Pages is case-sensitive).`);
+      candidates.push(`image/${listed}`);
+    } else candidates.push(image);
   }
-  const name = String(properties.image_url ?? "").trim();
-  if (name && available?.has(name)) candidates.push(`image/${name}`);
-  return candidates.map((candidate) => publicAssetUrl(candidate));
+  const name = findListedFile(String(properties.image_url ?? "").trim(), available);
+  if (name) candidates.push(`image/${name}`);
+  return [...new Set(candidates.map((candidate) => publicAssetUrl(candidate)))];
 }
 
 // Loads the first candidate that decodes. Resolves to an HTMLImageElement or null.

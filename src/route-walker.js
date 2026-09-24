@@ -15,12 +15,19 @@ const PAUSE_MS = 700; // hidden at the destination before starting again
 // anchored at the bottom and moved down 2 px to stand on the route line.
 const WALKER_IMAGE = publicAssetUrl("route-walker.png");
 const WALKER_OFFSET = [0, 2];
+// Drawn figure used when the PNG cannot be loaded (for example a deployment
+// without the file), so the map never shows a broken-image icon.
+const WALKER_FALLBACK = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44"><ellipse cx="22" cy="41" rx="8" ry="2.2" fill="rgba(15,23,42,0.28)"/><circle cx="23.5" cy="8" r="4" fill="#1e88e5"/><path d="M20.4 14.2 16 38h3.6l3-13.3 3.5 3.3V38h3.4V25.4l-3.5-3.3 1-5c1.6 2.3 4.4 3.9 7.5 3.9v-3.4c-3.1 0-5.8-1.6-7.1-4l-1.7-2.6a3.2 3.2 0 0 0-3.9-1.3L13.6 13v7.7H17v-5.4Z" fill="#1e88e5" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>')}`;
 
 // Start pin -> network path -> destination pin, for a route-service result.
+// Access legs corrected around buildings (navigation/route-detour.js) are used
+// when present.
 export function routePathCoordinates(result) {
   if (!result?.ok || !result.source?.point || !result.destination?.point) return null;
   const points = [];
-  [result.source.point, ...result.coordinates, result.destination.point].forEach((point) => {
+  const start = result.source.accessPath?.length ? result.source.accessPath : [result.source.point];
+  const end = result.destination.accessPath?.length ? [...result.destination.accessPath].reverse() : [result.destination.point];
+  [...start, ...result.coordinates, ...end].forEach((point) => {
     if (!points.length || distanceMeters(points[points.length - 1], point) > 0.01) points.push(point);
   });
   return points.length > 1 ? points : null;
@@ -31,9 +38,11 @@ export function createRouteWalker(map) {
   element.className = "route-walker";
   element.innerHTML = `<img class="route-walker-figure" src="${WALKER_IMAGE}" alt="" draggable="false" />`;
   const figure = element.firstElementChild;
+  figure.addEventListener("error", () => { if (figure.src !== WALKER_FALLBACK) figure.src = WALKER_FALLBACK; });
   const marker = new maplibregl.Marker({ element, anchor: "bottom", offset: WALKER_OFFSET });
   let path = null; // { points, cumulative, total }
   let visible = true;
+  let suppressed = false; // hidden while live navigation or walk mode shows the user's own position
   let frame = 0;
   let startTime = 0;
 
@@ -68,7 +77,7 @@ export function createRouteWalker(map) {
     cancelAnimationFrame(frame);
     frame = 0;
     startTime = 0;
-    if (!path || !visible) { marker.remove(); return; }
+    if (!path || !visible || suppressed) { marker.remove(); return; }
     figure.classList.remove("hidden");
     marker.setLngLat(path.points[0]).addTo(map);
     frame = requestAnimationFrame(tick);
@@ -78,6 +87,8 @@ export function createRouteWalker(map) {
     // coordinates from routePathCoordinates(), or null to stop.
     set(coordinates) { path = coordinates ? measure(coordinates) : null; run(); },
     // The "Calculated route" switch in the layer list.
-    setVisible(next) { visible = next; run(); }
+    setVisible(next) { visible = next; run(); },
+    // Hidden (and its animation stopped) without changing the layer switch.
+    setSuppressed(next) { if (suppressed !== Boolean(next)) { suppressed = Boolean(next); run(); } }
   };
 }

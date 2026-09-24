@@ -46,9 +46,11 @@ export function createRouteService(network) {
   let edgeCount = 0;
   graph.forEach((neighbors) => { edgeCount += neighbors.size; });
 
-  function nearestNode(point) {
+  // `component` (optional) restricts the search to one connected component.
+  function nearestNode(point, component = null) {
     let best = null;
     for (const node of nodes) {
+      if (component !== null && componentOf.get(node.key) !== component) continue;
       const distance = distanceMeters(point, node.coordinates);
       if (!best || distance < best.distanceM) best = { node, distanceM: distance };
     }
@@ -80,8 +82,28 @@ export function createRouteService(network) {
   }
 
   function route(sourceFeature, destinationFeature) {
-    const source = endpointFor(sourceFeature);
+    return routeBetween(endpointFor(sourceFeature), endpointFor(destinationFeature));
+  }
+
+  // Live navigation re-routing: from a position (lon/lat) to a building, with
+  // the same original dijkstra(). The position is snapped to the nearest node of
+  // the destination's connected component.
+  function routeFromPoint(point, destinationFeature) {
     const destination = endpointFor(destinationFeature);
+    const nearest = point && destination ? nearestNode(point, destination.component ?? null) : null;
+    const source = nearest ? {
+      feature: null,
+      point,
+      kind: "position",
+      nodeKey: nearest.node.key,
+      nodeCoordinates: precise.get(nearest.node.key) || nearest.node.coordinates,
+      snapDistanceM: nearest.distanceM,
+      component: componentOf.get(nearest.node.key)
+    } : null;
+    return routeBetween(source, destination);
+  }
+
+  function routeBetween(source, destination) {
     if (!source || !destination) return { ok: false, reason: "no-endpoint", source, destination };
     if (source.nodeKey === destination.nodeKey) {
       return { ok: true, path: [source.nodeKey], coordinates: [source.nodeCoordinates], networkDistanceM: 0, source, destination };
@@ -98,6 +120,7 @@ export function createRouteService(network) {
     graph,
     components,
     route,
+    routeFromPoint,
     endpointFor,
     stats: { nodes: graph.size, directedEdges: edgeCount, components: components.map((c) => c.length), connected }
   };
@@ -105,6 +128,8 @@ export function createRouteService(network) {
 
 // GeoJSON for the map: the network path plus dashed "access" legs from the
 // entrance/centroid to the snapped node (these are not part of the network).
+// An access leg corrected around buildings (endpoint.accessPath, see
+// navigation/route-detour.js) is drawn instead of the straight leg.
 export function routeToGeoJSON(result) {
   if (!result?.source || !result?.destination) return { type: "FeatureCollection", features: [] };
   const features = [];
@@ -113,7 +138,8 @@ export function routeToGeoJSON(result) {
   }
   for (const endpoint of [result.source, result.destination]) {
     if (endpoint.snapDistanceM > 0.05) {
-      features.push({ type: "Feature", properties: { kind: "access" }, geometry: { type: "LineString", coordinates: [endpoint.point, endpoint.nodeCoordinates] } });
+      const coordinates = endpoint.accessPath?.length > 1 ? endpoint.accessPath : [endpoint.point, endpoint.nodeCoordinates];
+      features.push({ type: "Feature", properties: { kind: "access" }, geometry: { type: "LineString", coordinates } });
     }
   }
   return { type: "FeatureCollection", features };

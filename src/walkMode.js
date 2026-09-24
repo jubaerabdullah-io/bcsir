@@ -2,13 +2,30 @@ import { MercatorCoordinate } from "maplibre-gl";
 
 // First-person walk mode. The toggle first asks for a location: the next click
 // on the map is where the camera goes down to eye height and walking starts.
+//
+// BCSIR additions (all optional; without them walking works as before):
+// - resolveMove(from, to) -> { position, blocked, blocker }: collision, so walls
+//   and buildings cannot be walked through (navigation/collision.js);
+// - resolveStart(position) -> { position, message }: a start chosen inside a
+//   building is moved outside it;
+// - onPose({ position, heading }) after every camera change (minimap, guidance);
+// - onStateChange(state): "idle" | "choosing" | "entering" | "active";
+// - onManualInput(): the user moved or turned (keys, on-screen pad or look);
+// - steer({ position, heading, forward, deltaSeconds }) -> degrees to turn this
+//   frame (route assist while walking forward in a navigation session);
+// - open(position, { heading }), close({ restoreCamera, message }), getPose()
+//   and setPose(position, heading) for live navigation.
+// The frame loop runs only while a movement key or button is held, so an idle
+// first-person view does not re-render the map.
 const EYE_HEIGHT_METERS = 1.65;
 const LOOK_AHEAD_METERS = 16;
 const WALK_SPEED_METERS_PER_SECOND = 2;
 const SHIFT_SPEED_MULTIPLIER = 4;
 const TURN_SPEED_DEGREES_PER_SECOND = 105;
 const MOUSE_SENSITIVITY = 0.16;
+const TOUCH_LOOK_SENSITIVITY = 0.28;
 const DESCENT_DURATION_MS = 1800;
+const BLOCKED_HINT_INTERVAL_MS = 5000;
 
 // Label and accessible name of the toggle in each state.
 const TOGGLE_TEXT = {
@@ -30,6 +47,12 @@ function isTypingTarget(target) {
 
 function normalizedHeading(value) {
   return ((Number(value) || 0) % 360 + 360) % 360;
+}
+
+function toArray(position) {
+  if (Array.isArray(position)) return [Number(position[0]), Number(position[1])];
+  if (position && Number.isFinite(position.lng)) return [position.lng, position.lat];
+  return null;
 }
 
 function offsetLngLat(origin, eastMeters, northMeters) {
@@ -54,7 +77,13 @@ export function createWalkMode({
   onToast,
   beforeOpen,
   getFloorElevation = () => 0,
-  getLevelLabel = () => "Floor"
+  getLevelLabel = () => "Floor",
+  resolveMove = null,
+  resolveStart = null,
+  onPose = null,
+  onStateChange = null,
+  onManualInput = null,
+  steer = null
 } = {}) {
   const toggle = document.querySelector("#walk-mode");
   const toggleLabel = toggle?.querySelector(".walk-button-label");
@@ -67,7 +96,7 @@ export function createWalkMode({
   const headingReadout = document.querySelector("#walk-heading");
 
   if (!map || !toggle || !panel || !lookSurface) {
-    return { isActive: () => false, isChoosing: () => false, cancelChoosing: () => {}, open: () => {}, close: () => {} };
+    return { isActive: () => false, isChoosing: () => false, cancelChoosing: () => {}, open: () => {}, close: () => {}, getPose: () => null, setPose: () => {} };
   }
 
   const interactionNames = ["boxZoom", "doubleClickZoom", "dragPan", "dragRotate", "keyboard", "scrollZoom", "touchZoomRotate"];
@@ -85,15 +114,27 @@ export function createWalkMode({
   let suspendedInteractions = [];
   let draggingLook = false;
   let previousPointerX = 0;
+  let lastBlockedHint = { id: null, time: 0 };
 
   function floorElevation() {
     const value = Number(getFloorElevation?.());
     return Number.isFinite(value) ? value : 0;
   }
 
+  function currentState() {
+    if (active) return "active";
+    if (entering) return "entering";
+    return choosing ? "choosing" : "idle";
+  }
+  function emitState() { onStateChange?.(currentState()); }
+
   function updateReadout() {
     if (heightReadout) heightReadout.textContent = `${getLevelLabel?.() || "Floor"} · ${EYE_HEIGHT_METERS.toFixed(2)} m`;
     if (headingReadout) headingReadout.textContent = `${Math.round(normalizedHeading(player.heading))}°`;
+  }
+
+  function pose() {
+    return player.position ? { position: [player.position.lng, player.position.lat], heading: normalizedHeading(player.heading) } : null;
   }
 
   function firstPersonCamera() {
@@ -114,11 +155,29 @@ export function createWalkMode({
     if (!active || !player.position) return;
     map.jumpTo(firstPersonCamera(), { walkMode: true });
     updateReadout();
+    onPose?.(pose());
+  }
+
+  function notifyBlocked(blocker) {
+    const now = performance.now();
+    const id = blocker?.id ?? "wall";
+    if (lastBlockedHint.id === id && now - lastBlockedHint.time < BLOCKED_HINT_INTERVAL_MS) return;
+    lastBlockedHint = { id, time: now };
+    if (blocker?.kind === "building") onToast?.(`${blocker.name || "This building"} has no indoor map, so it cannot be entered.`);
+    else onToast?.(`${blocker?.name || "A wall"} blocks the way.`);
   }
 
   function movePlayer(rightMeters, forwardMeters) {
     if (!active || !player.position || (!rightMeters && !forwardMeters)) return;
-    player.position = offsetFromHeading(player.position, player.heading, rightMeters, forwardMeters);
+    const target = offsetFromHeading(player.position, player.heading, rightMeters, forwardMeters);
+    if (!resolveMove) { player.position = target; return; }
+    const from = [player.position.lng, player.position.lat];
+    const result = resolveMove(from, [target.lng, target.lat]);
+    const next = toArray(result?.position ?? result) || from;
+    const wanted = Math.hypot(rightMeters, forwardMeters);
+    const moved = Math.hypot((next[0] - from[0]) * 111320 * Math.cos(from[1] * Math.PI / 180), (next[1] - from[1]) * 110574);
+    player.position = { lng: next[0], lat: next[1] };
+    if (result?.blocked && moved < wanted * 0.3) notifyBlocked(result.blocker);
   }
 
   function rotatePlayer(degrees) {
@@ -127,6 +186,7 @@ export function createWalkMode({
   }
 
   function frame(time) {
+    animationFrame = 0;
     if (!active) return;
     if (!previousFrameTime) previousFrameTime = time;
     const deltaSeconds = Math.min(0.05, (time - previousFrameTime) / 1000);
@@ -146,11 +206,23 @@ export function createWalkMode({
 
     const magnitude = Math.hypot(right, forward) || 1;
     const distance = WALK_SPEED_METERS_PER_SECOND * speedBoost * deltaSeconds;
+    const assist = forward > 0 && !turn && !draggingLook ? Number(steer?.({ ...pose(), forward, deltaSeconds })) || 0 : 0;
     movePlayer(right / magnitude * distance, forward / magnitude * distance);
-    rotatePlayer(turn * TURN_SPEED_DEGREES_PER_SECOND * deltaSeconds);
+    rotatePlayer(turn * TURN_SPEED_DEGREES_PER_SECOND * deltaSeconds + assist);
     if (right || forward || turn) updateCamera();
 
-    animationFrame = requestAnimationFrame(frame);
+    if (hasMovementInput()) animationFrame = requestAnimationFrame(frame);
+    else previousFrameTime = 0;
+  }
+
+  function hasMovementInput() {
+    for (const code of pressed) if (!code.startsWith("Shift")) return true;
+    return false;
+  }
+
+  // Starts the frame loop if it is not running (keys held down keep it going).
+  function wake() {
+    if (active && !animationFrame && hasMovementInput()) animationFrame = requestAnimationFrame(frame);
   }
 
   function suspendMapInteractions() {
@@ -201,6 +273,7 @@ export function createWalkMode({
     document.documentElement.classList.add("walk-choosing");
     setToggleState("choosing");
     onToast?.("Click a location on the map to go down into first-person view. Press Esc to cancel.");
+    emitState();
   }
 
   function cancelChoosing() {
@@ -208,25 +281,30 @@ export function createWalkMode({
     choosing = false;
     document.documentElement.classList.remove("walk-choosing");
     setToggleState("idle");
+    emitState();
   }
 
   // Step 2: the camera goes down to eye height at `position`, then walking starts.
-  function enterAt(position) {
+  function enterAt(position, { heading = null } = {}) {
     if (active || entering) return;
     if (choosing) cancelChoosing();
     else if (beforeOpen?.() === false) return;
+    const start = resolveStart?.(toArray(position)) || null;
+    const startPosition = toArray(start?.position) || toArray(position);
+    if (start?.message) onToast?.(start.message);
     rememberCamera();
     map.stop();
     suspendMapInteractions();
     map.setMaxPitch?.(95);
     map.setCenterClampedToGround?.(false);
 
-    player.position = position;
-    player.heading = normalizedHeading(map.getBearing());
+    player.position = { lng: startPosition[0], lat: startPosition[1] };
+    player.heading = normalizedHeading(Number.isFinite(heading) ? heading : map.getBearing());
     entering = true;
     const id = ++descent;
     document.documentElement.classList.add("walk-mode-active");
     setToggleState("active");
+    emitState();
     map.once("moveend", () => { if (id === descent && entering) activate(); });
     map.easeTo({ ...firstPersonCamera(), duration: DESCENT_DURATION_MS, essential: true }, { walkMode: true });
   }
@@ -240,11 +318,13 @@ export function createWalkMode({
     lookSurface.hidden = false;
     if (reticle) reticle.hidden = false;
     updateCamera();
-    animationFrame = requestAnimationFrame(frame);
-    onToast?.("Walk mode on — use W/A/S/D, arrows, or the on-screen controls.");
+    onToast?.(window.matchMedia?.("(pointer: coarse)").matches
+      ? "Walk mode on — hold the arrow buttons to walk, drag the view to look around."
+      : "Walk mode on — use W/A/S/D, arrows, or the on-screen controls.");
+    emitState();
   }
 
-  function exit() {
+  function exit({ restoreCamera = true, message = "Walk mode off — previous view restored." } = {}) {
     if (!active && !entering) return;
     active = false;
     entering = false;
@@ -253,6 +333,7 @@ export function createWalkMode({
     animationFrame = 0;
     previousFrameTime = 0;
     pressed.clear();
+    panel.querySelectorAll(".pressed").forEach((button) => button.classList.remove("pressed"));
     releasePointerLock();
     panel.hidden = true;
     lookSurface.hidden = true;
@@ -264,8 +345,9 @@ export function createWalkMode({
     map.setMaxPitch?.(previousMaxPitch ?? 85);
     map.setCenterClampedToGround?.(previousCenterClamp ?? true);
     restoreMapInteractions();
-    if (previousCamera) map.easeTo({ ...previousCamera, duration: 520, essential: true });
-    onToast?.("Walk mode off — previous view restored.");
+    if (restoreCamera && previousCamera) map.easeTo({ ...previousCamera, duration: 520, essential: true });
+    if (message) onToast?.(message);
+    emitState(); // after the message, so a listener's own message replaces it
   }
 
   function setControlPressed(button, isPressed) {
@@ -273,6 +355,7 @@ export function createWalkMode({
     if (!code) return;
     if (isPressed) pressed.add(code); else pressed.delete(code);
     button.classList.toggle("pressed", isPressed);
+    if (isPressed) { onManualInput?.(); wake(); }
   }
 
   toggle.addEventListener("click", () => {
@@ -292,8 +375,11 @@ export function createWalkMode({
       button.setPointerCapture?.(event.pointerId);
       setControlPressed(button, true);
     });
+    button.addEventListener("pointerup", () => setControlPressed(button, false));
     button.addEventListener("lostpointercapture", () => setControlPressed(button, false));
     button.addEventListener("pointercancel", () => setControlPressed(button, false));
+    // A long press on a phone must not open the context menu.
+    button.addEventListener("contextmenu", (event) => event.preventDefault());
   });
 
   window.addEventListener("keydown", (event) => {
@@ -303,7 +389,9 @@ export function createWalkMode({
     if (event.code === "Escape") { event.preventDefault(); exit(); return; }
     if (!active || !MOVEMENT_KEYS.has(event.code)) return;
     event.preventDefault();
+    if (!pressed.has(event.code) && !event.code.startsWith("Shift")) onManualInput?.();
     pressed.add(event.code);
+    wake();
   });
 
   window.addEventListener("keyup", (event) => {
@@ -332,7 +420,9 @@ export function createWalkMode({
     if (!active || !draggingLook || document.pointerLockElement === lookSurface) return;
     const movement = event.clientX - previousPointerX;
     previousPointerX = event.clientX;
-    rotatePlayer(movement * MOUSE_SENSITIVITY);
+    if (!movement) return;
+    onManualInput?.();
+    rotatePlayer(movement * (event.pointerType === "mouse" ? MOUSE_SENSITIVITY : TOUCH_LOOK_SENSITIVITY));
     updateCamera();
   });
 
@@ -340,7 +430,8 @@ export function createWalkMode({
   lookSurface.addEventListener("pointercancel", () => { draggingLook = false; });
 
   document.addEventListener("mousemove", (event) => {
-    if (!active || document.pointerLockElement !== lookSurface) return;
+    if (!active || document.pointerLockElement !== lookSurface || !event.movementX) return;
+    onManualInput?.();
     rotatePlayer(event.movementX * MOUSE_SENSITIVITY);
     updateCamera();
   });
@@ -355,7 +446,16 @@ export function createWalkMode({
     isActive: () => active || entering,
     isChoosing: () => choosing,
     cancelChoosing,
-    open: (position) => enterAt(position || map.getCenter()),
-    close: exit
+    open: (position, options) => enterAt(position || map.getCenter(), options),
+    close: exit,
+    getPose: pose,
+    // Live navigation drives the walker from GPS and the compass.
+    setPose(position, heading) {
+      const next = toArray(position);
+      if (!active || !next) return;
+      player.position = { lng: next[0], lat: next[1] };
+      if (Number.isFinite(heading)) player.heading = normalizedHeading(heading);
+      updateCamera();
+    }
   };
 }
