@@ -234,6 +234,65 @@ export function lineStrips(collection) {
   return { type: "FeatureCollection", features };
 }
 
+// Render copy of a line/polygon collection with openings: for each gap
+// { point: [lon, lat], halfWidth: metres }, the stretch of the nearest line (if it
+// passes within `reach` metres of the point) that lies within halfWidth along the
+// line is removed; the rest stays one open path. Paths without a gap are kept as
+// they were (closed rings stay closed), so their strips do not change.
+export function cutLineGaps(collection, gaps, reach = 6) {
+  if (!gaps?.length) return collection;
+  const cutPath = (path, { point, halfWidth }) => {
+    const lat0 = point[1];
+    const origin = project(point, lat0);
+    const local = path.map((p) => { const q = project(p, lat0); return [q[0] - origin[0], q[1] - origin[1]]; });
+    const along = [0];
+    let best = null;
+    for (let i = 1; i < local.length; i += 1) {
+      const [a, b] = [local[i - 1], local[i]];
+      const dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy);
+      along.push(along[i - 1] + length);
+      if (!length) continue;
+      const t = Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / (length * length)));
+      const d = Math.hypot(a[0] + dx * t, a[1] + dy * t);
+      if (!best || d < best.d) best = { d, s: along[i - 1] + t * length };
+    }
+    if (!best || best.d > reach) return [path];
+    const total = along.at(-1);
+    const at = (s) => {
+      const i = Math.max(1, along.findIndex((value) => value >= s));
+      const t = (s - along[i - 1]) / ((along[i] - along[i - 1]) || 1);
+      const a = local[i - 1], b = local[i];
+      return unproject([a[0] + (b[0] - a[0]) * t + origin[0], a[1] + (b[1] - a[1]) * t + origin[1]], lat0);
+    };
+    const piece = (s0, s1) => (s1 - s0 < 0.05 ? [] : [at(s0), ...path.filter((_, i) => along[i] > s0 && along[i] < s1), at(s1)]);
+    const [s0, s1] = [best.s - halfWidth, best.s + halfWidth];
+    const first = path[0], last = path.at(-1);
+    if (path.length > 3 && first[0] === last[0] && first[1] === last[1]) {
+      // Ring: one open path from the end of the gap round to its start (the gap may
+      // straddle the ring's first point).
+      if (2 * halfWidth >= total) return [];
+      const start = ((s1 % total) + total) % total, end = start + total - 2 * halfWidth;
+      if (end <= total) return [piece(start, end)].filter((p) => p.length >= 2);
+      return [[...piece(start, total), ...piece(0, end - total).slice(1)]].filter((p) => p.length >= 2);
+    }
+    return [piece(0, Math.max(0, s0)), piece(Math.min(total, s1), total)].filter((p) => p.length >= 2);
+  };
+  return {
+    ...collection,
+    features: collection.features.map((feature) => {
+      const paths = pathsOf(feature.geometry);
+      let changed = false;
+      const next = paths.flatMap((path) => {
+        let pieces = [path];
+        for (const gap of gaps) pieces = pieces.flatMap((piece) => cutPath(piece, gap));
+        if (pieces.length !== 1 || pieces[0] !== path) changed = true;
+        return pieces;
+      });
+      return changed ? { ...feature, geometry: { type: "MultiLineString", coordinates: next } } : feature;
+    })
+  };
+}
+
 // ---- Label anchors (BCSIR) ------------------------------------------------------------
 // Point-in-polygon for one polygon's rings (outer ring + holes), even-odd rule.
 export function pointInRings(point, rings) {

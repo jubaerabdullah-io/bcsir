@@ -79,7 +79,10 @@ export function collectModelPlacements(sources) {
 
 // One model set per layer group. `groups` maps a group id to dataset keys, and
 // getDatasets() returns the latest loaded collections (data.raw).
-export function createModelGroups({ map, groups, getDatasets, labels = {} }) {
+// extraPlacements (optional) maps a group id to a function returning placement
+// features computed elsewhere (building-models.js); they are shown and hidden with
+// that group.
+export function createModelGroups({ map, groups, getDatasets, labels = {}, extraPlacements = {} }) {
   const visible = new Map();
   const loaded = new Set();
   const keyOf = (groupId) => `geojson-models:${groupId}`;
@@ -89,6 +92,7 @@ export function createModelGroups({ map, groups, getDatasets, labels = {} }) {
     const sources = groups[groupId].map((key) => ({ label: labels[key] || key, collection: datasets[key] }));
     const { collection, problems } = collectModelPlacements(sources);
     if (problems.length) console.warn(`3D models (${groupId}): some features were skipped or corrected.\n  ${problems.join("\n  ")}`);
+    collection.features.push(...(extraPlacements[groupId]?.() || []));
     await load3DModels(map, keyOf(groupId), { data: collection });
     loaded.add(groupId);
     return collection.features.length;

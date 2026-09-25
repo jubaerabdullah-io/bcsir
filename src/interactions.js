@@ -9,8 +9,10 @@
 import { polygonCentroid } from "./geo-utils.js";
 
 // The *-route-faded layers hold the buildings that are shown see-through
-// because they hide the drawn route (route-occlusion.js).
-const BUILDING_LAYERS = ["buildings-roof", "buildings-body", "buildings-roof-route-faded", "buildings-body-route-faded", "building-labels-major", "building-labels-minor"];
+// because they hide the drawn route (route-occlusion.js). buildings-model-hit is
+// the invisible extrusion of a building drawn by a GLB model (building-models.js).
+const MODEL_HIT_LAYER = "buildings-model-hit";
+const BUILDING_LAYERS = ["buildings-roof", "buildings-body", "buildings-roof-route-faded", "buildings-body-route-faded", "building-labels-major", "building-labels-minor", MODEL_HIT_LAYER];
 const featureId = (feature) => feature?.properties?.render_id ?? feature?.id ?? null;
 
 export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHover, onHoverLeave, onRouteChange, isEnabled = () => true }) {
@@ -85,7 +87,13 @@ export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHo
     const layers = BUILDING_LAYERS.filter((id) => map.getLayer(id));
     const hits = map.queryRenderedFeatures(point, { layers });
     const byLayer = (id) => hits.find((feature) => feature.layer?.id === id);
-    return byLayer("building-labels-major") || byLayer("building-labels-minor") || byLayer("buildings-body") || byLayer("buildings-body-route-faded") || byLayer("buildings-roof") || byLayer("buildings-roof-route-faded") || null;
+    const label = byLayer("building-labels-major") || byLayer("building-labels-minor");
+    const extrusion = byLayer("buildings-body") || byLayer("buildings-body-route-faded") || byLayer("buildings-roof") || byLayer("buildings-roof-route-faded") || null;
+    // A GLB-drawn building counts when it is nearer than that extrusion (3D hits
+    // come sorted by depth); without one the choice is as before.
+    const model = byLayer(MODEL_HIT_LAYER);
+    const building = model && (!extrusion || hits.indexOf(model) < hits.indexOf(extrusion)) ? model : extrusion;
+    return label || building;
   }
   function move(event) {
     if (!isEnabled()) return;

@@ -36,6 +36,15 @@ export const MODEL_VISIBILITY = {
   impostorPixels: 32 // models smaller than this are drawn as pre-rendered views (impostors)
 };
 
+// Buildings drawn from GLB models (building-models.js). Which building uses which
+// model, and how it is turned or sized, is set per building in
+// BuildingBoundary.geojson: building_model, model_rotation, model_size (see README).
+//   enabled     false draws every building as an extrusion again
+//   maxStretch  a model fitted more than this share away from its own proportions
+//               (0.15 = 15 %) is reported in the console
+// Add ?buildingDebug to the page URL to outline footprints, anchors, fronts and model boxes.
+export const BUILDING_MODELS = { enabled: true, maxStretch: 0.15 };
+
 // Look of the ground surfaces made from a GLB (surface-layer.js), by model file
 // name. Only grass.glb is listed, so no other model changes. The photo-scanned
 // lawn is much darker than the pastel map: it is recoloured towards a pastel

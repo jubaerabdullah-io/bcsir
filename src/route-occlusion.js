@@ -11,6 +11,9 @@
 // filter; every other building, and all buildings once the route is cleared,
 // keep their original layers and opacity. The set is recalculated at most
 // every THROTTLE_MS while the camera moves, and only changed filters are set.
+// This module owns those layers' filters, so it also leaves out the buildings
+// drawn by a GLB model instead (setReplacedBuildings, building-models.js); with none,
+// the filters are exactly as before.
 import { ROUTE_FADED_LAYERS } from "./bcsir-layers.js";
 import { createLocalFrame, geometryPolygons, insideRings } from "./navigation/local-frame.js";
 
@@ -27,6 +30,7 @@ export function createRouteOcclusion(map, { getFeature, getViewpoint } = {}) {
   let samples = []; // [{ lngLat, local }]
   let frame = null;
   let faded = [];
+  let replaced = []; // render_ids of buildings drawn as GLB models: their extrusion is hidden
   let timer = 0;
   let last = 0;
 
@@ -58,16 +62,23 @@ export function createRouteOcclusion(map, { getFeature, getViewpoint } = {}) {
     return Boolean(feature && geometryPolygons(feature.geometry).some((rings) => insideRings(lngLat, rings)));
   }
 
-  function apply(ids) {
-    if (ids.length === faded.length && ids.every((id, i) => id === faded[i])) return;
+  // filter without the replaced buildings (unchanged when there are none).
+  function withoutReplaced(filter, property) {
+    if (!replaced.length) return filter;
+    const keep = ["!", ["in", ["get", property], ["literal", replaced]]];
+    return filter ? ["all", filter, keep] : keep;
+  }
+
+  function apply(ids, force = false) {
+    if (!force && ids.length === faded.length && ids.every((id, i) => id === faded[i])) return;
     faded = ids;
     const list = ["literal", ids];
     const inFaded = ["in", ["get", "render_id"], list];
     const byParent = ["in", ["get", "parent_id"], list];
-    if (map.getLayer(ROUTE_FADED_LAYERS.body)) map.setFilter(ROUTE_FADED_LAYERS.body, inFaded);
-    if (map.getLayer(ROUTE_FADED_LAYERS.roof)) map.setFilter(ROUTE_FADED_LAYERS.roof, inFaded);
-    BUILDING_LAYERS.forEach((id) => map.getLayer(id) && map.setFilter(id, ids.length ? ["!", inFaded] : null));
-    EDGE_LAYERS.forEach((id) => map.getLayer(id) && map.setFilter(id, ids.length ? ["!", byParent] : null));
+    if (map.getLayer(ROUTE_FADED_LAYERS.body)) map.setFilter(ROUTE_FADED_LAYERS.body, withoutReplaced(inFaded, "render_id"));
+    if (map.getLayer(ROUTE_FADED_LAYERS.roof)) map.setFilter(ROUTE_FADED_LAYERS.roof, withoutReplaced(inFaded, "render_id"));
+    BUILDING_LAYERS.forEach((id) => map.getLayer(id) && map.setFilter(id, withoutReplaced(ids.length ? ["!", inFaded] : null, "render_id")));
+    EDGE_LAYERS.forEach((id) => map.getLayer(id) && map.setFilter(id, withoutReplaced(ids.length ? ["!", byParent] : null, "parent_id")));
   }
 
   function compute() {
@@ -113,6 +124,15 @@ export function createRouteOcclusion(map, { getFeature, getViewpoint } = {}) {
       schedule();
     },
     refresh: schedule,
-    fadedIds: () => [...faded]
+    fadedIds: () => [...faded],
+    // ids: render_ids whose extrusion (body, roof, seams, corners, see-through
+    // copies) is hidden because a GLB model draws the building; [] shows them all.
+    setReplacedBuildings(ids) {
+      const next = [...new Set((ids || []).map(String))].sort();
+      if (next.length === replaced.length && next.every((id, i) => id === replaced[i])) return;
+      replaced = next;
+      apply(faded, true);
+    },
+    replacedIds: () => [...replaced]
   };
 }

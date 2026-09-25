@@ -11,6 +11,7 @@
     "data:prepare": "node scripts/prepare-public-data.mjs",
     "data:services": "node scripts/import-inars-services.mjs",
     "models:optimize": "node scripts/optimize-models.mjs",
+    "models:buildings": "node scripts/build-building-models.mjs",
     "verify:originals": "node scripts/verify-originals.mjs",
     "verify:routing": "node scripts/verify-routing.mjs",
     "test": "node --test \"tests/*.test.mjs\"",

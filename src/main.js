@@ -10,7 +10,7 @@ import "./style.css";
 import { createMap, waitForMap } from "./map.js";
 import { DATASET_BY_FILE, INITIAL_VIEW } from "./config.js";
 import { DATASET_LABELS, fetchDataset, loadAllData, prepareDataset } from "./bcsir-data.js";
-import { addBcsirLayers, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setRouteData, updateDatasetLayers } from "./bcsir-layers.js";
+import { addBcsirLayers, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setModelHitBuildings, setRouteData, setWallGaps, updateDatasetLayers } from "./bcsir-layers.js";
 import { calculateBounds, lineStrips } from "./geo-utils.js";
 import { setupInteractions } from "./interactions.js";
 import { createUI } from "./ui.js";
@@ -34,6 +34,7 @@ import { blocksWalking, collisionBlockers, createCollisionWorld } from "./naviga
 import { correctRouteResult, prepareObstacles } from "./navigation/route-detour.js";
 import { createLiveNavigation } from "./navigation/live-navigation.js";
 import { createMinimap } from "./navigation/minimap.js";
+import { createBuildingModels } from "./building-models.js";
 
 const map = createMap("map", { basemap: savedBasemap() });
 let data;
@@ -65,6 +66,7 @@ let walkIndoorState = {};
 let routeOcclusion;
 let minimap;
 let navigation;
+let buildingModels;
 
 // Buildings and walls for route correction, walk collision and the minimap.
 function buildNavigationGeometry() {
@@ -240,6 +242,7 @@ async function reloadDataset(file) {
       buildNavigationGeometry();
       if (lastRoute && key === "buildings") updateRoute(interactionController.getRouteSelection());
     }
+    if (key === "buildings") buildingModels.update();
     await modelGroups.refreshDataset(key);
     ui.showToast(`${DATASET_LABELS[key]} reloaded`);
   } catch (error) {
@@ -275,12 +278,20 @@ async function start() {
   directoryData = await directoryLoad;
   rebuildDirectory();
 
+  // Buildings with a building_model are drawn from that GLB instead of their extrusion.
+  buildingModels = createBuildingModels({
+    map,
+    getBuildings: () => data.render.buildings,
+    onReplacedChange: (ids, wallGaps) => { routeOcclusion.setReplacedBuildings(ids); setModelHitBuildings(map, ids); setWallGaps(map, wallGaps); }
+  });
+
   // GLB models placed by GeoJSON features, one set per layer group.
   modelGroups = createModelGroups({
     map,
     groups: Object.fromEntries(LAYER_GROUPS.filter((group) => group.models).map((group) => [group.id, group.models])),
     getDatasets: () => data.raw,
-    labels: DATASET_LABELS
+    labels: DATASET_LABELS,
+    extraPlacements: { buildings: () => buildingModels.placements() }
   });
 
   ui = createUI({
@@ -461,6 +472,8 @@ async function start() {
     },
     displayRoute: () => displayRoute,
     fadedBuildings: () => routeOcclusion.fadedIds(),
+    modelReplacedBuildings: () => routeOcclusion.replacedIds(),
+    buildingModels: () => buildingModels.state(),
     walkPose: () => walkController.getPose(),
     walkOpen: (position, heading) => walkController.open(position, { heading }),
     walkClose: () => walkController.close(),

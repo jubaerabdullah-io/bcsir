@@ -269,6 +269,10 @@ For a production build, run `npm run build` again, or edit the same file in `dis
 | `surface_model` | GLB whose top view covers the polygon, e.g. `"/models/grass.glb"` (see below) | `Garden` |
 | `surface_scale` | Metres per model unit of `surface_model` (default 1; `grass.glb` is in centimetres: `0.01`) | `Garden` |
 | `labeling_priority` | Label importance (8 or more: shown from zoom 15) | `BuildingBoundary` |
+| `building_model` | GLB drawn instead of the building's extrusion, fitted to its footprint and height, e.g. `"models/buildings/igcrt.glb"` (see [Realistic building models](#realistic-building-models)) | `BuildingBoundary` |
+| `model_rotation` | Degrees, clockwise: 90 / 180 / 270 make another side the front; other values turn the fitted model | `BuildingBoundary` with `building_model` |
+| `model_size` | Multiplier after fitting (1 = the footprint exactly, 1.1 = 10 % larger) | `BuildingBoundary` with `building_model` |
+| `wall_gap_m` | Width in metres of the opening in the drawn campus wall for a gate drawn from its `building_model` (the data and walk collision keep the whole wall) | `BuildingBoundary` gates with `building_model` |
 
 Example building:
 
@@ -395,6 +399,69 @@ Every level was compared with renders of the original model at the largest size 
 used for (same silhouette area within a few percent, mean colour difference 1–8 of 255;
 the realistic tree's coarsest levels cover about 20 % more area).
 
+### Realistic building models
+
+A building in `BuildingBoundary.geojson` with a `building_model` property is drawn from
+that GLB instead of its extrusion; every other building is unchanged.
+
+```json
+"properties": { "id": 127, "name_en": "Secretariat Building", "base_m": 0, "top_m": 20.5, …,
+                "building_model": "models/buildings/secretariat.glb", "model_rotation": 0, "model_size": 1 }
+```
+
+- **Fit:** the model is stretched to the footprint's rectangle (its front = the side
+  nearest `entrance_coords`) and to the height `top_m - base_m`, standing on `base_m`.
+  Raise `top_m` to make it taller, set `model_rotation` to turn it (90 / 180 / 270: another
+  side becomes the front and the model is fitted to that side; e.g. 5: turned 5°), and
+  `model_size` to enlarge it. A model fitted more than 15 % away from its own proportions
+  is reported in the console (it would look stretched).
+- **Models now:** IGCRT (id 110), IFST (111), the Secretariat (127), the Pilot Plant &
+  Process Development Centre (two features: 104 and 112), its Water Tank (109), the
+  Main Gate (301) and the Bangladesh Reference Institute for Chemical Measurements (108), in `public/models/buildings/` (11–115 KB, 170–2,500 triangles, one
+  material and one 1024 px WebP atlas each: one draw call per building).
+- **Building the models:** `npm run models:buildings` (or `-- IGCRT 127` for some) writes
+  them from `scripts/building-models/specs.mjs`: each entry names the building, the file
+  and a style:
+  - `screen`: the perforated screen of IGCRT and IFST, recessed ground floor, entrance,
+    planter wall, courtyard;
+  - `grid`: the Secretariat's fins, recessed windows, ledges with AC units, entrance
+    canopy, roof structures;
+  - `gallery`: PPDC's open corridor galleries, built along the footprint polygon's own
+    edges, so it suits any footprint shape (L, U, courtyard). A building drawn as several
+    features (PPDC: 104 + 112) gets no wall where the parts meet; edges facing the
+    building's courtyard get the plainer courtyard facade;
+  - `modern`: BRiCM's beige stone, teal glass panels standing proud of it, the front's
+    recessed window box and arched arcade, stone towers with a glass slot and the top
+    band of small windows; built along the polygon's edges. The builder prints each
+    wall's facade (`front`, `stone`, `glass` or `slot`), numbered clockwise from the
+    front; `facades` in the spec changes them;
+  - `tank`: an elevated concrete water tank on braced columns;
+  - `gate`: the Main Gate (arch with the Bangla inscription, see-through iron gates,
+    tiled wings with the emblem). Its feature is only a small marker, so the gate is
+    built at its real size (27.6 m) on the campus wall line next to the marker, turned
+    along the wall; `wall_gap_m` (27.6) opens the drawn wall there.
+  Each model is built on its building's footprint, height and entrance, so it fits at
+  100 %; rebuild it after changing those (or a quarter-turn `model_rotation`) to keep
+  exact proportions.
+- **Heights changed with the models (2026-09-25):** PPDC (104, 112) `top_m` 7 → 11.5 (it
+  has three storeys) and the Main Gate (301) `top_m` 3.5 → 7.4 (the arch). The Water
+  Tank keeps 21 m; its model is the usual design, as no photo shows it closely.
+  Signboards are cut from the reference photos in `backup/models/source/` (not in git);
+  without a photo, the board carries the building's names from `BuildingBoundary`. These
+  models are not part of `npm run models:optimize`.
+- **Your own GLB (Blender):** model the building at any scale with Y up and its front
+  (entrance side) facing +Z, export it to `public/models/buildings/`, and set
+  `building_model`. It is fitted like the generated ones.
+- **Extrusion:** hidden only after the building's GLB has loaded (body, roof, seams,
+  corners and see-through copies are filtered out); an invisible extrusion keeps it
+  clickable. If a GLB cannot be loaded, that building keeps its extrusion and the console
+  says `[Building 3D] Failed to load … ; using standard extrusion.`
+  `BUILDING_MODELS.enabled = false` in `src/config.js` draws every building as an
+  extrusion again.
+- **Debug:** open the map with `?buildingDebug` (or run `bcsirBuildings.debug(true)` in the
+  console) to outline each footprint (yellow), its rectangle and front direction (cyan),
+  the anchor, and the placed model box (magenta, dashed).
+
 ## Data files
 
 `public/data/` is the only copy of each dataset. The app loads it and the QGIS project
@@ -455,6 +522,7 @@ reaches the map directly.
 │   ├── camera-controls.js       camera presets
 │   ├── geo-utils.js             geometry helpers, label anchors
 │   ├── model-placements.js, models3d.js, tree-layer.js, three-shared.js
+│   ├── building-models.js, building-footprint.js  buildings drawn from GLB models
 │   ├── surface-layer.js         grass (surface_model) on the Garden polygons
 │   ├── route-occlusion.js       see-through buildings in front of the route
 │   ├── walkMode.js, wall-strip.js, paths.js, asset-paths.js, html.js
@@ -466,6 +534,7 @@ reaches the map directly.
 ├── scripts/
 │   ├── import-inars-services.mjs  npm run data:services
 │   ├── optimize-models.mjs        npm run models:optimize
+│   ├── build-building-models.mjs  npm run models:buildings (styles and specs in building-models/)
 │   ├── prepare-public-data.mjs    npm run data:prepare
 │   ├── vite-plugin-bcsir.mjs      routing module, photo list, live data reload
 │   ├── verify-originals.mjs       npm run verify:originals

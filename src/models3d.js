@@ -93,6 +93,13 @@ function firstFinite(properties, names) {
   return null;
 }
 
+// `fit`: [width, height, depth] in metres (height may be null), or null.
+function fitSizeOf(value) {
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  const size = value.map(toFiniteNumber);
+  return size[0] > 0 && size[2] > 0 ? size : null;
+}
+
 function resolveSizeMultiplier(value) {
   const size = toFiniteNumber(value);
   if (size === null || size === 0) return 1;
@@ -175,6 +182,30 @@ function getLoader() {
     loader.setMeshoptDecoder(MeshoptDecoder);
   }
   return loader;
+}
+
+// ---- Load results per model URL (whenModelLoaded) -------------------------------------
+// Resolved with { url, box } when the first detail level of that file has loaded,
+// rejected when every level failed. Nothing waits on them unless asked.
+const loadResults = new Map();
+function loadResult(url) {
+  let entry = loadResults.get(url);
+  if (!entry) {
+    entry = { settled: false };
+    entry.promise = new Promise((resolve, reject) => { entry.resolve = resolve; entry.reject = reject; });
+    entry.promise.catch(() => {});
+    loadResults.set(url, entry);
+  }
+  return entry;
+}
+function settleLoad(url, error, box, fitBox) {
+  const entry = loadResult(url);
+  if (entry.settled) return;
+  entry.settled = true;
+  if (error) entry.reject(error); else entry.resolve({ url, box: box.clone(), fitBox: (fitBox || box).clone() });
+}
+export function whenModelLoaded(url) {
+  return loadResult(url).promise;
 }
 
 // ---- Level-of-detail manifest (scripts/optimize-models.mjs) ---------------------------
@@ -414,6 +445,10 @@ function createTemplate(url, onChange) {
     url,
     users: 0,
     box: null, // bounding box of the ORIGINAL model (fit and centring)
+    // Part of the model that stands on the building footprint (GLB scene extras
+    // "bcsir_footprint": { min, max } in metres), used by `fit` placements; a canopy
+    // or steps may reach beyond it. Null: the whole bounding box.
+    fitBox: null,
     levels: null, // [{ url, minPx, state, scene, parts, instances }], finest first
     ready: false,
     disposed: false,
@@ -432,6 +467,10 @@ function createTemplate(url, onChange) {
         gltf.scene.updateMatrixWorld(true);
         // Without a manifest entry the box comes from the file itself (reference behaviour).
         if (!template.box) template.box = new THREE.Box3().setFromObject(gltf.scene);
+        const footprint = gltf.scene.userData?.bcsir_footprint;
+        if (!template.fitBox && Array.isArray(footprint?.min) && Array.isArray(footprint?.max)) {
+          template.fitBox = new THREE.Box3(new THREE.Vector3(...footprint.min), new THREE.Vector3(...footprint.max));
+        }
         level.scene = gltf.scene;
         level.parts = [];
         gltf.scene.traverse((object) => { if (object.isMesh) level.parts.push(createPart(object, Math.max(1, template.capacity))); });
@@ -441,11 +480,13 @@ function createTemplate(url, onChange) {
           template.impostors = IMPOSTOR_HEIGHTS.map((height) => ({ height, target: null, part: null, instances: [], wanted: false }));
         }
         console.info(`3D model loaded: ${level.url}`, { detailLevel: index, placements: template.users });
+        settleLoad(template.url, null, template.box, template.fitBox);
         onChange();
       },
       (error) => {
         level.state = "failed";
         if (!template.disposed) console.error(`3D model loading failed: ${level.url}`, error);
+        if (template.levels.every((item) => item.state === "failed")) settleLoad(template.url, error);
         onChange();
       }
     );
@@ -579,7 +620,9 @@ function buildSignature(entries) {
         top_m: properties.top_m ?? null,
         scale: properties.scale ?? null,
         size: properties.size ?? null,
-        rotation: normalizeDegrees(properties.rotation)
+        rotation: normalizeDegrees(properties.rotation),
+        building: properties.building === true,
+        fit: fitSizeOf(properties.fit)
       };
     })
   );
@@ -605,7 +648,7 @@ export function keepMapOverlaysOnTop(map) {
 // Fit of one placement in the GLB frame (reference applyModelSizeAndFloor(), from the
 // original bounding box): uniform scale, horizontal centre on the map position, bottom
 // at base_m. Also the metric offset and bounding sphere used for culling.
-function placeModel(placement, box, origin) {
+function placeModel(placement, box, origin, fitBox = null) {
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   let factor = Number.isFinite(placement.scale) && placement.scale > 0 ? placement.scale : 1;
@@ -613,9 +656,26 @@ function placeModel(placement, box, origin) {
     factor = (placement.topM - placement.baseM) / size.y;
   }
   factor *= resolveSizeMultiplier(placement.size);
+  let scale = [factor, factor, factor];
+  let fitCenter = center, fitMinY = box.min.y;
+  if (placement.fitSize) {
+    // `fit` placements (building-models.js): the footprint part of the model is
+    // stretched to width x height x depth metres (height null: the mean of the
+    // other two factors), then multiplied by size.
+    const target = fitBox || box;
+    const fs = target.getSize(new THREE.Vector3());
+    const [w, h, d] = placement.fitSize;
+    const sx = w > 0 && fs.x > 0 ? w / fs.x : 1, sz = d > 0 && fs.z > 0 ? d / fs.z : 1;
+    const sy = h > 0 && fs.y > 0 ? h / fs.y : (sx + sz) / 2;
+    const multiplier = resolveSizeMultiplier(placement.size);
+    scale = [sx * multiplier, sy * multiplier, sz * multiplier];
+    fitCenter = target.getCenter(new THREE.Vector3());
+    fitMinY = target.min.y;
+  }
+  placement.fitBox = fitBox;
   placement.fit = new THREE.Matrix4()
-    .makeTranslation(-factor * center.x, -factor * box.min.y, -factor * center.z)
-    .multiply(new THREE.Matrix4().makeScale(factor, factor, factor));
+    .makeTranslation(-scale[0] * fitCenter.x, -scale[1] * fitMinY, -scale[2] * fitCenter.z)
+    .multiply(new THREE.Matrix4().makeScale(...scale));
 
   const anchor = MercatorCoordinate.fromLngLat([placement.longitude, placement.latitude], placement.baseM);
   const unitsPerMetre = origin.meterInMercatorCoordinateUnits();
@@ -628,9 +688,9 @@ function placeModel(placement, box, origin) {
     k
   ];
   placement.yaw = [Math.cos(yaw), Math.sin(yaw)];
-  placement.heightM = size.y * factor * k;
+  placement.heightM = size.y * scale[1] * k;
   placement.center = new THREE.Vector3(placement.place[0], placement.place[1], placement.place[2] + placement.heightM / 2);
-  placement.radius = 0.5 * size.length() * factor * k * 1.1;
+  placement.radius = 0.5 * Math.hypot(size.x * scale[0], size.y * scale[1], size.z * scale[2]) * k * 1.1;
   placement.box = box;
 }
 
@@ -782,17 +842,22 @@ function createModelsLayer() {
       for (const [key, placements] of placementsByKey) {
         if (!modelsVisible || hiddenKeys.has(key)) continue;
         stats.placements += placements.length;
-        if (!zoomVisible) { stats.culled += placements.length; continue; }
+        if (!zoomVisible && !placements.some((placement) => placement.building)) { stats.culled += placements.length; continue; }
         for (const placement of placements) {
+          // A building model replaces a building's extrusion (building-models.js), so it is
+          // drawn whenever that building would be: at every zoom and distance, in full
+          // detail (never as an impostor), only culled outside the view.
+          if (!zoomVisible && !placement.building) { stats.culled += 1; continue; }
           const template = placement.template;
           if (!template?.ready || !template.box) { stats.pendingDrawable += 1; continue; }
-          if (placement.box !== template.box) placeModel(placement, template.box, origin);
+          if (placement.box !== template.box || placement.fitBox !== template.fitBox) placeModel(placement, template.box, origin, template.fitBox);
           sphere.center.copy(placement.center);
           sphere.radius = placement.radius;
           const distance = Math.max(1e-3, eyePosition.distanceTo(placement.center));
           const px = (placement.heightM * focalPx) / distance;
-          if (distance > MODEL_VISIBILITY.maxDistanceM || px < MODEL_VISIBILITY.minPixels || !frustum.intersectsSphere(sphere)) { stats.culled += 1; continue; }
-          if (px < MODEL_VISIBILITY.impostorPixels && template.impostors) {
+          const tooSmall = !placement.building && (distance > MODEL_VISIBILITY.maxDistanceM || px < MODEL_VISIBILITY.minPixels);
+          if (tooSmall || !frustum.intersectsSphere(sphere)) { stats.culled += 1; continue; }
+          if (!placement.building && px < MODEL_VISIBILITY.impostorPixels && template.impostors) {
             const { impostors } = template;
             let impostor = impostors.find((item) => item.height >= px) || impostors[impostors.length - 1];
             if (!impostor.part) {
@@ -875,7 +940,9 @@ function prepareModels(data, geojsonUrl) {
       topM: toFiniteNumber(properties.top_m),
       scale: toFiniteNumber(properties.scale) ?? 1,
       size: toFiniteNumber(properties.size) ?? 1,
-      rotation: normalizeDegrees(properties.rotation)
+      rotation: normalizeDegrees(properties.rotation),
+      building: properties.building === true,
+      fitSize: fitSizeOf(properties.fit)
     });
   }
 

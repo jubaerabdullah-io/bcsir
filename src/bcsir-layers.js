@@ -16,7 +16,7 @@
 // strips are derived render geometry only.
 import { STYLE } from "./config.js";
 import { buildingLabelPoints } from "./bcsir-data.js";
-import { lineStrips, roofSeams, verticalCorners } from "./geo-utils.js";
+import { cutLineGaps, lineStrips, roofSeams, verticalCorners } from "./geo-utils.js";
 import { treeLayer } from "./tree-layer.js";
 import { surfaceLayer } from "./surface-layer.js";
 import { collectModelPlacements } from "./model-placements.js";
@@ -40,9 +40,13 @@ const state = (name) => ["boolean", ["feature-state", name], false];
 // buildings that hide the drawn route into them (by filter); they hold no
 // building otherwise.
 export const ROUTE_FADED_LAYERS = { body: "buildings-body-route-faded", roof: "buildings-roof-route-faded" };
+// Invisible extrusion (opacity 0: never drawn, still hit-tested) of the buildings
+// drawn by a GLB model instead (building-models.js), so clicking the model selects the
+// building as before. Empty until a model has loaded.
+export const MODEL_HIT_LAYER = "buildings-model-hit";
 
 export const LAYER_GROUPS = [
-  { id: "buildings", label: "Buildings (3D)", source: "BuildingBoundary.geojson", layers: ["buildings-footprint", "buildings-body", "buildings-roof", "buildings-roof-seams", "buildings-corners", ROUTE_FADED_LAYERS.body, ROUTE_FADED_LAYERS.roof], models: ["buildings"] },
+  { id: "buildings", label: "Buildings (3D)", source: "BuildingBoundary.geojson", layers: ["buildings-footprint", "buildings-body", "buildings-roof", "buildings-roof-seams", "buildings-corners", ROUTE_FADED_LAYERS.body, ROUTE_FADED_LAYERS.roof, MODEL_HIT_LAYER], models: ["buildings"] },
   { id: "labels", label: "Building labels", source: "BuildingBoundary.geojson", layers: ["building-labels-major", "building-labels-minor"] },
   { id: "roads", label: "Connected roads", source: "ConnectedRoad.geojson", layers: ["roads-3d"], models: ["roads"] },
   { id: "roadsDrawing", label: "Connected roads (drawing version)", source: "ConnectedRoadsDrawingVersion.geojson", layers: ["roads-drawing-3d"], models: ["roadsDrawing"] },
@@ -76,11 +80,25 @@ const extrusion = (id, source, extra = {}) => ({
   }
 });
 
+// Openings in the drawn boundary wall where a gate is drawn from a GLB model
+// (building-models.js, wall_gap_m): [{ point: [lon, lat], halfWidth }]. Render
+// geometry only: the data and the walk collision keep the whole wall.
+let boundaryData = EMPTY;
+let wallGaps = [];
+const boundaryWalls = () => lineStrips(cutLineGaps(boundaryData, wallGaps));
+export function setWallGaps(map, gaps) {
+  const next = gaps || [];
+  if (JSON.stringify(next) === JSON.stringify(wallGaps)) return;
+  wallGaps = next;
+  map.getSource("boundary-walls")?.setData(boundaryWalls());
+}
+
 // badgeFor(properties) gives the icon id of a building label (building-labels.js).
 export function addBcsirLayers(map, render, { badgeFor } = {}) {
   const buildings = render.buildings;
   map.addSource("boundary", { type: "geojson", data: render.boundary });
-  map.addSource("boundary-walls", { type: "geojson", data: lineStrips(render.boundary) });
+  boundaryData = render.boundary;
+  map.addSource("boundary-walls", { type: "geojson", data: boundaryWalls() });
   map.addSource("internal-walls", { type: "geojson", data: lineStrips(render.internal) });
   map.addSource("garden", { type: "geojson", data: render.garden });
   map.addSource("roads-drawing-strips", { type: "geojson", data: lineStrips(render.roadsDrawing) });
@@ -159,6 +177,10 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
     id: ROUTE_FADED_LAYERS.roof, type: "fill-extrusion", source: "buildings", filter: noBuilding,
     paint: { "fill-extrusion-color": highlight(color), "fill-extrusion-base": roofBase, "fill-extrusion-height": top, "fill-extrusion-opacity": STYLE.routeObscuringOpacity, "fill-extrusion-vertical-gradient": false }
   });
+  map.addLayer({
+    id: MODEL_HIT_LAYER, type: "fill-extrusion", source: "buildings", filter: noBuilding,
+    paint: { "fill-extrusion-color": "#000000", "fill-extrusion-base": base, "fill-extrusion-height": top, "fill-extrusion-opacity": 0 }
+  });
 
   const trees = treeLayer("trees-3d", render.treeLine, { trunkColor: STYLE.treeTrunk });
   trees.setReplaced(hasTreeModels(render.treeLineModels));
@@ -225,7 +247,7 @@ export function updateDatasetLayers(map, key, render, extras = {}) {
       set("building-corners", verticalCorners(data));
       set("building-labels", buildingLabelPoints(data, extras.badgeFor));
       break;
-    case "boundary": set("boundary", data); set("boundary-walls", lineStrips(data)); break;
+    case "boundary": boundaryData = data; set("boundary", data); set("boundary-walls", boundaryWalls()); break;
     case "internal": set("internal-walls", lineStrips(data)); break;
     case "garden": set("garden", data); extras.garden?.setData(data); break;
     case "roads": set("road-strips", lineStrips(data)); break;
@@ -241,6 +263,11 @@ export function updateDatasetLayers(map, key, render, extras = {}) {
 export function setBuildingOpacity(map, opacity) {
   ["buildings-body", "buildings-roof"].forEach((id) => map.getLayer(id) && map.setPaintProperty(id, "fill-extrusion-opacity", opacity));
   ["buildings-roof-seams", "buildings-corners"].forEach((id) => map.getLayer(id) && map.setPaintProperty(id, "fill-extrusion-opacity", Math.min(0.6, opacity * 0.6)));
+}
+
+// Buildings (render_ids) drawn by a GLB model: they get the invisible hit extrusion.
+export function setModelHitBuildings(map, ids) {
+  if (map.getLayer(MODEL_HIT_LAYER)) map.setFilter(MODEL_HIT_LAYER, ["in", ["get", "render_id"], ["literal", (ids || []).map(String)]]);
 }
 
 // Route line and access legs. Endpoint pins are HTML markers (route-markers.js).
