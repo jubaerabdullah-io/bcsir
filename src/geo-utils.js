@@ -357,7 +357,20 @@ function poleOfInaccessibility(rings, precisionM = 0.25) {
 
 // Label anchor for a building: the pole of inaccessibility of its largest polygon,
 // falling back to polygonCentroid(). Geometry is only read, never changed.
+// Anchors are kept per geometry object: the label points are rebuilt whenever a
+// building photo has loaded, and the search is the same for the same footprint.
+const anchorCache = new WeakMap();
 export function labelAnchor(feature) {
+  const geometry = feature?.geometry;
+  if (geometry && typeof geometry === "object") {
+    if (!anchorCache.has(geometry)) anchorCache.set(geometry, computeLabelAnchor(feature));
+    const anchor = anchorCache.get(geometry);
+    return anchor ? [...anchor] : anchor;
+  }
+  return computeLabelAnchor(feature);
+}
+
+function computeLabelAnchor(feature) {
   const geometry = feature?.geometry;
   if (!geometry || !["Polygon", "MultiPolygon"].includes(geometry.type)) return polygonCentroid(feature);
   const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;

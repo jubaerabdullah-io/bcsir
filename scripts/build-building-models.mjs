@@ -26,8 +26,12 @@ import * as gallery from "./building-models/style-gallery.mjs";
 import * as tank from "./building-models/style-tank.mjs";
 import * as gate from "./building-models/style-gate.mjs";
 import * as modern from "./building-models/style-modern.mjs";
+import * as brick from "./building-models/style-brick.mjs";
+import * as classic from "./building-models/style-classic.mjs";
+import * as mosque from "./building-models/style-mosque.mjs";
+import * as residential from "./building-models/style-residential.mjs";
 
-const STYLES = { screen, grid, gallery, tank, gate, modern };
+const STYLES = { screen, grid, gallery, tank, gate, modern, brick, classic, mosque, residential };
 const root = fileURLToPath(new URL("..", import.meta.url));
 const PHOTOS = path.join(root, "backup/models/source");
 const buildings = JSON.parse(await readFile(path.join(root, "public/data/BuildingBoundary.geojson"), "utf8"));
@@ -55,9 +59,38 @@ function insideRings(point, rings) {
 }
 const campusRings = campus.features.flatMap((feature) => (feature.geometry.type === "MultiPolygon" ? feature.geometry.coordinates.flat() : feature.geometry.type === "Polygon" ? feature.geometry.coordinates : []));
 
+// A module (spec.module: one bay of one floor, tiled by the map over every building
+// whose building_model names it) is built on its own box, not on a footprint. Its
+// shading is baked for the front facing module.front, where the map turns it.
+async function buildModule(spec, style) {
+  const { bay: W, depth: D, floor: H, front = 180 } = spec.module;
+  const rotation = front - 180;
+  const ctx = { W, D, H, spec, feature: null, rotation, entranceOffset: 0, polygon: [[-W / 2, D / 2], [W / 2, D / 2], [W / 2, -D / 2], [-W / 2, -D / 2]], neighbours: [], photo: (file) => path.join(PHOTOS, file) };
+  const atlas = createAtlas();
+  await style.paint(atlas, ctx);
+  const mesh = createMesh({ regions: style.regions, swatches: style.swatches, W, D, rotation });
+  const info = style.build(mesh, ctx);
+  const result = await mesh.write(path.join(root, "public", spec.file), {
+    atlas: await atlas.encode(),
+    footprint: { min: [-W / 2, 0, -D / 2], max: [W / 2, H, D / 2] },
+    name: spec.name,
+    cutout: atlas.hasAlpha()
+  });
+  const users = buildings.features.filter((feature) => feature.properties?.building_model === spec.file);
+  console.log(`${spec.name} (module, ${spec.style}): ${info?.module ?? `${W} x ${D} x ${H} m`}, front faces ${front}°`);
+  console.log(`  wrote public/${spec.file}: ${result.triangles} triangles, ${result.vertices} vertices, 1 material, ${(result.bytes / 1024).toFixed(0)} KB`);
+  console.log(`  used by ${users.length} building${users.length === 1 ? "" : "s"}${users.length ? `: ${users.map((feature) => feature.properties.id).join(", ")}` : `; set "building_model": "${spec.file}" on buildings in BuildingBoundary.geojson`}`);
+}
+
 let built = 0;
 for (const spec of BUILDING_SPECS) {
   if (wanted.length && !wanted.includes(spec.name.toUpperCase()) && !wanted.includes(String(spec.id))) continue;
+  if (spec.module) {
+    if (!STYLES[spec.style]) throw new Error(`${spec.name}: unknown style "${spec.style}"`);
+    await buildModule(spec, STYLES[spec.style]);
+    built += 1;
+    continue;
+  }
   const feature = buildings.features.find((item) => item.properties?.id === spec.id);
   if (!feature) { console.warn(`${spec.name}: no BuildingBoundary feature with id ${spec.id}; skipped.`); continue; }
   const style = STYLES[spec.style];
@@ -69,7 +102,7 @@ for (const spec of BUILDING_SPECS) {
   const H = height ?? 10;
   const toModel = modelFrame(placement);
   // The other modelled parts (walls along their edges are left out) and the campus boundary.
-  const neighbours = BUILDING_SPECS.filter((other) => other !== spec).map((other) => buildings.features.find((item) => item.properties?.id === other.id)).filter(Boolean)
+  const neighbours = BUILDING_SPECS.filter((other) => other !== spec && !other.module).map((other) => buildings.features.find((item) => item.properties?.id === other.id)).filter(Boolean)
     .map((other) => { const ring = outerRing(other).map(toModel); return { id: other.properties.id, segments: ring.slice(1).map((point, i) => [ring[i], point]) }; });
   const boundaryRings = campusRings.map((ring) => ring.map(toModel));
   const ctx = {

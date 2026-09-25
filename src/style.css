@@ -687,6 +687,60 @@ html[data-theme="dark"] .theme-toggle:not([aria-pressed="true"]) { background: #
 /* While choosing, the map shows a crosshair everywhere. */
 .walk-choosing .maplibregl-canvas { cursor: crosshair !important; }
 
+/* Character and view picker, shown above the Walk button before Walk Mode. */
+.walk-picker {
+  position: absolute;
+  z-index: 30;
+  left: max(var(--gutter), env(safe-area-inset-left));
+  bottom: max(88px, calc(env(safe-area-inset-bottom) + 76px));
+  width: min(320px, calc(100vw - 2 * var(--gutter)));
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.walk-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.walk-picker-head h2 { margin: 0; font-size: 14px; font-weight: 650; }
+.walk-picker-characters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.walk-picker-characters label,
+.walk-picker-views label { position: relative; cursor: pointer; }
+.walk-picker-characters input,
+.walk-picker-views input { position: absolute; opacity: 0; pointer-events: none; }
+.walk-picker-card {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px 4px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  font-size: 11.5px;
+  line-height: 1.25;
+  text-align: center;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.walk-picker-card svg { width: 34px; height: 56px; }
+.walk-picker-characters input:checked + .walk-picker-card { border-color: var(--walk); box-shadow: 0 0 0 2px rgba(7, 154, 217, 0.25); }
+.walk-picker-characters input:focus-visible + .walk-picker-card,
+.walk-picker-views input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.walk-picker-views { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0; padding: 3px; border-radius: 10px; background: var(--surface-muted); }
+.walk-picker-views span { display: block; padding: 7px 4px; border-radius: 8px; font-size: 12px; font-weight: 600; text-align: center; color: var(--text-muted); }
+.walk-picker-views input:checked + span { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.walk-picker-start {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--walk);
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.walk-picker-start:hover { filter: brightness(1.06); }
+.walk-view[aria-pressed="true"] { border-color: rgba(86, 224, 196, .6); background: rgba(86, 224, 196, .2); }
+
 /* ---- Loading / error status and toast ------------------------------------- */
 .status-chip {
   position: absolute;
@@ -888,15 +942,6 @@ html[data-theme="dark"] .destination-action.active-route-action { color: #ff8a80
 }
 .walk-reticle > span::before { width: 8px; height: 1px; }
 .walk-reticle > span::after { width: 1px; height: 8px; }
-.walk-reticle small {
-  margin-top: 12px;
-  padding: 6px 9px;
-  border-radius: 999px;
-  background: rgba(5, 18, 26, .74);
-  color: rgba(255, 255, 255, .88);
-  font-size: .62rem;
-  white-space: nowrap;
-}
 
 .walk-panel {
   position: absolute;
@@ -985,14 +1030,20 @@ html[data-theme="dark"] .destination-action.active-route-action { color: #ff8a80
 .walk-mode-active .layers-control { visibility: hidden; }
 .walk-mode-active .map-controls button { pointer-events: none; opacity: .35; }
 /* Where the walk panel would cover the first-person button, the panel's Exit is used. */
-@media (max-width: 900px) {
+@media (max-width: 700px), (max-width: 900px) and (pointer: coarse) {
   .walk-mode-active .first-person-button { visibility: hidden; }
 }
 
+/* With a mouse and keyboard, walking needs no panel: keys, mouse, V and Esc (or the
+   Walk button's Exit) do everything. While navigating, the navigation sheet is hidden
+   in walk mode, so a compact row of the panel's buttons (view, Follow GPS, Exit) stays. */
 @media (pointer: fine) and (min-width: 701px) {
-  .walk-panel { width: min(390px, calc(100vw - 40px)); }
-  .walk-pad { display: none; }
-  .walk-help { margin-bottom: 10px; }
+  html:not(.nav-active) .walk-panel { display: none; }
+  .walk-panel { width: auto; padding: 10px; }
+  .walk-pad,
+  .walk-help,
+  .walk-readout,
+  .walk-heading > div { display: none; }
 }
 
 /* ---- Responsive ---------------------------------------------------------------- */
@@ -1074,7 +1125,6 @@ html[data-theme="dark"] .destination-action.active-route-action { color: #ff8a80
   .status-chip { bottom: 82px; }
   .toast { bottom: 84px; border-radius: 14px; }
   .walk-panel { bottom: max(10px, env(safe-area-inset-bottom)); padding: 14px; }
-  .walk-reticle small { display: none; }
 }
 
 @media (max-width: 380px) {
@@ -1278,7 +1328,7 @@ html[data-theme="dark"] .nav-summary strong { color: #4ade80; }
 .nav-active .walk-minimap { bottom: max(18px, env(safe-area-inset-bottom)); }
 @media (pointer: coarse) { .minimap-button { width: 40px; height: 40px; } }
 /* Where the first-person button is hidden in walk mode, the minimap takes its place. */
-@media (max-width: 900px) { .walk-minimap { bottom: max(18px, env(safe-area-inset-bottom)); } }
+@media (max-width: 700px), (max-width: 900px) and (pointer: coarse) { .walk-minimap { bottom: max(18px, env(safe-area-inset-bottom)); } }
 
 /* Messages go above the navigation sheet, and below the banner in walk mode,
    so they never cover the controls. */

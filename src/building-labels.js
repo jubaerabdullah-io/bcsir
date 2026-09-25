@@ -22,7 +22,9 @@ const RING = 2.5; // white ring around the photo
 function badgeCanvas(draw) {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = SIZE * PIXEL_RATIO;
-  const ctx = canvas.getContext("2d");
+  // Drawn on the CPU: the pixels are read back once (getImageData), which is slow
+  // from a GPU canvas.
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   ctx.scale(PIXEL_RATIO, PIXEL_RATIO);
   const c = SIZE / 2;
   // White badge with a soft shadow.

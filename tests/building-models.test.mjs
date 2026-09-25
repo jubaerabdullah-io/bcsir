@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
-import { buildingModelPlacement, findBuildingByShortName, footprintFront, orientedFootprint, placedBoxCorners } from "../src/building-footprint.js";
+import { buildingModelPlacement, findBuildingByShortName, footprintFront, orientedFootprint, placedBoxCorners, tiledModelParts } from "../src/building-footprint.js";
+import { BUILDING_MODELS, RESIDENTIAL_MODULE } from "../src/config.js";
 import { createLocalFrame } from "../src/navigation/local-frame.js";
 import { BUILDING_SPECS } from "../scripts/building-models/specs.mjs";
 
@@ -77,10 +78,11 @@ test("wall_gap_m opens the drawn boundary wall at the gate only", async () => {
 });
 
 test("every building_model is a light GLB built on its footprint", async () => {
-  assert.ok(modelled.length >= 8, "IGCRT, IFST, Secretariat, PPDC (2 parts), Water Tank, Main Gate and BRiCM use models");
+  assert.ok(modelled.length >= 10, "IGCRT, IFST, Secretariat, PPDC (2 parts), Water Tank, Main Gate, BRiCM, IBSPS and IERD use models");
   await MeshoptDecoder.ready;
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "meshopt.decoder": MeshoptDecoder });
   let total = 0;
+  const counted = new Set(); // a file shared by several buildings is loaded once
   for (const feature of modelled) {
     const name = feature.properties.name_en_short || feature.properties.id;
     const placement = buildingModelPlacement(feature);
@@ -88,7 +90,8 @@ test("every building_model is a light GLB built on its footprint", async () => {
     const file = path.join(root, "public", placement.model);
     assert.ok(existsSync(file), `${name}: ${placement.model} exists`);
     const bytes = statSync(file).size;
-    total += bytes;
+    if (!counted.has(file)) total += bytes;
+    counted.add(file);
     assert.ok(bytes < 300 * 1024, `${name}: under 300 KB`);
     const doc = await io.read(file);
     const primitives = doc.getRoot().listMeshes().flatMap((mesh) => mesh.listPrimitives());
@@ -102,9 +105,61 @@ test("every building_model is a light GLB built on its footprint", async () => {
     const spec = BUILDING_SPECS.find((item) => item.file === placement.model);
     if (!spec) continue;
     assert.ok(footprint, `${name}: footprint box in the scene extras`);
+    if (spec.module) {
+      // A module is one bay of one floor, tiled over the footprint (next test).
+      near(footprint.max[0] - footprint.min[0], spec.module.bay, 0.01, `${name} module bay`);
+      near(footprint.max[2] - footprint.min[2], spec.module.depth, 0.01, `${name} module depth`);
+      near(footprint.max[1] - footprint.min[1], spec.module.floor, 0.01, `${name} module storey`);
+      continue;
+    }
     near(footprint.max[0] - footprint.min[0], placement.fit[0], 0.05, `${name} width`);
     near(footprint.max[2] - footprint.min[2], placement.fit[2], 0.05, `${name} depth`);
     near(footprint.max[1] - footprint.min[1], placement.fit[1], 0.05, `${name} height`);
   }
   assert.ok(total < 1024 * 1024, `all building models under 1 MB (${Math.round(total / 1024)} KB)`);
+});
+
+test("the residential module is tiled over every residential quarter's stepped footprint", () => {
+  const file = "models/buildings/residential.glb";
+  assert.equal(BUILDING_MODELS.modules[file], RESIDENTIAL_MODULE, "the map tiles the module the builder makes");
+  const users = buildings.features.filter((feature) => feature.properties.building_model === file);
+  assert.deepEqual(users.map((feature) => feature.properties.id), [206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 219, 221, 222, 223, 224, 225, 239]);
+  for (const feature of users) {
+    const id = feature.properties.id;
+    const parts = tiledModelParts(feature, RESIDENTIAL_MODULE);
+    const ground = parts.filter((part) => part.floor === 0);
+    const floors = Math.max(...parts.map((part) => part.floor)) + 1;
+    assert.equal(parts.length, ground.length * floors, `${id}: every bay has every floor`);
+    // The bays cover the stepped polygon, not its rectangle.
+    const ring = feature.geometry.coordinates[0][0];
+    const frame = createLocalFrame(ring[0]);
+    const pts = ring.map(frame.toLocal);
+    let area = 0;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i, i += 1) area += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
+    area = Math.abs(area / 2);
+    const tiled = ground.reduce((sum, part) => sum + part.fit[0] * part.fit[2], 0);
+    assert.ok(tiled > area * 0.97 && tiled < area * 1.08, `${id}: bays cover ${Math.round((tiled / area) * 100)} % of the footprint`);
+    const footprint = orientedFootprint(feature);
+    assert.ok(tiled < footprint.length * footprint.width + 1, `${id}: within the footprint rectangle`);
+    for (const part of ground) {
+      const [x, y] = frame.toLocal(part.anchor);
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i, i += 1) {
+        const [xi, yi] = pts[i], [xj, yj] = pts[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+      assert.ok(inside, `${id}: bay centre inside the footprint`);
+      assert.ok(part.fit[0] > 0.5 * RESIDENTIAL_MODULE.bay && part.fit[0] < 1.5 * RESIDENTIAL_MODULE.bay, `${id}: bay ${part.fit[0].toFixed(2)} m`);
+    }
+    // Floors of about the module's storey; the top floor's parapet ends at top_m.
+    const top = parts.at(-1);
+    near(top.base + top.fit[1] * (1 + RESIDENTIAL_MODULE.parapet / RESIDENTIAL_MODULE.floor), feature.properties.top_m, 1e-6, `${id} top`);
+    assert.ok(Math.abs(top.fit[1] - RESIDENTIAL_MODULE.floor) < 0.6, `${id}: ${floors} floors of ${top.fit[1].toFixed(2)} m`);
+  }
+  // The veranda front faces the long side nearest south; model_rotation 180 takes the other.
+  const block = byId(219);
+  near(tiledModelParts(block, RESIDENTIAL_MODULE)[0].rotation, 359.9, 1, "219 faces south");
+  const turned = tiledModelParts({ ...block, properties: { ...block.properties, model_rotation: 180 } }, RESIDENTIAL_MODULE);
+  near(turned[0].rotation, 179.9, 1, "turned: faces north");
+  assert.deepEqual(tiledModelParts({ ...block, geometry: { type: "Polygon", coordinates: [] } }, RESIDENTIAL_MODULE), [], "no footprint: no parts");
 });

@@ -146,6 +146,21 @@ export function createCollisionWorld({ blockers = [], indoor = [], radiusM = 0.3
       }
       return { position: toLngLat(p), blocked: Boolean(blocker), blocker: blocker ? { id: blocker.id, name: blocker.name, kind: blocker.kind } : null, state };
     },
+    // First blocker outline crossed going from `from` to `to` (lon/lat), as
+    // { t (0..1 along the way), id, name, kind }, or null when the way is clear.
+    // Used to keep the walk mode's follow camera out of buildings and walls.
+    firstHit(from, to) {
+      const a = toLocal(from), b = toLocal(to);
+      let best = null;
+      for (const shape of shapes) {
+        if (Math.max(a[0], b[0]) < shape.bounds[0] || Math.min(a[0], b[0]) > shape.bounds[2] || Math.max(a[1], b[1]) < shape.bounds[1] || Math.min(a[1], b[1]) > shape.bounds[3]) continue;
+        for (const ring of shape.rings) for (let i = 1; i < ring.length; i += 1) {
+          const hit = segmentIntersection(a, b, ring[i - 1], ring[i]);
+          if (hit && (!best || hit.t < best.t)) best = { t: hit.t, shape };
+        }
+      }
+      return best ? { t: best.t, id: best.shape.id, name: best.shape.name, kind: best.shape.kind } : null;
+    },
     // Blocker at a lon/lat (inside it or closer than the walker radius), or null.
     blockerAt(lngLat) {
       const contact = deepestContact(toLocal(lngLat));

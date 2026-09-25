@@ -42,8 +42,32 @@ export const MODEL_VISIBILITY = {
 //   enabled     false draws every building as an extrusion again
 //   maxStretch  a model fitted more than this share away from its own proportions
 //               (0.15 = 15 %) is reported in the console
+//   modules     models that are one bay of one floor, tiled over each building that
+//               uses them (building-footprint.js tiledModelParts) instead of being
+//               stretched to its footprint rectangle, by model file:
+//                 bay      width of the bay in the GLB, and the target bay width (m)
+//                 depth    depth of the GLB (m)
+//                 floor    storey height in the GLB, and the target storey height (m)
+//                 parapet  parapet height above the roof in the GLB (m)
+//                 front    compass bearing the module's front (+Z, veranda side) should
+//                          face: the building's long side nearest to it is used
+//                          (model_rotation 180 takes the other long side)
 // Add ?buildingDebug to the page URL to outline footprints, anchors, fronts and model boxes.
-export const BUILDING_MODELS = { enabled: true, maxStretch: 0.15 };
+export const RESIDENTIAL_MODULE = { bay: 3.3, depth: 12, floor: 3.5, parapet: 0.8, front: 180 };
+export const BUILDING_MODELS = {
+  enabled: true,
+  maxStretch: 0.15,
+  modules: { "models/buildings/residential.glb": RESIDENTIAL_MODULE }
+};
+
+// Characters to choose from before Walk Mode (walk-character.js). `model` is a
+// GLB with animations named Idle, Walk and Run (models/characters/male.glb is built
+// by `npm run models:character`); `colors` recolour its materials by name.
+export const WALK_CHARACTERS = [
+  { id: "blue-shirt", name: "Blue shirt", model: "models/characters/male.glb", colors: { Skin: "#a8744f", Hair: "#17110d", Shirt: "#2f6db0", Trousers: "#2a2e36", Shoes: "#1b1b1b" } },
+  { id: "white-shirt", name: "White shirt", model: "models/characters/male.glb", colors: { Skin: "#8f5f3f", Hair: "#141010", Shirt: "#eeeee8", Trousers: "#7d7260", Shoes: "#4a3426" } },
+  { id: "green-tshirt", name: "Green T-shirt", model: "models/characters/male.glb", colors: { Skin: "#c08a64", Hair: "#231913", Shirt: "#2f8a55", Trousers: "#34496f", Shoes: "#e8e8e4" } }
+];
 
 // Look of the ground surfaces made from a GLB (surface-layer.js), by model file
 // name. Only grass.glb is listed, so no other model changes. The photo-scanned

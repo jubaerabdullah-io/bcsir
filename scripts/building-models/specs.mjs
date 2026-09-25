@@ -13,6 +13,11 @@
 //   sign.width              signboard width in metres (screen style)
 //   courtyard               { width, length } in metres (screen style)
 //   floorHeight, groundHeight, bay   storey height, ground-floor height and bay width target (grid style)
+//   module                  no footprint: one bay of one floor, sized by src/config.js
+//                           (BUILDING_MODELS.modules), which the map tiles over every
+//                           building whose building_model names the file
+import { RESIDENTIAL_MODULE } from "../../src/config.js";
+
 export const BUILDING_SPECS = [
   {
     id: 110,
@@ -85,6 +90,47 @@ export const BUILDING_SPECS = [
     // As in the photo: the stone tower with the glass slot beside the front, the
     // lower glass block to its left. Wall numbers are printed by the builder.
     facades: { 1: "slot", 2: "slot", 3: "stone", 4: "glass", 5: "glass", 8: "glass" }
+  },
+  {
+    // L-shaped footprint; the entrance (glass front with the canopy) faces west.
+    id: 119,
+    name: "IBSPS",
+    file: "models/buildings/ibsps.glb",
+    style: "brick",
+    floorHeight: 3.0,
+    groundHeight: 3.8,
+    // From the photos: bays and the concrete stair tower on the north side (photos 10,
+    // 11), the light grey wall beside the tower, fins on the stepped south side and
+    // balconies at the north end of the east side (photo 13).
+    facades: { 2: "plaster", 3: "plain", 5: "fins", 7: "fins", 9: "fins" },
+    tower: { wall: 1, side: "left" },
+    balconies: { wall: 4, side: "right" }
+  },
+  {
+    // Long 3-storey block; the entrance (brick-tile section, canopy with the green
+    // signboard, hoods at the roof line) is on the long west front.
+    id: 107,
+    name: "IERD",
+    file: "models/buildings/ierd.glb",
+    style: "classic",
+    groundHeight: 3.6,
+    floorHeight: 3.3,
+    bay: 3.0
+  },
+  {
+    // Two-storey prayer hall; the entrance with the forecourt canopy faces west.
+    id: 203,
+    name: "Central Mosque",
+    file: "models/buildings/central-mosque.glb",
+    style: "mosque"
+  },
+  {
+    // All residential quarters share one architecture (photos: residential/): one
+    // module used by every "Residential Quarter/Building" and "Res. Quarters" feature.
+    name: "Residential",
+    file: "models/buildings/residential.glb",
+    style: "residential",
+    module: RESIDENTIAL_MODULE
   },
   {
     // The feature is a small marker: the gate is built at its real size on the

@@ -410,6 +410,27 @@ function preparePlacedMaterial(material) {
   material.needsUpdate = true;
 }
 
+// three.js draws a transparent double-sided material in two passes (back faces,
+// then front faces), flipping material.side and forcing a shader program lookup
+// before each pass, on every frame. Such a part is drawn instead by two meshes
+// made one after the other, with a back-side and a front-side copy of the
+// material: transparent objects at the same depth are drawn in creation order, so
+// the result and the order are the same, without the per-frame program changes.
+const sidedCopies = new WeakMap(); // material -> [back, front]
+function sidedMaterials(material) {
+  if (!sidedCopies.has(material)) {
+    sidedCopies.set(material, [THREE.BackSide, THREE.FrontSide].map((side) => {
+      const copy = material.clone();
+      copy.side = side;
+      copy.userData = { ...copy.userData, bcsirPlaced: false };
+      preparePlacedMaterial(copy);
+      return copy;
+    }));
+  }
+  return sidedCopies.get(material);
+}
+const twoPass = (material) => !Array.isArray(material) && material.transparent && material.side === THREE.DoubleSide && !material.forceSinglePass;
+
 // One drawable part of one detail level: a GLB mesh drawn for many placements.
 function createPart(sourceMesh, capacity) {
   // Geometry attributes are shared with the loaded GLB; only the per-instance
@@ -425,22 +446,46 @@ function createPart(sourceMesh, capacity) {
   geometry.setAttribute("bcsirYaw", yaw);
   const materials = Array.isArray(sourceMesh.material) ? sourceMesh.material : [sourceMesh.material];
   materials.forEach(preparePlacedMaterial);
-  const mesh = new THREE.InstancedMesh(geometry, sourceMesh.material, capacity);
-  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  mesh.frustumCulled = false; // culled per placement in render()
-  mesh.matrixAutoUpdate = false;
-  mesh.count = 0;
+  const instanced = (material) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false; // culled per placement in render()
+    mesh.matrixAutoUpdate = false;
+    mesh.count = 0;
+    return mesh;
+  };
+  const mesh = instanced(twoPass(sourceMesh.material) ? sidedMaterials(sourceMesh.material)[0] : sourceMesh.material);
+  // Front faces of a two-pass material: same geometry and instance data.
+  const front = twoPass(sourceMesh.material) ? instanced(sidedMaterials(sourceMesh.material)[1]) : null;
+  if (front) front.instanceMatrix = mesh.instanceMatrix;
   return {
     mesh,
+    front,
+    sourceMaterial: sourceMesh.material,
     place,
     yaw,
     meshMatrix: sourceMesh.matrixWorld.clone(),
-    transparent: materials.some((material) => material.transparent)
+    transparent: materials.some((material) => material.transparent),
+    drawn: [], // placements whose instance data is on the GPU, in order
+    drawnVersion: -1
   };
 }
 
+// Bumped whenever a placement is fitted again (its instance data changes).
+let placementVersion = 0;
+
+function removePart(part) {
+  for (const mesh of [part.mesh, part.front]) {
+    if (!mesh) continue;
+    mesh.removeFromParent();
+    mesh.dispose();
+  }
+}
+
 // A GLB used by one or more placements, with its detail levels.
-function createTemplate(url, onChange) {
+// precompile(level, withBake) resolves when the level's shaders (and, withBake, those
+// of the impostor views) have compiled; the level is drawn only then.
+function createTemplate(url, onChange, precompile = () => Promise.resolve()) {
   const template = {
     url,
     users: 0,
@@ -474,13 +519,21 @@ function createTemplate(url, onChange) {
         level.scene = gltf.scene;
         level.parts = [];
         gltf.scene.traverse((object) => { if (object.isMesh) level.parts.push(createPart(object, Math.max(1, template.capacity))); });
-        level.state = "ready";
-        if (!template.bakeSource) {
+        // Drawn once its shaders have compiled in the background (no main-thread stall).
+        level.state = "compiling";
+        const bake = !template.bakeSource;
+        if (bake) {
           template.bakeSource = gltf.scene;
           template.impostors = IMPOSTOR_HEIGHTS.map((height) => ({ height, target: null, part: null, instances: [], wanted: false }));
         }
         console.info(`3D model loaded: ${level.url}`, { detailLevel: index, placements: template.users });
-        settleLoad(template.url, null, template.box, template.fitBox);
+        precompile(level, bake).then(() => {
+          if (template.disposed) return;
+          level.state = "ready";
+          if (bake) template.bakeReady = true;
+          settleLoad(template.url, null, template.box, template.fitBox);
+          onChange();
+        });
         onChange();
       },
       (error) => {
@@ -512,7 +565,7 @@ function createTemplate(url, onChange) {
     let want = levels.length - 1;
     for (let i = 0; i < levels.length; i += 1) if (px >= levels[i].minPx) { want = i; break; }
     if (levels[want].state === "idle") loadLevel(want);
-    else if (levels[want].state === "failed" && !levels.some((level) => level.state === "ready" || level.state === "loading")) {
+    else if (levels[want].state === "failed" && !levels.some((level) => level.state === "ready" || level.state === "loading" || level.state === "compiling")) {
       // That file is missing: fall back to the nearest other level.
       for (let d = 1; d < levels.length; d += 1) {
         const other = levels[want + d]?.state === "idle" ? want + d : levels[want - d]?.state === "idle" ? want - d : -1;
@@ -532,9 +585,8 @@ function createTemplate(url, onChange) {
     for (const level of template.levels || []) {
       if (!level.parts) continue;
       level.parts = level.parts.map((part) => {
-        part.mesh.removeFromParent();
-        part.mesh.dispose();
-        return createPart({ geometry: part.mesh.geometry, material: part.mesh.material, matrixWorld: part.meshMatrix }, capacity);
+        removePart(part);
+        return createPart({ geometry: part.mesh.geometry, material: part.sourceMaterial, matrixWorld: part.meshMatrix }, capacity);
       });
     }
     for (const impostor of template.impostors || []) {
@@ -547,7 +599,7 @@ function createTemplate(url, onChange) {
 
   // Called from the layer's offscreen pass: renders one wanted set of views.
   template.bakeNextImpostor = (renderer) => {
-    const impostor = template.disposed ? null : template.impostors?.find((item) => item.wanted && !item.part);
+    const impostor = template.disposed || !template.bakeReady ? null : template.impostors?.find((item) => item.wanted && !item.part);
     if (!impostor) return false;
     const size = template.box.getSize(new THREE.Vector3());
     // View size so the model is `height` pixels tall in it.
@@ -562,7 +614,10 @@ function createTemplate(url, onChange) {
   template.dispose = () => {
     template.disposed = true;
     for (const level of template.levels || []) {
-      for (const part of level.parts || []) { part.mesh.removeFromParent(); part.mesh.dispose(); }
+      for (const part of level.parts || []) {
+        removePart(part);
+        if (part.front) sidedMaterials(part.sourceMaterial).forEach((material) => material.dispose());
+      }
       if (level.scene) disposeObject3D(level.scene);
     }
     for (const impostor of template.impostors || []) {
@@ -672,6 +727,7 @@ function placeModel(placement, box, origin, fitBox = null) {
     fitCenter = target.getCenter(new THREE.Vector3());
     fitMinY = target.min.y;
   }
+  placementVersion += 1;
   placement.fitBox = fitBox;
   placement.fit = new THREE.Matrix4()
     .makeTranslation(-scale[0] * fitCenter.x, -scale[1] * fitMinY, -scale[2] * fitCenter.z)
@@ -711,6 +767,50 @@ function createModelsLayer() {
   const matrix = new THREE.Matrix4();
   const repaint = () => map?.triggerRepaint();
 
+  // Shader compilation in the background (KHR_parallel_shader_compile). A newly
+  // loaded detail level is drawn once its programs are ready, instead of stalling
+  // the page while they compile on first use. Compiled here: the programs used to
+  // draw the level, and (for the first level of a model) those of the impostor
+  // views, which render the GLB itself into a target, with the back and front
+  // passes of transparent double-sided materials. Without the extension the
+  // programs report ready at once and the first draw waits as before.
+  const compileJobs = [];
+  let bakeTarget = null;
+  const precompile = (level, withBake) => new Promise((resolve) => { compileJobs.push({ level, withBake, resolve }); repaint(); });
+  function compileQueued() {
+    if (!compileJobs.length || !camera || !scene) return;
+    renderer.resetState();
+    for (const job of compileJobs.splice(0)) {
+      const programs = new Set();
+      const compile = (root) => renderer.compile(root, camera, scene).forEach((material) => { const program = renderer.properties.get(material).currentProgram; if (program) programs.add(program); });
+      const group = new THREE.Group();
+      for (const part of job.level.parts) { group.add(part.mesh); if (part.front) group.add(part.front); }
+      compile(group);
+      for (const part of job.level.parts) { group.remove(part.mesh); if (part.front) group.remove(part.front); }
+      if (job.withBake) {
+        bakeTarget ||= new THREE.WebGLRenderTarget(1, 1);
+        renderer.setRenderTarget(bakeTarget);
+        compile(job.level.scene);
+        const sided = new Set();
+        job.level.scene.traverse((object) => { if (object.isMesh) (Array.isArray(object.material) ? object.material : [object.material]).forEach((material) => { if (twoPass(material)) sided.add(material); }); });
+        for (const side of sided.size ? [THREE.BackSide, THREE.FrontSide] : []) {
+          sided.forEach((material) => { material.side = side; material.needsUpdate = true; });
+          compile(job.level.scene);
+        }
+        sided.forEach((material) => { material.side = THREE.DoubleSide; material.needsUpdate = true; });
+        renderer.setRenderTarget(null);
+      }
+      const poll = () => {
+        for (const program of programs) if (program.isReady()) programs.delete(program);
+        if (programs.size) { setTimeout(poll, 16); return; }
+        job.resolve();
+        repaint();
+      };
+      poll();
+    }
+    renderer.resetState();
+  }
+
   function syncTemplates() {
     const users = new Map();
     for (const placements of placementsByKey.values()) for (const placement of placements) users.set(placement.url, (users.get(placement.url) || 0) + 1);
@@ -721,7 +821,7 @@ function createModelsLayer() {
     }
     for (const [url, count] of users) {
       let template = templates.get(url);
-      if (!template) { template = createTemplate(url, repaint); templates.set(url, template); }
+      if (!template) { template = createTemplate(url, repaint, precompile); templates.set(url, template); }
       template.users = count;
       template.setCapacity(count);
     }
@@ -739,6 +839,14 @@ function createModelsLayer() {
 
   function fillPart(part, instances) {
     const count = instances.length;
+    part.mesh.count = count;
+    part.mesh.visible = count > 0;
+    if (part.front) { part.front.count = count; part.front.visible = count > 0; }
+    // The same placements in the same order as last frame: the data on the GPU is current.
+    const same = part.drawnVersion === placementVersion && part.drawn.length === count && instances.every((placement, i) => part.drawn[i] === placement);
+    if (same) return;
+    part.drawn = instances.slice();
+    part.drawnVersion = placementVersion;
     const matrices = part.mesh.instanceMatrix.array;
     const place = part.place.array;
     const yaw = part.yaw.array;
@@ -748,8 +856,6 @@ function createModelsLayer() {
       place.set(placement.place, i * 4);
       yaw.set(placement.yaw, i * 2);
     }
-    part.mesh.count = count;
-    part.mesh.visible = count > 0;
     if (count) {
       part.mesh.instanceMatrix.clearUpdateRanges();
       part.mesh.instanceMatrix.addUpdateRange(0, count * 16);
@@ -765,14 +871,18 @@ function createModelsLayer() {
 
   function fillImpostors(part, instances) {
     const count = instances.length;
+    part.mesh.material.uniforms.eyePosition.value.copy(eyePosition);
+    part.mesh.count = count;
+    part.mesh.visible = count > 0;
+    const same = part.drawnVersion === placementVersion && part.drawn?.length === count && instances.every((placement, i) => part.drawn[i] === placement);
+    if (same) return;
+    part.drawn = instances.slice();
+    part.drawnVersion = placementVersion;
     for (let i = 0; i < count; i += 1) {
       const placement = instances[i];
       part.center.array.set([placement.center.x, placement.center.y, placement.center.z, placement.radius / 1.1], i * 4);
       part.yaw.array.set(placement.yaw, i * 2);
     }
-    part.mesh.material.uniforms.eyePosition.value.copy(eyePosition);
-    part.mesh.count = count;
-    part.mesh.visible = count > 0;
     if (count) {
       part.center.clearUpdateRanges();
       part.center.addUpdateRange(0, count * 4);
@@ -811,6 +921,7 @@ function createModelsLayer() {
     // MapLibre's offscreen pass: render wanted sets of impostor views, within a time budget.
     prerender() {
       if (!renderer) return;
+      compileQueued();
       const start = performance.now();
       let baked = false;
       for (const template of templates.values()) {
@@ -886,12 +997,13 @@ function createModelsLayer() {
           fillImpostors(impostor.part, impostor.instances);
         }
         for (const level of template.levels || []) {
-          if (level.state === "loading") stats.loading += 1;
+          if (level.state === "loading" || level.state === "compiling") stats.loading += 1;
           if (!level.parts) continue;
           const { instances } = level;
           if (level.parts.some((part) => part.transparent) && instances.length > 1) instances.sort((a, b) => b.distance - a.distance);
           for (const part of level.parts) {
             if (!part.mesh.parent) scene.add(part.mesh);
+            if (part.front && !part.front.parent) scene.add(part.front);
             fillPart(part, instances);
           }
         }

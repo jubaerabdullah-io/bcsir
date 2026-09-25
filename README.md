@@ -64,7 +64,7 @@ Everything in `public/` must be committed. The original `.gitignore` ignored eve
 | Pan, rotate, tilt | Drag. Right-drag (or Ctrl + drag) rotates and tilts. Scroll zooms. |
 | Zoom, rotate, tilt buttons | Right-hand controls. Rotate and tilt buttons are hidden on phones and short windows. |
 | Camera presets | **View** menu: Top-down, Isometric, 3D Corner, Front, Free, Follow Direction, Route Up, North Up, Reset. Compass: north up. |
-| First-person walk | **Walk** (bottom left), then click a location on the map: the camera goes down to eye height there. W/A/S/D or arrows to walk, hold Shift to move faster, mouse to look, Esc to exit (or to cancel while choosing). On phones: hold the arrow buttons (bottom right), drag the view to look. Walls and buildings cannot be walked through; a circular minimap (bottom left) shows the surroundings, the route and the destination. |
+| First-person walk | **Walk** (bottom left), then click a location on the map: the camera goes down to eye height there. W/A/S/D or arrows to walk, hold Shift to move faster, mouse to look, V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), drag the view to look. Walls and buildings cannot be walked through; a circular minimap (bottom left) shows the surroundings, the route and the destination. |
 | Live navigation | With a route drawn, **Start** under the route summary: follows the phone's GPS along the route, turns the map with its compass, shows the next turn and the remaining distance and time. See [Live navigation](#live-navigation-and-3d-mode). |
 | 3D mode | **3D mode** under the route summary: walk the route in first-person view with the same guidance. |
 | Deep link | `?buildingid=101` opens building 101 (the format used by the QR codes in `main_QRCode.zip`). |
@@ -399,6 +399,18 @@ Every level was compared with renders of the original model at the largest size 
 used for (same silhouette area within a few percent, mean colour difference 1–8 of 255;
 the realistic tree's coarsest levels cover about 20 % more area).
 
+Loading and drawing costs kept low (2026-09-25; same pictures, checked pixel by pixel):
+- A detail level's shaders compile in the background (`KHR_parallel_shader_compile`)
+  before it is drawn, including those of the impostor views; the page no longer freezes
+  while they compile. A building's extrusion is hidden only once its GLB can be drawn.
+- Instance data is sent to the GPU only when the drawn placements change, and
+  transparent double-sided parts are drawn by a back-side and a front-side copy (in
+  the order three.js uses) instead of switching shaders twice per part every frame.
+- The campus boundary, road, pathway and wall strips share one map source
+  (`campus-ground`): MapLibre updates every source on every camera frame.
+- Building label anchors are computed once per footprint, and label badges are drawn
+  on a CPU canvas (their pixels are read back once).
+
 ### Realistic building models
 
 A building in `BuildingBoundary.geojson` with a `building_model` property is drawn from
@@ -417,7 +429,9 @@ that GLB instead of its extrusion; every other building is unchanged.
   is reported in the console (it would look stretched).
 - **Models now:** IGCRT (id 110), IFST (111), the Secretariat (127), the Pilot Plant &
   Process Development Centre (two features: 104 and 112), its Water Tank (109), the
-  Main Gate (301) and the Bangladesh Reference Institute for Chemical Measurements (108), in `public/models/buildings/` (11–115 KB, 170–2,500 triangles, one
+  Main Gate (301), the Bangladesh Reference Institute for Chemical Measurements (108),
+  the Institute of Bioequivalence Studies & Pharmaceutical Sciences (119) and the Institute
+  of Energy Research & Development (107), in `public/models/buildings/` (11–115 KB, 170–2,500 triangles, one
   material and one 1024 px WebP atlas each: one draw call per building).
 - **Building the models:** `npm run models:buildings` (or `-- IGCRT 127` for some) writes
   them from `scripts/building-models/specs.mjs`: each entry names the building, the file
@@ -435,6 +449,14 @@ that GLB instead of its extrusion; every other building is unchanged.
     band of small windows; built along the polygon's edges. The builder prints each
     wall's facade (`front`, `stone`, `glass` or `slot`), numbered clockwise from the
     front; `facades` in the spec changes them;
+  - `brick`: IBSPS's terracotta brick with a white line at every floor; per wall a
+    `front` (glass curtain wall between brick piers, entrance canopy, lawn signboard),
+    `bays` (deep window bays with grey ledges and hoods), `fins` (deep brick fins),
+    `plaster` or `plain` facade, chosen like `modern` (`facades`), plus a concrete stair
+    tower (`tower`) and stacked balconies (`balconies`) at a wall end;
+  - `classic`: IERD's cream block with pilasters between the window bays, the pink
+    brick-tile entrance, the wide canopy with the green signboard and the hoods at the
+    roof line;
   - `tank`: an elevated concrete water tank on braced columns;
   - `gate`: the Main Gate (arch with the Bangla inscription, see-through iron gates,
     tiled wings with the emblem). Its feature is only a small marker, so the gate is
@@ -449,6 +471,23 @@ that GLB instead of its extrusion; every other building is unchanged.
   Signboards are cut from the reference photos in `backup/models/source/` (not in git);
   without a photo, the board carries the building's names from `BuildingBoundary`. These
   models are not part of `npm run models:optimize`.
+- **Residential quarters: one model for all (2026-09-26).** All residential quarters
+  share one architecture (photos in `backup/models/source/residential/`), so one GLB,
+  `models/buildings/residential.glb` (44 KB, 62 triangles), draws every building whose
+  `building_model` names it: Residential Building 01, Residential Quarters 02–11 and the
+  "Res. Quarters" blocks (ids 206–216, 219, 221–225, 239). The GLB is one bay (3.3 m) of
+  one storey (3.5 m): pale yellow plaster, a veranda with a railing wall and the concrete
+  jali lattice beside a green-framed window on the front, a wider window and a bathroom
+  vent on the back, a slab with a green edge round every floor, a parapet on the front and
+  back of the dark roof (style `residential`). It is not stretched to the footprint's
+  rectangle: `BUILDING_MODELS.modules` in `src/config.js` marks it as a module, and the
+  map tiles it over the footprint (`tiledModelParts` in `src/building-footprint.js`): the
+  footprint is cut across its long axis where its outline steps, each strip is filled
+  with bays of about 3.3 m and storeys are stacked up to `top_m` (15 m: 4 storeys, 18 m: 5,
+  9 m: 2), so the stepped plans are followed. The veranda side faces the long side
+  nearest south; `model_rotation: 180` puts it on the other side. To use it on another
+  building, set `"building_model": "models/buildings/residential.glb"`; `model_size` is
+  not used for modules. All 744 bays and storeys are one instanced draw call.
 - **Your own GLB (Blender):** model the building at any scale with Y up and its front
   (entrance side) facing +Z, export it to `public/models/buildings/`, and set
   `building_model`. It is fitted like the generated ones.

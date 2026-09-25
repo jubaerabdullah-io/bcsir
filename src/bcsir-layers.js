@@ -80,30 +80,45 @@ const extrusion = (id, source, extra = {}) => ({
   }
 });
 
+// Campus ground: the BCSIRBoundary polygon and the strips built around roads,
+// pathways and walls share ONE source; each layer draws its own part (render_part).
+// MapLibre updates every source on every camera frame, so one source instead of
+// six keeps camera moves light; the layers, their order and paint are unchanged.
+const CAMPUS_SOURCE = "campus-ground";
+const GROUND_KEYS = ["boundary", "internal", "roads", "roadsDrawing", "pathways"];
+const ground = Object.fromEntries(GROUND_KEYS.map((key) => [key, EMPTY]));
 // Openings in the drawn boundary wall where a gate is drawn from a GLB model
 // (building-models.js, wall_gap_m): [{ point: [lon, lat], halfWidth }]. Render
 // geometry only: the data and the walk collision keep the whole wall.
-let boundaryData = EMPTY;
 let wallGaps = [];
-const boundaryWalls = () => lineStrips(cutLineGaps(boundaryData, wallGaps));
+const tagged = (name, collection) => collection.features.map((feature) => ({ ...feature, properties: { ...feature.properties, render_part: name } }));
+function campusGround() {
+  return {
+    type: "FeatureCollection",
+    features: [
+      ...tagged("boundary", ground.boundary),
+      ...tagged("boundary-wall", lineStrips(cutLineGaps(ground.boundary, wallGaps))),
+      ...tagged("internal-wall", lineStrips(ground.internal)),
+      ...tagged("roads-drawing", lineStrips(ground.roadsDrawing)),
+      ...tagged("pathway", lineStrips(ground.pathways)),
+      ...tagged("road", lineStrips(ground.roads))
+    ]
+  };
+}
+const partOf = (name) => ["==", ["get", "render_part"], name];
 export function setWallGaps(map, gaps) {
   const next = gaps || [];
   if (JSON.stringify(next) === JSON.stringify(wallGaps)) return;
   wallGaps = next;
-  map.getSource("boundary-walls")?.setData(boundaryWalls());
+  map.getSource(CAMPUS_SOURCE)?.setData(campusGround());
 }
 
 // badgeFor(properties) gives the icon id of a building label (building-labels.js).
 export function addBcsirLayers(map, render, { badgeFor } = {}) {
   const buildings = render.buildings;
-  map.addSource("boundary", { type: "geojson", data: render.boundary });
-  boundaryData = render.boundary;
-  map.addSource("boundary-walls", { type: "geojson", data: boundaryWalls() });
-  map.addSource("internal-walls", { type: "geojson", data: lineStrips(render.internal) });
+  GROUND_KEYS.forEach((key) => { ground[key] = render[key] || EMPTY; });
+  map.addSource(CAMPUS_SOURCE, { type: "geojson", data: campusGround() });
   map.addSource("garden", { type: "geojson", data: render.garden });
-  map.addSource("roads-drawing-strips", { type: "geojson", data: lineStrips(render.roadsDrawing) });
-  map.addSource("pathway-strips", { type: "geojson", data: lineStrips(render.pathways) });
-  map.addSource("road-strips", { type: "geojson", data: lineStrips(render.roads) });
   map.addSource("buildings", { type: "geojson", data: buildings, promoteId: "render_id" });
   map.addSource("building-seams", { type: "geojson", data: roofSeams(buildings) });
   map.addSource("building-corners", { type: "geojson", data: verticalCorners(buildings) });
@@ -112,7 +127,7 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
 
   // ---- Ground ---------------------------------------------------------------------
   // BCSIRBoundary: `fill_color` colours the campus ground; `color` its wall.
-  map.addLayer({ id: "boundary-fill", type: "fill", source: "boundary", paint: { "fill-color": ["get", "render_fill_color"], "fill-opacity": 0.62 } });
+  map.addLayer({ id: "boundary-fill", type: "fill", source: CAMPUS_SOURCE, filter: partOf("boundary"), paint: { "fill-color": ["get", "render_fill_color"], "fill-opacity": 0.62 } });
   map.addLayer({
     id: "buildings-footprint", type: "fill", source: "buildings",
     paint: { "fill-color": ["get", "render_side_color"], "fill-opacity": 0.35 }
@@ -124,11 +139,11 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
   // (grass.glb); they leave garden-3d once the grass is drawn (surface-layer.js).
   const garden = surfaceLayer("garden-surface", render.garden, { coveredLayerId: "garden-3d" });
   map.addLayer(garden);
-  map.addLayer(extrusion("roads-drawing-3d", "roads-drawing-strips"));
-  map.addLayer(extrusion("pathways-3d", "pathway-strips"));
-  map.addLayer(extrusion("roads-3d", "road-strips"));
-  map.addLayer(extrusion("boundary-wall", "boundary-walls", { paint: { "fill-extrusion-vertical-gradient": true } }));
-  map.addLayer(extrusion("internal-wall", "internal-walls", { paint: { "fill-extrusion-vertical-gradient": true } }));
+  map.addLayer(extrusion("roads-drawing-3d", CAMPUS_SOURCE, { filter: partOf("roads-drawing") }));
+  map.addLayer(extrusion("pathways-3d", CAMPUS_SOURCE, { filter: partOf("pathway") }));
+  map.addLayer(extrusion("roads-3d", CAMPUS_SOURCE, { filter: partOf("road") }));
+  map.addLayer(extrusion("boundary-wall", CAMPUS_SOURCE, { filter: partOf("boundary-wall"), paint: { "fill-extrusion-vertical-gradient": true } }));
+  map.addLayer(extrusion("internal-wall", CAMPUS_SOURCE, { filter: partOf("internal-wall"), paint: { "fill-extrusion-vertical-gradient": true } }));
 
   // ---- Buildings ----------------------------------------------------------------------
   // Route endpoints take precedence so A/B stay visible while selected.
@@ -247,12 +262,15 @@ export function updateDatasetLayers(map, key, render, extras = {}) {
       set("building-corners", verticalCorners(data));
       set("building-labels", buildingLabelPoints(data, extras.badgeFor));
       break;
-    case "boundary": boundaryData = data; set("boundary", data); set("boundary-walls", boundaryWalls()); break;
-    case "internal": set("internal-walls", lineStrips(data)); break;
+    case "boundary":
+    case "internal":
+    case "roads":
+    case "roadsDrawing":
+    case "pathways":
+      ground[key] = data || EMPTY;
+      set(CAMPUS_SOURCE, campusGround());
+      break;
     case "garden": set("garden", data); extras.garden?.setData(data); break;
-    case "roads": set("road-strips", lineStrips(data)); break;
-    case "roadsDrawing": set("roads-drawing-strips", lineStrips(data)); break;
-    case "pathways": set("pathway-strips", lineStrips(data)); break;
     case "treeLine": extras.trees?.setData(data); break;
     case "treeLineModels": extras.trees?.setReplaced(hasTreeModels(data)); break;
     default: break;

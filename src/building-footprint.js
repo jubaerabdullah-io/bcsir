@@ -184,6 +184,95 @@ export function buildingModelPlacement(feature) {
   };
 }
 
+// Parts of a building drawn by a module GLB (one bay of one floor, config.js
+// BUILDING_MODELS.modules) tiled over its footprint instead of stretched to it:
+// - the footprint is cut across its long axis where its outline steps; each strip
+//   keeps the polygon's depth there (strips differing by less than `tolerance`
+//   metres are joined, strips narrower than `minStrip` join their closest neighbour);
+// - each strip is filled with bays of about `bay` metres;
+// - floors of about `floor` metres are stacked up to top_m: the module is `floor`
+//   high with a `parapet` above it, so the top floor's parapet ends at top_m.
+// The module's front (+Z) faces the long side nearest compass `front`
+// (model_rotation 180 takes the other one). Returns
+// [{ anchor, rotation, fit: [width, height, depth], base, floor, strip }] ([] without
+// a footprint): anchor [lon, lat] of the part's bottom centre, fit in metres.
+export function tiledModelParts(feature, { bay = 3.3, floor = 3.5, parapet = 0.8, front = 180, minStrip = 1.8, tolerance = 0.5 } = {}) {
+  const footprint = orientedFootprint(feature);
+  if (!footprint) return [];
+  const { frame, centerLocal, u, v } = footprint;
+  const pts = outerRing(feature.geometry).slice(0, -1).map((point) => {
+    const [x, y] = frame.toLocal(point);
+    const dx = x - centerLocal[0], dy = y - centerLocal[1];
+    return [dx * u[0] + dy * u[1], dx * v[0] + dy * v[1]]; // [along u, along v]
+  });
+
+  // Cuts at the vertices (those closer than 0.25 m count as one).
+  const cuts = [];
+  for (const s of pts.map((p) => p[0]).sort((a, b) => a - b)) if (!cuts.length || s - cuts.at(-1) > 0.25) cuts.push(s);
+  cuts[cuts.length - 1] = Math.max(...pts.map((p) => p[0]));
+  // Depth of each strip: where the polygon crosses the strip's middle line. The edges
+  // are straight within a strip, so that is their mean over the strip.
+  let strips = [];
+  for (let i = 0; i + 1 < cuts.length; i += 1) {
+    const a = cuts[i], b = cuts[i + 1], m = (a + b) / 2;
+    const ts = [];
+    for (let j = 0; j < pts.length; j += 1) {
+      const p = pts[j], q = pts[(j + 1) % pts.length];
+      if ((p[0] <= m) !== (q[0] <= m)) ts.push(p[1] + ((m - p[0]) * (q[1] - p[1])) / (q[0] - p[0]));
+    }
+    if (ts.length >= 2) strips.push({ a, b, t0: Math.min(...ts), t1: Math.max(...ts) });
+  }
+  const join = (x, y) => {
+    const lx = x.b - x.a, ly = y.b - y.a;
+    return { a: Math.min(x.a, y.a), b: Math.max(x.b, y.b), t0: (x.t0 * lx + y.t0 * ly) / (lx + ly), t1: (x.t1 * lx + y.t1 * ly) / (lx + ly) };
+  };
+  const adjacent = (x, y) => Math.abs(x.b - y.a) < 1e-6;
+  const difference = (x, y) => Math.max(Math.abs(x.t0 - y.t0), Math.abs(x.t1 - y.t1));
+  strips = strips.reduce((list, strip) => {
+    const last = list.at(-1);
+    if (last && adjacent(last, strip) && difference(last, strip) < tolerance) list[list.length - 1] = join(last, strip);
+    else list.push(strip);
+    return list;
+  }, []);
+  for (;;) {
+    const i = strips.findIndex((strip) => strip.b - strip.a < minStrip);
+    if (i < 0 || strips.length < 2) break;
+    const prev = i > 0 && adjacent(strips[i - 1], strips[i]) ? i - 1 : -1;
+    const next = i + 1 < strips.length && adjacent(strips[i], strips[i + 1]) ? i + 1 : -1;
+    if (prev < 0 && next < 0) break;
+    const k = next < 0 || (prev >= 0 && difference(strips[prev], strips[i]) <= difference(strips[next], strips[i])) ? prev : next;
+    const [lo, hi] = k < i ? [k, i] : [i, k];
+    strips.splice(lo, 2, join(strips[lo], strips[hi]));
+  }
+
+  // Front: the long side (+v or -v) facing nearest `front`.
+  const gap = (bearing) => Math.abs(((bearing - front) % 360 + 540) % 360 - 180);
+  let sign = gap(bearingOfVector(v)) <= gap(bearingOfVector([-v[0], -v[1]])) ? 1 : -1;
+  if (((Math.round((finite(feature.properties?.model_rotation) ?? 0) / 180) % 2) + 2) % 2 === 1) sign = -sign;
+  const rotation = normalizeDegrees(bearingOfVector([v[0] * sign, v[1] * sign]) - 180);
+
+  const p = feature.properties || {};
+  const base = finite(p.render_base_m ?? p.base_m) ?? 0;
+  const top = finite(p.render_top_m ?? p.top_m);
+  const height = top !== null && top > base ? top - base : floor + parapet;
+  const floors = Math.max(1, Math.round((height - parapet) / floor));
+  const storey = height / (floors + parapet / floor);
+
+  const parts = [];
+  strips.forEach((strip, index) => {
+    const length = strip.b - strip.a, n = Math.max(1, Math.round(length / bay)), width = length / n;
+    const t = (strip.t0 + strip.t1) / 2;
+    for (let k = 0; k < n; k += 1) {
+      const s = strip.a + (k + 0.5) * width;
+      const anchor = frame.toLngLat([centerLocal[0] + u[0] * s + v[0] * t, centerLocal[1] + u[1] * s + v[1] * t]);
+      for (let level = 0; level < floors; level += 1) {
+        parts.push({ anchor, rotation, fit: [width, storey, strip.t1 - strip.t0], base: base + level * storey, floor: level, strip: index });
+      }
+    }
+  });
+  return parts;
+}
+
 // The point `metres` from `origin` ([lon, lat]) towards compass `bearing`.
 export function offsetLngLat(origin, bearing, metres) {
   const frame = createLocalFrame(origin);

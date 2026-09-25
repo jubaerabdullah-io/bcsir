@@ -351,6 +351,8 @@ async function start() {
     onToast: ui.showToast,
     // Walls and buildings without an indoor map cannot be walked through.
     resolveMove: (from, to) => collisionWorld.resolveMove(from, to, walkIndoorState),
+    // The follow camera stops in front of the first building or wall behind the character.
+    cameraClearance: (from, to) => collisionWorld.firstHit(from, to)?.t ?? 1,
     resolveStart: (position) => {
       const blocker = collisionWorld.blockerAt(position);
       if (!blocker) return null;
@@ -477,6 +479,8 @@ async function start() {
     walkPose: () => walkController.getPose(),
     walkOpen: (position, heading) => walkController.open(position, { heading }),
     walkClose: () => walkController.close(),
+    walkView: () => walkController.getView(),
+    walkSetView: (view) => walkController.setView(view),
     blockerAt: (position) => collisionWorld.blockerAt(position),
     navigation: Object.freeze({
       start: (view = "map") => navigation.start({ view }),
