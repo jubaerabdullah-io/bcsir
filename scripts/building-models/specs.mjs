@@ -133,6 +133,50 @@ export const BUILDING_SPECS = [
     module: RESIDENTIAL_MODULE
   },
   {
+    // Grass football field with goals, the earth track, the low wall and the pavers at
+    // the east end (photos: playground/). Its top_m (0.3 m) is the ground surfaces'
+    // box; the goals and the wall stand above it at their real height.
+    id: 244,
+    name: "Play Ground",
+    file: "models/buildings/playground.glb",
+    style: "playground"
+  },
+  {
+    // Long block with the entrance wing at its south-west corner (photos: fibre/): the
+    // wing's face with the orange entrance under the canopy, the green glass curtain
+    // wall beside it, cream plaster; the fountain garden in front.
+    id: 113,
+    name: "Fibre & Polymer",
+    file: "models/buildings/fibre-polymer.glb",
+    style: "fibre",
+    // Wall numbers printed by the builder: the wing's west and east faces are aluminium
+    // panels, the main south face beside the wing is the glass tower and plaster.
+    facades: { 1: "panel", 6: "front", 7: "panel" }
+  },
+  {
+    // Stair bay with the brick lattice strips at the entrance, the signboard on the
+    // canopy cut from the photo (genomic/).
+    id: 101,
+    name: "Genomic",
+    file: "models/buildings/genomic.glb",
+    style: "genomic"
+  },
+  {
+    // Blue window bands; the porch with the carved frieze and ornate columns and the
+    // blue signboard (photo: inars/).
+    id: 102,
+    name: "INARS",
+    file: "models/buildings/inars.glb",
+    style: "inars"
+  },
+  {
+    // The open car shed beside INARS (photo: garage/; the same white jeep as at INARS).
+    id: 123,
+    name: "Garage",
+    file: "models/buildings/garage.glb",
+    style: "garage"
+  },
+  {
     // The feature is a small marker: the gate is built at its real size on the
     // boundary wall next to it (see style-gate.mjs); set wall_gap_m on the feature
     // so the drawn boundary wall opens for it.

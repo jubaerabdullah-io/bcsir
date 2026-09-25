@@ -30,8 +30,13 @@ import * as brick from "./building-models/style-brick.mjs";
 import * as classic from "./building-models/style-classic.mjs";
 import * as mosque from "./building-models/style-mosque.mjs";
 import * as residential from "./building-models/style-residential.mjs";
+import * as playground from "./building-models/style-playground.mjs";
+import * as fibre from "./building-models/style-fibre.mjs";
+import * as genomic from "./building-models/style-genomic.mjs";
+import * as inars from "./building-models/style-inars.mjs";
+import * as garage from "./building-models/style-garage.mjs";
 
-const STYLES = { screen, grid, gallery, tank, gate, modern, brick, classic, mosque, residential };
+const STYLES = { screen, grid, gallery, tank, gate, modern, brick, classic, mosque, residential, playground, fibre, genomic, inars, garage };
 const root = fileURLToPath(new URL("..", import.meta.url));
 const PHOTOS = path.join(root, "backup/models/source");
 const buildings = JSON.parse(await readFile(path.join(root, "public/data/BuildingBoundary.geojson"), "utf8"));
@@ -66,9 +71,9 @@ async function buildModule(spec, style) {
   const { bay: W, depth: D, floor: H, front = 180 } = spec.module;
   const rotation = front - 180;
   const ctx = { W, D, H, spec, feature: null, rotation, entranceOffset: 0, polygon: [[-W / 2, D / 2], [W / 2, D / 2], [W / 2, -D / 2], [-W / 2, -D / 2]], neighbours: [], photo: (file) => path.join(PHOTOS, file) };
-  const atlas = createAtlas();
+  const atlas = createAtlas(style.atlasSize); // a style may use a smaller atlas (atlasSize)
   await style.paint(atlas, ctx);
-  const mesh = createMesh({ regions: style.regions, swatches: style.swatches, W, D, rotation });
+  const mesh = createMesh({ regions: style.regions, swatches: style.swatches, atlasSize: style.atlasSize, W, D, rotation });
   const info = style.build(mesh, ctx);
   const result = await mesh.write(path.join(root, "public", spec.file), {
     atlas: await atlas.encode(),
@@ -117,9 +122,9 @@ for (const spec of BUILDING_SPECS) {
     insideCampus: (point) => insideRings(point, boundaryRings),
     photo: (file) => path.join(PHOTOS, file)
   };
-  const atlas = createAtlas();
+  const atlas = createAtlas(style.atlasSize); // a style may use a smaller atlas (atlasSize)
   await style.paint(atlas, ctx);
-  const mesh = createMesh({ regions: style.regions, swatches: style.swatches, W, D, rotation: placement.rotation });
+  const mesh = createMesh({ regions: style.regions, swatches: style.swatches, atlasSize: style.atlasSize, W, D, rotation: placement.rotation });
   const info = style.build(mesh, ctx);
   const result = await mesh.write(path.join(root, "public", spec.file), {
     atlas: await atlas.encode(),

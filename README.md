@@ -430,9 +430,14 @@ that GLB instead of its extrusion; every other building is unchanged.
 - **Models now:** IGCRT (id 110), IFST (111), the Secretariat (127), the Pilot Plant &
   Process Development Centre (two features: 104 and 112), its Water Tank (109), the
   Main Gate (301), the Bangladesh Reference Institute for Chemical Measurements (108),
-  the Institute of Bioequivalence Studies & Pharmaceutical Sciences (119) and the Institute
-  of Energy Research & Development (107), in `public/models/buildings/` (11–115 KB, 170–2,500 triangles, one
-  material and one 1024 px WebP atlas each: one draw call per building).
+  the Institute of Bioequivalence Studies & Pharmaceutical Sciences (119), the Institute
+  of Energy Research & Development (107), the Central Mosque (203), the BCSIR Play Ground
+  (244), the Fibre & Polymer Research Division (113), the Genomic Research Laboratories
+  (101), INARS (102), the garage beside INARS (123) and the residential quarters (one
+  shared model, below), in `public/models/buildings/` (11–115 KB, 60–2,500 triangles, one
+  material and one WebP atlas each, 1024 px or 512 px (`atlasSize` in the style): one draw
+  call per building). All of them load at start-up (about 1.06 MB); more models should
+  come with loading by distance.
 - **Building the models:** `npm run models:buildings` (or `-- IGCRT 127` for some) writes
   them from `scripts/building-models/specs.mjs`: each entry names the building, the file
   and a style:
@@ -458,6 +463,33 @@ that GLB instead of its extrusion; every other building is unchanged.
     brick-tile entrance, the wide canopy with the green signboard and the hoods at the
     roof line;
   - `tank`: an elevated concrete water tank on braced columns;
+  - `fibre`: the Fibre & Polymer Research Division (113, photos `fibre/`), built along the
+    polygon's edges: the entrance wing's face (orange panels, glass door, canopy with a
+    steel railing and red potted plants, green glass above), the main south face (the
+    green glass curtain wall in a white frame rising above the roof, then cream plaster)
+    with the fountain garden in front of it (blue pool, wooden bridge with red railings,
+    stone feature wall, lamp posts), white aluminium panels on the wing's sides, cream
+    plaster with grey pilasters elsewhere (`facades` in the spec);
+  - `genomic`: the Genomic Research Laboratories (101, photo `genomic/`): weathered
+    plaster, white-framed windows under thin sunshades, the stair bay at the entrance
+    with brick lattice strips rising above the roof, the canopy with the signboard cut
+    from the photo;
+  - `inars`: INARS (102, photo `inars/`): blue window bands with AC vents between white
+    piers, the porch with the carved frieze and the two ornate columns taken from the
+    photo, brick-tile wall and grille gate, and the blue signboard (Bangla text as on the
+    real board);
+  - `garage`: the open car shed beside INARS (123, photo `garage/`): slab on columns,
+    stained store room, the white jeep (512 px atlas);
+  - `playground`: the BCSIR Play Ground (244, photos in `backup/models/source/playground/`):
+    a grass football field in 8 m cells of one seamless grass texture or a variant
+    with a dry or lush patch (picked and mirrored at random, so the repeat does not
+    show), bare trodden patches in the goal mouths and the centre, a brick edging, the
+    red-brown earth track with a low plastered wall on the long sides (a gate gap in
+    the middle of each) and the west end, circle-pattern pavers along the open east end,
+    and a goal at each end (black-and-white striped posts, white net). `top_m` 0.3 is
+    the ground surfaces' box: the goals and the wall stand above it at their real
+    height, so rebuild after changing it. The field stays walkable in walk mode (the
+    goals and the low wall are not obstacles);
   - `gate`: the Main Gate (arch with the Bangla inscription, see-through iron gates,
     tiled wings with the emblem). Its feature is only a small marker, so the gate is
     built at its real size (27.6 m) on the campus wall line next to the marker, turned
