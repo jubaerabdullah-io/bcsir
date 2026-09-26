@@ -6,7 +6,9 @@
 // turned to `facing` (compass degrees). It shares the Three.js renderer of the
 // other 3D layers (three-shared.js) and the map's depth buffer, so buildings and
 // trees hide it correctly. Animations follow the movement: Idle when stopped, Walk
-// when moving, Run when running; their pace follows the speed.
+// when moving, Run when running or moving at a jog (from JOG_FROM m/s), Jump while
+// in the air; their pace follows the speed. Each character sets its height and
+// the paces its clips are animated for (height, walkPace, runPace in config.js).
 // The layer exists only while the character is shown: hide() removes it and stops
 // its animation loop, and the loaded model is kept for the next walk.
 import * as THREE from "three";
@@ -17,9 +19,10 @@ import { acquireRenderer, releaseRenderer } from "./three-shared.js";
 import { publicAssetUrl } from "./paths.js";
 
 const LAYER_ID = "walk-character";
-const HEIGHT_M = 1.75; // the model is scaled to this height
-const WALK_PACE = 2.0; // m/s the Walk clip is animated for
-const RUN_PACE = 4.3; // m/s the Run clip is animated for
+const HEIGHT_M = 1.75; // the model is scaled to this height (unless the character sets one)
+const WALK_PACE = 2.0; // m/s the Walk clip is animated for (unless the character sets walkPace)
+const RUN_PACE = 4.3; // m/s the Run clip is animated for (runPace)
+const JOG_FROM = 2.6; // m/s from which the Run clip plays without Shift
 const IDLE_FPS = 24; // repaints per second while only the idle animation plays
 const FADE_S = 0.25;
 const DEG = Math.PI / 180;
@@ -38,7 +41,7 @@ export function createWalkCharacter(map, { onError } = {}) {
   let lastTime = 0;
   let lastPaint = 0;
   let visible = false;
-  const state = { position: null, altitude: 0, facing: 0, speed: 0, running: false };
+  const state = { position: null, altitude: 0, facing: 0, speed: 0, running: false, airborne: false };
 
   function load(url) {
     if (!loaded.has(url)) loaded.set(url, new GLTFLoader().loadAsync(url));
@@ -59,7 +62,7 @@ export function createWalkCharacter(map, { onError } = {}) {
     scene.traverse((object) => { if (object.isMesh) { object.frustumCulled = false; object.material = object.material.clone(); } });
     applyColors(scene, character.colors);
     const box = new THREE.Box3().setFromObject(scene);
-    const scale = HEIGHT_M / Math.max(0.1, box.max.y - box.min.y);
+    const scale = (Number(character.height) || HEIGHT_M) / Math.max(0.1, box.max.y - box.min.y);
     scene.scale.setScalar(scale);
     scene.position.y = -box.min.y * scale;
     const upright = new THREE.Group(); // glTF Y-up -> map Z-up
@@ -75,8 +78,9 @@ export function createWalkCharacter(map, { onError } = {}) {
   }
 
   function pick() {
+    if (state.airborne && actions.jump) return "jump";
     if (state.speed < 0.15) return "idle";
-    return state.running && actions.run ? "run" : "walk";
+    return (state.running || state.speed >= JOG_FROM) && actions.run ? "run" : "walk";
   }
 
   function play(name) {
@@ -141,12 +145,12 @@ export function createWalkCharacter(map, { onError } = {}) {
     lastTime = time;
     if (mixer) {
       play(pick());
-      if (current === actions.walk) current.timeScale = Math.max(0.4, Math.min(2.2, state.speed / WALK_PACE));
-      if (current === actions.run) current.timeScale = Math.max(0.6, Math.min(2.2, state.speed / RUN_PACE));
+      if (current === actions.walk) current.timeScale = Math.max(0.4, Math.min(2.2, state.speed / (Number(character?.walkPace) || WALK_PACE)));
+      if (current === actions.run) current.timeScale = Math.max(0.6, Math.min(2.2, state.speed / (Number(character?.runPace) || RUN_PACE)));
       mixer.update(dt);
     }
     // Moving: every frame (the camera moves anyway); idle: a lighter frame rate.
-    if (state.speed >= 0.15 || time - lastPaint >= 1000 / IDLE_FPS) { lastPaint = time; map.triggerRepaint(); }
+    if (state.speed >= 0.15 || state.airborne || time - lastPaint >= 1000 / IDLE_FPS) { lastPaint = time; map.triggerRepaint(); }
     frame = requestAnimationFrame(tick);
   }
 
@@ -172,7 +176,7 @@ export function createWalkCharacter(map, { onError } = {}) {
         onError?.(error);
       }
     },
-    // position [lon, lat], altitude (m), facing (deg), speed (m/s), running (bool).
+    // position [lon, lat], altitude (m), facing (deg), speed (m/s), running and airborne (bool).
     update(next) {
       Object.assign(state, next);
       if (visible) map.triggerRepaint();

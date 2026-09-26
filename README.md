@@ -64,7 +64,7 @@ Everything in `public/` must be committed. The original `.gitignore` ignored eve
 | Pan, rotate, tilt | Drag. Right-drag (or Ctrl + drag) rotates and tilts. Scroll zooms. |
 | Zoom, rotate, tilt buttons | Right-hand controls. Rotate and tilt buttons are hidden on phones and short windows. |
 | Camera presets | **View** menu: Top-down, Isometric, 3D Corner, Front, Free, Follow Direction, Route Up, North Up, Reset. Compass: north up. |
-| First-person walk | **Walk** (bottom left), then click a location on the map: the camera goes down to eye height there. W/A/S/D or arrows to walk, hold Shift to move faster, mouse to look, V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), drag the view to look. Walls and buildings cannot be walked through; a circular minimap (bottom left) shows the surroundings, the route and the destination. |
+| First-person walk (game mode) | **Walk** (bottom left), choose the view, then click a location on the map: the camera goes down there. W/A/S/D or arrows to move fast (4.5 m/s, the cartoon walker runs), hold Shift for 9 m/s, **Space to jump**, mouse to look (looking up shows a blue sky with clouds), V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), **Jump** in their middle, drag the view to look. Walls and buildings cannot be walked through; a circular minimap (bottom left) shows the surroundings with short building names, the route and the destination. |
 | Live navigation | With a route drawn, **Start** under the route summary: follows the phone's GPS along the route, turns the map with its compass, shows the next turn and the remaining distance and time. See [Live navigation](#live-navigation-and-3d-mode). |
 | 3D mode | **3D mode** under the route summary: walk the route in first-person view with the same guidance. |
 | Deep link | `?buildingid=101` opens building 101 (the format used by the QR codes in `main_QRCode.zip`). |
@@ -410,6 +410,23 @@ Loading and drawing costs kept low (2026-09-25; same pictures, checked pixel by 
   (`campus-ground`): MapLibre updates every source on every camera frame.
 - Building label anchors are computed once per footprint, and label badges are drawn
   on a CPU canvas (their pixels are read back once).
+
+### Walk Mode character, sky and minimap names
+
+- **Character:** one cartoon walker, `models/characters/male.glb` (`npm run
+  models:character`, scripts/build-character.mjs: low-poly, Idle, Walk, Run and Jump),
+  set in `WALK_CHARACTERS` in `src/config.js`. With one character the picker only asks
+  for the view; more entries would bring back the choice of character.
+- **Game feel:** moving at 4.5 m/s plays the Run clip (from 2.6 m/s); Space (or the
+  phone pad's Jump) jumps about 0.85 m with the Jump pose and the camera follows;
+  holding Space jumps once.
+- **Sky:** while walking, `src/walk-sky.js` draws a sky dome (gradient, sun, soft
+  clouds) above the horizon and behind everything, and sets the map's horizon and fog
+  colours to match; the map's previous sky comes back on exit.
+- **Minimap names:** `src/short-names.js` gives each building a short, friendly name
+  (`name_en_short` first, e.g. INARS; otherwise "Residential Quarter 07" -> "Quarter 07",
+  "Genomic Research Laboratories" -> "Genomic Lab", long institutes -> initials such as
+  IBSPS), drawn upright inside its footprint, nearest buildings first, never overlapping.
 
 ### Realistic building models
 

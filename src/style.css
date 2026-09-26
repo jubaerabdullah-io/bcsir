@@ -704,6 +704,7 @@ html[data-theme="dark"] .theme-toggle:not([aria-pressed="true"]) { background: #
 .walk-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .walk-picker-head h2 { margin: 0; font-size: 14px; font-weight: 650; }
 .walk-picker-characters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.walk-picker-characters[hidden] { display: none; }
 .walk-picker-characters label,
 .walk-picker-views label { position: relative; cursor: pointer; }
 .walk-picker-characters input,
@@ -1010,6 +1011,7 @@ html[data-theme="dark"] .destination-action.active-route-action { color: #ff8a80
   background: rgba(83, 226, 200, .2);
 }
 .walk-pad .walk-center { color: #58dfc6; font-size: .82rem; }
+.walk-pad .walk-jump { color: #58dfc6; font-size: .62rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 
 .walk-readout {
   display: grid;

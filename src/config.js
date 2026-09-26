@@ -60,13 +60,14 @@ export const BUILDING_MODELS = {
   modules: { "models/buildings/residential.glb": RESIDENTIAL_MODULE }
 };
 
-// Characters to choose from before Walk Mode (walk-character.js). `model` is a
-// GLB with animations named Idle, Walk and Run (models/characters/male.glb is built
-// by `npm run models:character`); `colors` recolour its materials by name.
+// The Walk Mode character (walk-character.js): the cartoon walker,
+// models/characters/male.glb (`npm run models:character`), with clips named Idle,
+// Walk, Run and Jump; `colors` recolour its materials (Skin, Hair, Shirt, Trousers,
+// Shoes) and the picker's figure. More entries would add a choice of character in
+// the picker; an entry may also set height (m) and walkPace, runPace (m/s its Walk
+// and Run clips are animated for).
 export const WALK_CHARACTERS = [
-  { id: "blue-shirt", name: "Blue shirt", model: "models/characters/male.glb", colors: { Skin: "#a8744f", Hair: "#17110d", Shirt: "#2f6db0", Trousers: "#2a2e36", Shoes: "#1b1b1b" } },
-  { id: "white-shirt", name: "White shirt", model: "models/characters/male.glb", colors: { Skin: "#8f5f3f", Hair: "#141010", Shirt: "#eeeee8", Trousers: "#7d7260", Shoes: "#4a3426" } },
-  { id: "green-tshirt", name: "Green T-shirt", model: "models/characters/male.glb", colors: { Skin: "#c08a64", Hair: "#231913", Shirt: "#2f8a55", Trousers: "#34496f", Shoes: "#e8e8e4" } }
+  { id: "blue-shirt", name: "Walker", model: "models/characters/male.glb", colors: { Skin: "#a8744f", Hair: "#17110d", Shirt: "#2f6db0", Trousers: "#2a2e36", Shoes: "#1b1b1b" } }
 ];
 
 // Look of the ground surfaces made from a GLB (surface-layer.js), by model file

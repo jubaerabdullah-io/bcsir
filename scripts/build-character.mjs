@@ -4,10 +4,11 @@
 // Builds public/models/characters/male.glb, the walker shown in Walk Mode's
 // third-person view (src/walk-character.js): a lightweight low-poly man (about
 // 600 triangles, 1.75 m tall, feet at the origin, facing +Z, Y up, metres) on a
-// 17-bone skeleton, with three looping animations:
+// 17-bone skeleton, with three looping animations and a jump pose:
 //   Idle  breathing, arms at rest              (3 s)
 //   Walk  leg and arm swing, 2 m/s pace       (0.8 s per two steps)
 //   Run   bigger swing, bent elbows, lean     (0.6 s per two steps, 4.3 m/s pace)
+//   Jump  knees drawn up, arms raised           (held while in the air)
 // Every body part is a rigid, tapered box (or a rounded head) bound to one bone.
 // Materials are named Skin, Hair, Shirt, Trousers and Shoes, so the map recolours
 // them for each character (WALK_CHARACTERS in src/config.js). Any other GLB with
@@ -165,6 +166,24 @@ const CLIPS = {
       "UpperArm.R": (p) => [-0.75 * Math.sin(p), 0, -0.1],
       "LowerArm.L": () => [-1.25, 0, 0],
       "LowerArm.R": () => [-1.25, 0, 0]
+    }
+  },
+  // Held while in the air (Space in Walk Mode): knees drawn up, arms raised.
+  Jump: {
+    duration: 1, samples: 2,
+    hips: () => [0, 0.93, 0],
+    bones: {
+      Spine: () => [0.12, 0, 0],
+      Head: () => [-0.1, 0, 0],
+      "UpperLeg.L": () => [-0.9, 0, 0],
+      "LowerLeg.L": () => [1.3, 0, 0],
+      "UpperLeg.R": () => [-0.3, 0, 0],
+      "LowerLeg.R": () => [0.9, 0, 0],
+      "Foot.L": () => [-0.3, 0, 0],
+      "UpperArm.L": () => [-0.9, 0, 0.35],
+      "UpperArm.R": () => [-0.9, 0, -0.35],
+      "LowerArm.L": () => [-0.7, 0, 0],
+      "LowerArm.R": () => [-0.7, 0, 0]
     }
   }
 };

@@ -1,6 +1,7 @@
 import { MercatorCoordinate } from "maplibre-gl";
 import { WALK_CHARACTERS } from "./config.js";
 import { createWalkCharacter } from "./walk-character.js";
+import { createWalkSky } from "./walk-sky.js";
 
 // Walk mode. The toggle first shows the character and view picker, then asks for
 // a location: the next click on the map is where the camera goes down and walking
@@ -17,6 +18,8 @@ import { createWalkCharacter } from "./walk-character.js";
 //   down. Looking level gives exactly the previous camera.
 // Switching views blends the camera from one to the other at the same position.
 // The character plays Idle when stopped, Walk when moving and Run with Shift.
+// Game feel: a fast pace (a run with the Run clip), Space (or the pad's Jump
+// button) jumps, and looking up shows the sky (walk-sky.js).
 //
 // BCSIR additions (all optional; without them walking works as before):
 // - resolveMove(from, to) -> { position, blocked, blocker }: collision, so walls
@@ -39,8 +42,9 @@ import { createWalkCharacter } from "./walk-character.js";
 // listener used while walking is removed when Walk Mode ends, with the character.
 const EYE_HEIGHT_METERS = 1.65;
 const LOOK_AHEAD_METERS = 16;
-const WALK_SPEED_METERS_PER_SECOND = 2;
-const SHIFT_SPEED_MULTIPLIER = 4;
+const WALK_SPEED_METERS_PER_SECOND = 4.5;
+const SHIFT_SPEED_MULTIPLIER = 2; // Shift: 9 m/s
+const JUMP = { speed: 5.2, gravity: 16 }; // take-off m/s, m/s² (about 0.85 m high, 0.65 s in the air)
 const TURN_SPEED_DEGREES_PER_SECOND = 105;
 const MOUSE_SENSITIVITY = 0.16;
 const TOUCH_LOOK_SENSITIVITY = 0.28;
@@ -71,7 +75,7 @@ const TOGGLE_TEXT = {
 const MOVEMENT_KEYS = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE",
   "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-  "ShiftLeft", "ShiftRight"
+  "ShiftLeft", "ShiftRight", "Space"
 ]);
 
 function isTypingTarget(target) {
@@ -121,8 +125,17 @@ function savePreferences(value) {
 }
 
 // Small figure of a character for the picker, in its colours.
-function characterIcon({ colors = {} }) {
-  const c = (name, fallback) => colors[name] || fallback;
+function characterIcon({ colors = {}, icon = null }) {
+  const palette = icon || colors;
+  const c = (name, fallback) => palette[name] || fallback;
+  if (palette.figure === "coat") {
+    // Long hair and a long coat.
+    return `<svg viewBox="0 0 34 56" aria-hidden="true">
+    <path d="M10.5 9.5a6.5 7 0 0 1 13 0V19h-3.5v-4h-6v4h-3.5Z" fill="${c("Hair", "#2a1d17")}"/><circle cx="17" cy="8" r="5.2" fill="${c("Skin", "#d9a07e")}"/><path d="M11.8 6.8a5.4 5.4 0 0 1 10.4 0c-1.5-1.9-8.9-1.9-10.4 0Z" fill="${c("Hair", "#2a1d17")}"/>
+    <path d="M9.5 15h15l3 14h-3l-1.2-7 1.7 24H9l1.7-24-1.2 7h-3Z" fill="${c("Shirt", "#c9b48a")}"/>
+    <path d="M12.5 46h3.2l-.2 5.5h-3.2Zm5.8 0h3.2l.2 5.5h-3.2Z" fill="${c("Skin", "#d9a07e")}"/>
+    <path d="M11.8 51.5h4.4v3h-5.2Zm6 0h4.4l.8 3h-5.2Z" fill="${c("Shoes", "#3a2f2a")}"/></svg>`;
+  }
   return `<svg viewBox="0 0 34 56" aria-hidden="true">
     <circle cx="17" cy="7.5" r="5.5" fill="${c("Skin", "#a8744f")}"/><path d="M11.6 6.6a5.5 5.5 0 0 1 10.8 0c-1.6-1.8-9.2-1.8-10.8 0Z" fill="${c("Hair", "#17110d")}"/>
     <path d="M9 15h16l2.5 15h-3.2L23 20v12H11V20l-1.3 10H6.5Z" fill="${c("Shirt", "#2f6db0")}"/>
@@ -157,6 +170,7 @@ export function createWalkMode({
   const headingReadout = document.querySelector("#walk-heading");
   const picker = document.querySelector("#walk-picker");
   const pickerCharacters = document.querySelector("#walk-picker-characters");
+  const pickerTitle = document.querySelector("#walk-picker-title");
   const pickerStart = document.querySelector("#walk-picker-start");
   const pickerClose = document.querySelector("#walk-picker-close");
 
@@ -176,9 +190,11 @@ export function createWalkMode({
   let facingTarget = null; // where the character turns to: the way he walks
   let speed = 0; // measured walking speed, m/s
   let running = false;
+  const jump = { height: 0, velocity: 0, held: false }; // metres above the floor, m/s; Space still down since the take-off
   let followDistance = 0; // current horizontal distance of the follow camera
   let lastSetPose = null; // { position, time } of the last setPose (GPS)
   const character = characters.length ? createWalkCharacter(map, { onError: () => onToast?.("The character could not be loaded; walking continues without it.") }) : null;
+  const sky = createWalkSky(map);
   let active = false;
   let choosing = false; // waiting for a click on the map
   let picking = false; // the character picker is open
@@ -220,7 +236,7 @@ export function createWalkMode({
   // ---- Cameras ------------------------------------------------------------------------
   // First person: eye height above the active floor, looking `pitch` up or down.
   function firstPersonView() {
-    const eyeAltitude = floorElevation() + EYE_HEIGHT_METERS;
+    const eyeAltitude = floorElevation() + jump.height + EYE_HEIGHT_METERS;
     const ahead = offsetFromHeading(player.position, player.heading, 0, LOOK_AHEAD_METERS);
     return { from: player.position, fromAltitude: eyeAltitude, to: ahead, toAltitude: eyeAltitude + (pitch ? LOOK_AHEAD_METERS * Math.tan(pitch * DEG) : 0) };
   }
@@ -249,7 +265,7 @@ export function createWalkMode({
   // screens), pulled in when a building or wall is in the way (at once), easing back
   // out when the way clears.
   function thirdPersonView(deltaSeconds = 0) {
-    const floor = floorElevation();
+    const floor = floorElevation() + jump.height;
     const elevation = clamp(FOLLOW.elevation - pitch, 2, 65) * DEG;
     const wanted = running ? FOLLOW.runDistance : FOLLOW.distance;
     const horizontal = wanted * Math.cos(elevation);
@@ -287,7 +303,7 @@ export function createWalkMode({
   function updateCharacter() {
     if (!character || !player.position) return;
     character.setVisible(blend > 0.35);
-    character.update({ position: [player.position.lng, player.position.lat], altitude: floorElevation(), facing, speed, running });
+    character.update({ position: [player.position.lng, player.position.lat], altitude: floorElevation() + jump.height, facing, speed, running, airborne: jump.height > 0.05 });
   }
 
   function updateCamera(deltaSeconds = 0) {
@@ -339,7 +355,7 @@ export function createWalkMode({
   // the follow camera easing back out, the walk slowing to a stop.
   function settling() {
     const viewTarget = view === "third" ? 1 : 0;
-    return blend !== viewTarget || Math.abs(speed) > 0.05 || (view === "third" && Math.abs(angleDelta(facing, facingTarget ?? facing)) > 0.5);
+    return blend !== viewTarget || Math.abs(speed) > 0.05 || jump.height > 0 || jump.velocity !== 0 || (view === "third" && Math.abs(angleDelta(facing, facingTarget ?? facing)) > 0.5);
   }
 
   function frame(time) {
@@ -361,6 +377,15 @@ export function createWalkMode({
     if (pressed.has("KeyD")) right += 1;
     if (pressed.has("KeyQ") || pressed.has("ArrowLeft")) turn -= 1;
     if (pressed.has("KeyE") || pressed.has("ArrowRight")) turn += 1;
+
+    // Jump: once per press of Space, from the floor; up and down under gravity.
+    if (pressed.has("Space") && !jump.held && jump.height <= 0) { jump.velocity = JUMP.speed; jump.held = true; }
+    if (!pressed.has("Space")) jump.held = false;
+    if (jump.velocity || jump.height > 0) {
+      jump.velocity -= JUMP.gravity * deltaSeconds;
+      jump.height += jump.velocity * deltaSeconds;
+      if (jump.height <= 0 && jump.velocity < 0) { jump.height = 0; jump.velocity = 0; } // landed (not the take-off frame)
+    }
 
     const magnitude = Math.hypot(right, forward) || 1;
     const distance = WALK_SPEED_METERS_PER_SECOND * speedBoost * deltaSeconds;
@@ -422,6 +447,9 @@ export function createWalkMode({
   // ---- Picker ----------------------------------------------------------------------------
   function renderPicker() {
     if (!pickerCharacters) return;
+    // With one character there is nothing to choose: only the view.
+    pickerCharacters.hidden = characters.length < 2;
+    if (pickerTitle) pickerTitle.textContent = characters.length < 2 ? "Walk mode" : "Choose your character";
     pickerCharacters.innerHTML = characters.map((item) => `<label><input type="radio" name="walk-picker-character" value="${item.id}"${item.id === characterId ? " checked" : ""} /><span class="walk-picker-card">${characterIcon(item)}<span>${item.name}</span></span></label>`).join("");
     picker?.querySelectorAll('input[name="walk-picker-view"]').forEach((input) => { input.checked = input.value === view; });
   }
@@ -432,7 +460,7 @@ export function createWalkMode({
     renderPicker();
     picker.hidden = false;
     setToggleState("picking");
-    (picker.querySelector('input[name="walk-picker-character"]:checked') || pickerStart)?.focus();
+    ((characters.length > 1 && picker.querySelector('input[name="walk-picker-character"]:checked')) || pickerStart)?.focus();
   }
 
   function closePicker({ restoreFocus = true } = {}) {
@@ -538,9 +566,11 @@ export function createWalkMode({
     pitch = 0;
     speed = 0;
     running = false;
+    Object.assign(jump, { height: 0, velocity: 0, held: false });
     followDistance = 0;
     blend = view === "third" ? 1 : 0;
     entering = true;
+    sky.show();
     const id = ++descent;
     document.documentElement.classList.add("walk-mode-active");
     setToggleState("active");
@@ -563,8 +593,8 @@ export function createWalkMode({
     listenWhileWalking();
     updateCamera();
     onToast?.(window.matchMedia?.("(pointer: coarse)").matches
-      ? "Walk mode on — hold the arrow buttons to walk, drag the view to look around."
-      : "Walk mode on — W/A/S/D or arrows to walk, mouse to look, Shift to run. V switches the view, Esc exits.");
+      ? "Walk mode on — hold the arrow buttons to walk, Jump to jump, drag the view to look around."
+      : "Walk mode on — W/A/S/D or arrows to walk, mouse to look, Shift to run, Space to jump. V switches the view, Esc exits.");
     emitState();
   }
 
@@ -580,8 +610,10 @@ export function createWalkMode({
     session?.abort();
     session = null;
     character?.hide();
+    sky.hide();
     speed = 0;
     running = false;
+    Object.assign(jump, { height: 0, velocity: 0, held: false });
     panel.querySelectorAll(".pressed").forEach((button) => button.classList.remove("pressed"));
     releasePointerLock();
     panel.hidden = true;
@@ -717,7 +749,7 @@ export function createWalkMode({
     close: exit,
     getPose: pose,
     // Diagnostics: current view, look pitch, character state.
-    getView: () => ({ view, blend, pitch, facing, speed, running, followDistance, character: character?.stats() ?? null, listening: Boolean(session) }),
+    getView: () => ({ view, blend, pitch, facing, speed, running, jump: jump.height, sky: sky.isShown(), followDistance, character: character?.stats() ?? null, listening: Boolean(session) }),
     setView,
     // Live navigation drives the walker from GPS and the compass.
     setPose(position, heading) {

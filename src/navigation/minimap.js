@@ -8,7 +8,13 @@
 // transform and fills or strokes those paths, and happens once per animation
 // frame at most, only after a change. Tap or click to enlarge or shrink it;
 // the − button folds it to a small round button.
+// Building names (short and friendly: short-names.js) stand upright at a point
+// inside each footprint; the nearest buildings (and the institutes) are named
+// first, a label that would overlap another or the walker is left out, and a
+// name shown once (PPPDC's three parts, Quarter 05's blocks) is not repeated.
 import { createLocalFrame, geometryPolygons } from "./local-frame.js";
+import { labelAnchor } from "../geo-utils.js";
+import { shortBuildingName, wrapName } from "../short-names.js";
 
 const SIZES = { small: 132, large: 264 };
 const RADIUS_M = { small: 70, large: 150 }; // metres from the centre to the rim
@@ -24,8 +30,11 @@ const COLORS = {
   routeCasing: "#ffffff",
   destination: "#e53935",
   walker: "#1e88e5",
-  rim: "rgba(15, 23, 42, 0.18)"
+  rim: "rgba(15, 23, 42, 0.18)",
+  label: "#334155",
+  labelHalo: "rgba(255, 255, 255, 0.92)"
 };
+const LABEL_FONT = { small: 9, large: 10.5 }; // px
 
 function linePaths(collection, toLocal) {
   const paths = [];
@@ -59,7 +68,8 @@ export function createMinimap({ container, onToggle } = {}) {
   const foldButton = container.querySelector("[data-minimap-fold]");
   const ctx = canvas.getContext("2d");
   let frame = null;
-  let layers = null; // { garden, buildings, roads[], pathways[] }
+  let layers = null; // { garden, buildings, roads[], pathways[], labels[] }
+  const widths = new Map(); // "size|line" -> text width (px)
   let route = null; // { path, destination: [x, y] }
   let pose = null; // { position: [x, y], heading }
   let size = "small";
@@ -118,6 +128,7 @@ export function createMinimap({ container, onToggle } = {}) {
       ctx.strokeStyle = COLORS.route; ctx.lineWidth = 3.6 * pixel; ctx.stroke(route.path);
     }
     ctx.restore();
+    drawLabels(c, scale, heading);
     // Destination pin, kept on the rim when it is out of range.
     if (route?.destination) {
       const dx = route.destination[0] - pose.position[0], dy = route.destination[1] - pose.position[1];
@@ -152,6 +163,47 @@ export function createMinimap({ container, onToggle } = {}) {
     ctx.fillText("N", nx, ny + 0.5);
   }
 
+  // Building names in screen space (upright), after the map is drawn.
+  function drawLabels(c, scale, heading) {
+    if (!layers.labels.length) return;
+    const font = LABEL_FONT[size], lineHeight = font + 1.5, reach = c - 10;
+    const cos = Math.cos(heading), sin = Math.sin(heading);
+    const [px, py] = pose.position;
+    const candidates = [];
+    for (const label of layers.labels) {
+      const dx = label.x - px, dy = label.y - py;
+      const sx = c + (dx * cos - dy * sin) * scale, sy = c - (dx * sin + dy * cos) * scale;
+      const d = Math.hypot(sx - c, sy - c);
+      if (d < reach) candidates.push({ label, sx, sy, rank: d - (label.major ? 18 : 0) });
+    }
+    candidates.sort((a, b) => a.rank - b.rank);
+    ctx.font = `600 ${font}px Inter, system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    const width = (line) => {
+      const key = `${size}|${line}`;
+      if (!widths.has(key)) widths.set(key, ctx.measureText(line).width);
+      return widths.get(key);
+    };
+    const placed = [[c - 11, c - 11, c + 11, c + 11]]; // keep the walker clear
+    const named = new Set();
+    for (const { label, sx, sy } of candidates) {
+      if (named.has(label.text)) continue;
+      const w = Math.max(...label.lines.map(width)) + 4, h = label.lines.length * lineHeight + 2;
+      const box = [sx - w / 2, sy - h / 2, sx + w / 2, sy + h / 2];
+      if (Math.hypot(Math.max(Math.abs(box[0] - c), Math.abs(box[2] - c)), Math.max(Math.abs(box[1] - c), Math.abs(box[3] - c))) > c - 4) continue; // inside the circle
+      if (placed.some((p) => box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) continue;
+      placed.push(box);
+      named.add(label.text);
+      label.lines.forEach((line, i) => {
+        const y = sy + (i - (label.lines.length - 1) / 2) * lineHeight;
+        ctx.strokeStyle = COLORS.labelHalo; ctx.lineWidth = 3; ctx.strokeText(line, sx, y);
+        ctx.fillStyle = COLORS.label; ctx.fillText(line, sx, y);
+      });
+    }
+  }
+
   function request() {
     if (!pending) pending = requestAnimationFrame(draw);
   }
@@ -171,7 +223,14 @@ export function createMinimap({ container, onToggle } = {}) {
         buildings: polygonPath(buildings, frame.toLocal),
         garden: polygonPath(garden, frame.toLocal),
         roads: linePaths(roads, frame.toLocal),
-        pathways: linePaths(pathways, frame.toLocal)
+        pathways: linePaths(pathways, frame.toLocal),
+        labels: (buildings?.features || []).map((feature) => {
+          const text = shortBuildingName(feature.properties);
+          const anchor = text ? labelAnchor(feature) : null;
+          if (!anchor) return null;
+          const [x, y] = frame.toLocal(anchor);
+          return { text, lines: wrapName(text), x, y, major: Number(feature.properties?.labeling_priority) >= 8 };
+        }).filter(Boolean)
       };
       request();
     },

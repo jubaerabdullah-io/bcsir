@@ -185,10 +185,10 @@
 
       <aside id="walk-panel" class="walk-panel" aria-labelledby="walk-title" hidden>
         <div class="walk-heading"><div><span id="walk-eyebrow" class="eyebrow">First person</span><h2 id="walk-title">Walk mode</h2></div><button id="walk-view" class="walk-exit walk-view" type="button" aria-pressed="false" title="Switch between third- and first-person view (V)">3rd person</button><button id="walk-gps" class="walk-exit walk-gps" type="button" aria-pressed="false" hidden>Follow GPS</button><button id="walk-close" class="walk-exit" type="button">Exit</button></div>
-        <p class="walk-help">Use W/A/S/D or the arrow keys. Move the mouse or drag the map to look around; hold Shift to run. Press V to switch between third- and first-person view.</p>
+        <p class="walk-help">Use W/A/S/D or the arrow keys. Move the mouse or drag the map to look around; hold Shift to run and Space to jump. Press V to switch between third- and first-person view.</p>
         <div class="walk-pad" aria-label="First-person movement controls">
           <button type="button" data-walk-key="KeyQ" aria-label="Turn left">↶</button><button type="button" data-walk-key="KeyW" aria-label="Move forward">↑</button><button type="button" data-walk-key="KeyE" aria-label="Turn right">↷</button>
-          <button type="button" data-walk-key="KeyA" aria-label="Move left">←</button><span class="walk-center" aria-hidden="true">+</span><button type="button" data-walk-key="KeyD" aria-label="Move right">→</button>
+          <button type="button" data-walk-key="KeyA" aria-label="Move left">←</button><button type="button" class="walk-jump" data-walk-key="Space" aria-label="Jump">Jump</button><button type="button" data-walk-key="KeyD" aria-label="Move right">→</button>
           <span></span><button type="button" data-walk-key="KeyS" aria-label="Move backward">↓</button><span></span>
         </div>
         <div class="walk-readout"><span><small>Ground / eye</small><strong id="walk-height">Ground · 1.65 m</strong></span><span><small>Heading</small><strong id="walk-heading">0°</strong></span></div>
