@@ -35,8 +35,9 @@ import * as fibre from "./building-models/style-fibre.mjs";
 import * as genomic from "./building-models/style-genomic.mjs";
 import * as inars from "./building-models/style-inars.mjs";
 import * as garage from "./building-models/style-garage.mjs";
+import * as school from "./building-models/style-school.mjs";
 
-const STYLES = { screen, grid, gallery, tank, gate, modern, brick, classic, mosque, residential, playground, fibre, genomic, inars, garage };
+const STYLES = { screen, grid, gallery, tank, gate, modern, brick, classic, mosque, residential, playground, fibre, genomic, inars, garage, school };
 const root = fileURLToPath(new URL("..", import.meta.url));
 const PHOTOS = path.join(root, "backup/models/source");
 const buildings = JSON.parse(await readFile(path.join(root, "public/data/BuildingBoundary.geojson"), "utf8"));

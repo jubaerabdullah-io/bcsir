@@ -13,8 +13,10 @@
 // every THROTTLE_MS while the camera moves, and only changed filters are set.
 // This module owns those layers' filters, so it also leaves out the buildings
 // drawn by a GLB model instead (setReplacedBuildings, building-models.js); with none,
-// the filters are exactly as before.
-import { ROUTE_FADED_LAYERS } from "./bcsir-layers.js";
+// the filters are exactly as before. Such a building is found by its invisible
+// hit extrusion (MODEL_HIT_LAYER) and its model is drawn see-through instead
+// (setFadedModels, models3d.js setFadedModelBuildings).
+import { MODEL_HIT_LAYER, ROUTE_FADED_LAYERS } from "./bcsir-layers.js";
 import { createLocalFrame, geometryPolygons, insideRings } from "./navigation/local-frame.js";
 
 const SAMPLE_SPACING_M = 4;
@@ -25,8 +27,9 @@ const EDGE_LAYERS = ["buildings-roof-seams", "buildings-corners"];
 
 // getViewpoint() -> { position, heading } of a first-person camera (walk mode),
 // or null: route points behind that camera are skipped (projected, they would
-// land on the screen mirrored).
-export function createRouteOcclusion(map, { getFeature, getViewpoint } = {}) {
+// land on the screen mirrored). setFadedModels(renderIds) receives the faded
+// buildings that are drawn by a GLB model ([] = none).
+export function createRouteOcclusion(map, { getFeature, getViewpoint, setFadedModels } = {}) {
   let samples = []; // [{ lngLat, local }]
   let frame = null;
   let faded = [];
@@ -79,10 +82,11 @@ export function createRouteOcclusion(map, { getFeature, getViewpoint } = {}) {
     if (map.getLayer(ROUTE_FADED_LAYERS.roof)) map.setFilter(ROUTE_FADED_LAYERS.roof, withoutReplaced(inFaded, "render_id"));
     BUILDING_LAYERS.forEach((id) => map.getLayer(id) && map.setFilter(id, withoutReplaced(ids.length ? ["!", inFaded] : null, "render_id")));
     EDGE_LAYERS.forEach((id) => map.getLayer(id) && map.setFilter(id, withoutReplaced(ids.length ? ["!", byParent] : null, "parent_id")));
+    setFadedModels?.(ids.filter((id) => replaced.includes(id)));
   }
 
   function compute() {
-    const layers = [...BUILDING_LAYERS, ROUTE_FADED_LAYERS.body, ROUTE_FADED_LAYERS.roof]
+    const layers = [...BUILDING_LAYERS, ROUTE_FADED_LAYERS.body, ROUTE_FADED_LAYERS.roof, MODEL_HIT_LAYER]
       .filter((id) => map.getLayer(id) && map.getLayoutProperty(id, "visibility") !== "none");
     if (!samples.length || !layers.length) { apply([]); return; }
     const canvas = map.getCanvas();

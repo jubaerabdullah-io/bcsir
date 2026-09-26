@@ -177,7 +177,9 @@ tile and the building card only choose the endpoints; the route itself is unchan
   it, and return to normal when the camera moves on or the route is cleared
   (`route-occlusion.js`). Only those buildings change. Because the line is drawn above
   the 3D layers, a route passing behind a building would otherwise be painted across it
-  as if it went through it.
+  as if it went through it. Buildings drawn by a GLB model fade the same way (found by
+  their invisible hit extrusion; `setFadedModelBuildings` in `models3d.js` draws the
+  model with a depth pass and then its colours at 30 %, so only its nearest surface shows).
 - **Drawn geometry around buildings** (`navigation/route-detour.js`). No building has
   an indoor passage, so the drawn line is led around footprints it would cross, along
   their outline at about 1 m clearance: one network edge clips a corner of Dhaka
@@ -510,7 +512,13 @@ that GLB instead of its extrusion; every other building is unchanged.
   - `gate`: the Main Gate (arch with the Bangla inscription, see-through iron gates,
     tiled wings with the emblem). Its feature is only a small marker, so the gate is
     built at its real size (27.6 m) on the campus wall line next to the marker, turned
-    along the wall; `wall_gap_m` (27.6) opens the drawn wall there.
+    along the wall; `wall_gap_m` (27.6) opens the drawn wall there;
+  - `school`: BCSIR High School (photos in `backup/models/source/high-school/`), three
+    parts by `part` in the spec: `court` (230, the pink U building: open corridor
+    galleries round its courtyard, the cream end wall with the school's name facing the
+    Parents Shade), `arcade` (229: cream, arched verandas with grilles facing the yard,
+    planters, terracotta west end) and `shade` (231, the Parents Shade: the signboard cut
+    from the photo over its east side, green pillars, the black notice wall).
   Each model is built on its building's footprint, height and entrance, so it fits at
   100 %; rebuild it after changing those (or a quarter-turn `model_rotation`) to keep
   exact proportions.

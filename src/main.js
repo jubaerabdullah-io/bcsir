@@ -15,7 +15,7 @@ import { calculateBounds, lineStrips } from "./geo-utils.js";
 import { setupInteractions } from "./interactions.js";
 import { createUI } from "./ui.js";
 import { createModelGroups } from "./model-placements.js";
-import { get3DModelStats } from "./models3d.js";
+import { get3DModelStats, setFadedModelBuildings } from "./models3d.js";
 import { createCameraController } from "./camera-controls.js";
 import { createWalkMode } from "./walkMode.js";
 import { createLayerManager } from "./layer-manager.js";
@@ -271,7 +271,8 @@ async function start() {
   routeWalker = createRouteWalker(map);
   routeOcclusion = createRouteOcclusion(map, {
     getFeature: (id) => buildingsById.get(String(id)),
-    getViewpoint: () => (walkController?.isActive() ? walkController.getPose() : null)
+    getViewpoint: () => (walkController?.isActive() ? walkController.getPose() : null),
+    setFadedModels: (ids) => setFadedModelBuildings(map, ids)
   });
   minimap = createMinimap({ container: document.querySelector("#walk-minimap") });
   buildNavigationGeometry();

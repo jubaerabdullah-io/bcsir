@@ -201,12 +201,12 @@ export function createBuildingModels({ map, getBuildings, onReplacedChange, conf
     placements: () => entries.flatMap(({ renderId, feature, placement: p, parts }) => (parts
       ? parts.map((part, i) => ({
         type: "Feature",
-        properties: { id: `building-${renderId}-${i}`, name: feature.properties.name_en ?? null, model: p.model, base_m: part.base, top_m: null, size: 1, scale: 1, rotation: part.rotation, building: true, fit: part.fit },
+        properties: { id: `building-${renderId}-${i}`, name: feature.properties.name_en ?? null, model: p.model, building_id: renderId, base_m: part.base, top_m: null, size: 1, scale: 1, rotation: part.rotation, building: true, fit: part.fit },
         geometry: { type: "Point", coordinates: part.anchor }
       }))
       : [{
         type: "Feature",
-        properties: { id: `building-${renderId}`, name: feature.properties.name_en ?? null, model: p.model, base_m: p.base, top_m: null, size: p.size, scale: 1, rotation: p.rotation, building: true, fit: p.fit },
+        properties: { id: `building-${renderId}`, name: feature.properties.name_en ?? null, model: p.model, building_id: renderId, base_m: p.base, top_m: null, size: p.size, scale: 1, rotation: p.rotation, building: true, fit: p.fit },
         geometry: { type: "Point", coordinates: p.anchor }
       }])),
     // BuildingBoundary changed (live reload during development).

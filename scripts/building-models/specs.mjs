@@ -177,6 +177,40 @@ export const BUILDING_SPECS = [
     style: "garage"
   },
   {
+    // BCSIR High School (photos: high-school/; style-school.mjs). The U building: pink
+    // galleries round its courtyard, the cream end wall with the school's name facing
+    // the Parents Shade.
+    id: 230,
+    name: "High School U",
+    file: "models/buildings/high-school-u.glb",
+    style: "school",
+    part: "court",
+    nameWallToward: 231,
+    groundHeight: 2.9,
+    bay: 3.3
+  },
+  {
+    // The cream block with the arched verandas facing the yard (photo 2).
+    id: 229,
+    name: "High School",
+    file: "models/buildings/high-school.glb",
+    style: "school",
+    part: "arcade",
+    groundHeight: 3.0,
+    bay: 3.4
+  },
+  {
+    // The pink kiosk with the school's signboard in front of the U building's end wall
+    // (photos 1 and 3); the sign faces the yard to the east.
+    id: 231,
+    name: "Parents Shade",
+    file: "models/buildings/school-shade.glb",
+    style: "school",
+    part: "shade",
+    front: 90,
+    sign: { photo: "high-school/photo-3.png", quad: [[54, 307], [734, 361], [734, 444], [54, 385]] }
+  },
+  {
     // The feature is a small marker: the gate is built at its real size on the
     // boundary wall next to it (see style-gate.mjs); set wall_gap_m on the feature
     // so the drawn boundary wall opens for it.

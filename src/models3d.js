@@ -36,6 +36,8 @@
 //   minPixels on screen, or outside the view; models smaller than impostorPixels
 //   are drawn as impostors (pre-rendered views of the model on camera-facing cards).
 // - Transparent parts (leaf cards) are drawn back to front.
+// - Building models that hide the drawn route (setFadedModelBuildings, from
+//   route-occlusion.js) are drawn see-through, like the faded extrusions.
 //
 // Models are configured in GeoJSON (public/data/models.geojson and the other
 // datasets, see model-placements.js); the model-manager UI was removed.
@@ -44,7 +46,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { MercatorCoordinate } from "maplibre-gl";
-import { MODEL_VISIBILITY } from "./config.js";
+import { MODEL_VISIBILITY, STYLE } from "./config.js";
 import { publicAssetUrl } from "./paths.js";
 import { acquireRenderer, releaseRenderer } from "./three-shared.js";
 
@@ -54,6 +56,7 @@ const LAYER_ID = "3d-models";
 const placementsByKey = new Map(); // geojsonUrl -> placements
 const lastSignatureByUrl = new Map();
 const hiddenKeys = new Set(); // model sets (geojsonUrl keys) hidden by the layer manager
+const fadedBuildings = new Set(); // building_id of building models drawn see-through
 let modelsVisible = true;
 let modelLayer = null;
 let lastStats = { placements: 0, drawn: 0, culled: 0, pendingDrawable: 0, loading: 0, levels: {} };
@@ -431,8 +434,37 @@ function sidedMaterials(material) {
 }
 const twoPass = (material) => !Array.isArray(material) && material.transparent && material.side === THREE.DoubleSide && !material.forceSinglePass;
 
+// See-through copies of a building model's material (setFadedModelBuildings): a
+// depth-only pass, then the colours at STYLE.routeObscuringOpacity where that depth
+// is met. Only the nearest surface of the model shows, as in the see-through
+// extrusions, instead of its back walls and floors through each other. Both are
+// drawn after the opaque models (transparent, renderOrder 1 and 2), so those show
+// through.
+const fadedCopies = new WeakMap(); // material -> [depth, colour]
+function fadedMaterials(material) {
+  if (!fadedCopies.has(material)) {
+    const depth = material.clone();
+    Object.assign(depth, { colorWrite: false, depthWrite: true, transparent: true, forceSinglePass: true });
+    const colour = material.clone();
+    Object.assign(colour, { transparent: true, opacity: material.opacity * STYLE.routeObscuringOpacity, depthWrite: false, depthFunc: THREE.LessEqualDepth, forceSinglePass: true });
+    for (const copy of [depth, colour]) {
+      copy.userData = { ...copy.userData, bcsirPlaced: false };
+      preparePlacedMaterial(copy);
+    }
+    fadedCopies.set(material, [depth, colour]);
+  }
+  return fadedCopies.get(material);
+}
+function disposeFadedMaterials(material) {
+  for (const item of Array.isArray(material) ? material : [material]) {
+    fadedCopies.get(item)?.forEach((copy) => copy.dispose());
+    fadedCopies.delete(item);
+  }
+}
+
 // One drawable part of one detail level: a GLB mesh drawn for many placements.
-function createPart(sourceMesh, capacity) {
+// faded: the see-through version of that part (fadedMaterials), with its own instances.
+function createPart(sourceMesh, capacity, faded = false) {
   // Geometry attributes are shared with the loaded GLB; only the per-instance
   // attributes are added to this copy.
   const geometry = new THREE.BufferGeometry();
@@ -446,21 +478,31 @@ function createPart(sourceMesh, capacity) {
   geometry.setAttribute("bcsirYaw", yaw);
   const materials = Array.isArray(sourceMesh.material) ? sourceMesh.material : [sourceMesh.material];
   materials.forEach(preparePlacedMaterial);
-  const instanced = (material) => {
+  const instanced = (material, renderOrder = 0) => {
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false; // culled per placement in render()
     mesh.matrixAutoUpdate = false;
+    mesh.renderOrder = renderOrder;
     mesh.count = 0;
     return mesh;
   };
-  const mesh = instanced(twoPass(sourceMesh.material) ? sidedMaterials(sourceMesh.material)[0] : sourceMesh.material);
-  // Front faces of a two-pass material: same geometry and instance data.
-  const front = twoPass(sourceMesh.material) ? instanced(sidedMaterials(sourceMesh.material)[1]) : null;
+  const fadedCopy = (pass) => (Array.isArray(sourceMesh.material) ? sourceMesh.material.map((material) => fadedMaterials(material)[pass]) : fadedMaterials(sourceMesh.material)[pass]);
+  let mesh, front;
+  if (faded) {
+    // Depth pass, then the colours: same geometry and instance data.
+    mesh = instanced(fadedCopy(0), 1);
+    front = instanced(fadedCopy(1), 2);
+  } else {
+    mesh = instanced(twoPass(sourceMesh.material) ? sidedMaterials(sourceMesh.material)[0] : sourceMesh.material);
+    // Front faces of a two-pass material: same geometry and instance data.
+    front = twoPass(sourceMesh.material) ? instanced(sidedMaterials(sourceMesh.material)[1]) : null;
+  }
   if (front) front.instanceMatrix = mesh.instanceMatrix;
   return {
     mesh,
     front,
+    faded,
     sourceMaterial: sourceMesh.material,
     place,
     yaw,
@@ -494,7 +536,9 @@ function createTemplate(url, onChange, precompile = () => Promise.resolve()) {
     // "bcsir_footprint": { min, max } in metres), used by `fit` placements; a canopy
     // or steps may reach beyond it. Null: the whole bounding box.
     fitBox: null,
-    levels: null, // [{ url, minPx, state, scene, parts, instances }], finest first
+    building: false, // used by a building placement: its levels also get see-through parts
+    // [{ url, minPx, state, scene, parts, instances, fadedParts, fadedInstances }], finest first
+    levels: null,
     ready: false,
     disposed: false,
     capacity: 0,
@@ -519,6 +563,7 @@ function createTemplate(url, onChange, precompile = () => Promise.resolve()) {
         level.scene = gltf.scene;
         level.parts = [];
         gltf.scene.traverse((object) => { if (object.isMesh) level.parts.push(createPart(object, Math.max(1, template.capacity))); });
+        if (template.building) level.fadedParts = level.parts.map((part) => createPart({ geometry: part.mesh.geometry, material: part.sourceMaterial, matrixWorld: part.meshMatrix }, Math.max(1, template.capacity), true));
         // Drawn once its shaders have compiled in the background (no main-thread stall).
         level.state = "compiling";
         const bake = !template.bakeSource;
@@ -549,9 +594,9 @@ function createTemplate(url, onChange, precompile = () => Promise.resolve()) {
     if (template.disposed) return;
     if (entry?.lods?.length) {
       template.box = new THREE.Box3(new THREE.Vector3(...entry.box.min), new THREE.Vector3(...entry.box.max));
-      template.levels = entry.lods.map((lod) => ({ url: lod.url, minPx: lod.minPx, state: "idle", parts: null, instances: [] }));
+      template.levels = entry.lods.map((lod) => ({ url: lod.url, minPx: lod.minPx, state: "idle", parts: null, instances: [], fadedParts: null, fadedInstances: [] }));
     } else {
-      template.levels = [{ url, minPx: 0, state: "idle", parts: null, instances: [] }];
+      template.levels = [{ url, minPx: 0, state: "idle", parts: null, instances: [], fadedParts: null, fadedInstances: [] }];
     }
     template.ready = true;
     loadLevel(template.levels.length - 1); // coarsest first: every model appears quickly
@@ -584,10 +629,12 @@ function createTemplate(url, onChange, precompile = () => Promise.resolve()) {
     template.capacity = capacity;
     for (const level of template.levels || []) {
       if (!level.parts) continue;
-      level.parts = level.parts.map((part) => {
+      const resize = (part) => {
         removePart(part);
-        return createPart({ geometry: part.mesh.geometry, material: part.sourceMaterial, matrixWorld: part.meshMatrix }, capacity);
-      });
+        return createPart({ geometry: part.mesh.geometry, material: part.sourceMaterial, matrixWorld: part.meshMatrix }, capacity, part.faded);
+      };
+      level.parts = level.parts.map(resize);
+      if (level.fadedParts) level.fadedParts = level.fadedParts.map(resize);
     }
     for (const impostor of template.impostors || []) {
       if (!impostor.part) continue;
@@ -617,6 +664,10 @@ function createTemplate(url, onChange, precompile = () => Promise.resolve()) {
       for (const part of level.parts || []) {
         removePart(part);
         if (part.front) sidedMaterials(part.sourceMaterial).forEach((material) => material.dispose());
+      }
+      for (const part of level.fadedParts || []) {
+        removePart(part);
+        disposeFadedMaterials(part.sourceMaterial);
       }
       if (level.scene) disposeObject3D(level.scene);
     }
@@ -677,6 +728,7 @@ function buildSignature(entries) {
         size: properties.size ?? null,
         rotation: normalizeDegrees(properties.rotation),
         building: properties.building === true,
+        building_id: properties.building_id ?? null,
         fit: fitSizeOf(properties.fit)
       };
     })
@@ -784,9 +836,10 @@ function createModelsLayer() {
       const programs = new Set();
       const compile = (root) => renderer.compile(root, camera, scene).forEach((material) => { const program = renderer.properties.get(material).currentProgram; if (program) programs.add(program); });
       const group = new THREE.Group();
-      for (const part of job.level.parts) { group.add(part.mesh); if (part.front) group.add(part.front); }
+      const parts = [...job.level.parts, ...(job.level.fadedParts || [])];
+      for (const part of parts) { group.add(part.mesh); if (part.front) group.add(part.front); }
       compile(group);
-      for (const part of job.level.parts) { group.remove(part.mesh); if (part.front) group.remove(part.front); }
+      for (const part of parts) { group.remove(part.mesh); if (part.front) group.remove(part.front); }
       if (job.withBake) {
         bakeTarget ||= new THREE.WebGLRenderTarget(1, 1);
         renderer.setRenderTarget(bakeTarget);
@@ -813,7 +866,11 @@ function createModelsLayer() {
 
   function syncTemplates() {
     const users = new Map();
-    for (const placements of placementsByKey.values()) for (const placement of placements) users.set(placement.url, (users.get(placement.url) || 0) + 1);
+    const buildingUrls = new Set();
+    for (const placements of placementsByKey.values()) for (const placement of placements) {
+      users.set(placement.url, (users.get(placement.url) || 0) + 1);
+      if (placement.building) buildingUrls.add(placement.url);
+    }
     for (const [url, template] of templates) {
       if (users.has(url)) continue;
       template.dispose();
@@ -822,6 +879,7 @@ function createModelsLayer() {
     for (const [url, count] of users) {
       let template = templates.get(url);
       if (!template) { template = createTemplate(url, repaint, precompile); templates.set(url, template); }
+      template.building = buildingUrls.has(url);
       template.users = count;
       template.setCapacity(count);
     }
@@ -944,10 +1002,10 @@ function createModelsLayer() {
       const focalPx = (gl.drawingBufferHeight / 2) / Math.tan((args.fov || 0.6435) / 2);
       const zoomVisible = map.getZoom() >= MODEL_VISIBILITY.minZoom;
 
-      const stats = { placements: 0, drawn: 0, culled: 0, pendingDrawable: 0, loading: 0, levels: {} };
+      const stats = { placements: 0, drawn: 0, culled: 0, pendingDrawable: 0, loading: 0, faded: 0, levels: {} };
       for (const template of templates.values()) {
         for (const impostor of template.impostors || []) impostor.instances.length = 0;
-        for (const level of template.levels || []) level.instances.length = 0;
+        for (const level of template.levels || []) { level.instances.length = 0; level.fadedInstances.length = 0; }
       }
 
       for (const [key, placements] of placementsByKey) {
@@ -984,7 +1042,9 @@ function createModelsLayer() {
           const index = template.levelFor(px);
           if (index < 0) { stats.pendingDrawable += 1; continue; }
           placement.distance = distance;
-          template.levels[index].instances.push(placement);
+          const level = template.levels[index];
+          if (level.fadedParts && fadedBuildings.has(placement.buildingId)) { level.fadedInstances.push(placement); stats.faded += 1; }
+          else level.instances.push(placement);
           stats.drawn += 1;
           stats.levels[index] = (stats.levels[index] || 0) + 1;
         }
@@ -1005,6 +1065,10 @@ function createModelsLayer() {
             if (!part.mesh.parent) scene.add(part.mesh);
             if (part.front && !part.front.parent) scene.add(part.front);
             fillPart(part, instances);
+          }
+          for (const part of level.fadedParts || []) {
+            if (!part.mesh.parent) scene.add(part.mesh, part.front);
+            fillPart(part, level.fadedInstances);
           }
         }
       }
@@ -1054,6 +1118,8 @@ function prepareModels(data, geojsonUrl) {
       size: toFiniteNumber(properties.size) ?? 1,
       rotation: normalizeDegrees(properties.rotation),
       building: properties.building === true,
+      // BuildingBoundary render_id of a building model (setFadedModelBuildings)
+      buildingId: properties.building_id === undefined || properties.building_id === null ? null : String(properties.building_id),
       fitSize: fitSizeOf(properties.fit)
     });
   }
@@ -1114,6 +1180,16 @@ export function set3DModelsVisible(map, visible, key = null) {
   if (key === null) modelsVisible = Boolean(visible);
   else if (visible) hiddenKeys.delete(key);
   else hiddenKeys.add(key);
+  map.triggerRepaint();
+}
+
+// Building models (placement building_id = BuildingBoundary render_id) drawn
+// see-through because they hide the drawn route (route-occlusion.js); [] = none.
+export function setFadedModelBuildings(map, ids) {
+  const next = new Set((ids || []).map(String));
+  if (next.size === fadedBuildings.size && [...next].every((id) => fadedBuildings.has(id))) return;
+  fadedBuildings.clear();
+  next.forEach((id) => fadedBuildings.add(id));
   map.triggerRepaint();
 }
 
