@@ -112,19 +112,15 @@
         </nav>
       </div>
 
-      <button id="walk-mode" class="first-person-button" type="button" aria-pressed="false" aria-label="Walk: choose a location on the map to walk from in first-person view" title="Walk (first-person view)">
+      <button id="walk-mode" class="first-person-button" type="button" aria-pressed="false" aria-label="Walk: choose a location on the map to walk from" title="Walk (V switches to first-person view)">
         <span class="fp-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2ZM9.8 8.9 7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></svg></span>
         <span class="walk-button-label">Walk</span>
       </button>
 
-      <!-- Character and view chosen before Walk Mode (walkMode.js) -->
+      <!-- Character chosen before Walk Mode, only when there is more than one (walkMode.js) -->
       <div id="walk-picker" class="walk-picker" role="dialog" aria-labelledby="walk-picker-title" hidden>
         <div class="walk-picker-head"><h2 id="walk-picker-title">Choose your character</h2><button id="walk-picker-close" class="icon-close" type="button" aria-label="Cancel">×</button></div>
         <div id="walk-picker-characters" class="walk-picker-characters" role="radiogroup" aria-label="Character"></div>
-        <div class="walk-picker-views" role="radiogroup" aria-label="View">
-          <label><input type="radio" name="walk-picker-view" value="third" checked /><span>Third person</span></label>
-          <label><input type="radio" name="walk-picker-view" value="first" /><span>First person</span></label>
-        </div>
         <button id="walk-picker-start" class="walk-picker-start" type="button">Choose a location</button>
       </div>
 
@@ -184,7 +180,7 @@
       </div>
 
       <aside id="walk-panel" class="walk-panel" aria-labelledby="walk-title" hidden>
-        <div class="walk-heading"><div><span id="walk-eyebrow" class="eyebrow">First person</span><h2 id="walk-title">Walk mode</h2></div><button id="walk-view" class="walk-exit walk-view" type="button" aria-pressed="false" title="Switch between third- and first-person view (V)">3rd person</button><button id="walk-gps" class="walk-exit walk-gps" type="button" aria-pressed="false" hidden>Follow GPS</button><button id="walk-close" class="walk-exit" type="button">Exit</button></div>
+        <div class="walk-heading"><div><span id="walk-eyebrow" class="eyebrow">Third person</span><h2 id="walk-title">Walk mode</h2></div><button id="walk-view" class="walk-exit walk-view" type="button" aria-pressed="false" title="Switch between third- and first-person view (V)">3rd person</button><button id="walk-gps" class="walk-exit walk-gps" type="button" aria-pressed="false" hidden>Follow GPS</button><button id="walk-close" class="walk-exit" type="button">Exit</button></div>
         <p class="walk-help">Use W/A/S/D or the arrow keys. Move the mouse or drag the map to look around; hold Shift to run and Space to jump. Press V to switch between third- and first-person view.</p>
         <div class="walk-pad" aria-label="First-person movement controls">
           <button type="button" data-walk-key="KeyQ" aria-label="Turn left">↶</button><button type="button" data-walk-key="KeyW" aria-label="Move forward">↑</button><button type="button" data-walk-key="KeyE" aria-label="Turn right">↷</button>

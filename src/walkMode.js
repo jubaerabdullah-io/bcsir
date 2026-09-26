@@ -3,11 +3,11 @@ import { WALK_CHARACTERS } from "./config.js";
 import { createWalkCharacter } from "./walk-character.js";
 import { createWalkSky } from "./walk-sky.js";
 
-// Walk mode. The toggle first shows the character and view picker, then asks for
-// a location: the next click on the map is where the camera goes down and walking
-// starts.
+// Walk mode. The toggle first shows the character picker (only when there is more
+// than one character), then asks for a location: the next click on the map is where
+// the camera goes down and walking starts.
 //
-// Views (V or the panel's view button switches them; the choice is remembered):
+// Views (every walk starts in third person; V or the panel's view button switches):
 // - third person: the chosen character (walk-character.js) stands at the player's
 //   position; a follow camera stays behind and above him. W/A/S/D move relative to
 //   the camera and the character turns smoothly to face the way he walks (backwards
@@ -68,7 +68,7 @@ const DEG = Math.PI / 180;
 const TOGGLE_TEXT = {
   idle: { label: "Walk", aria: "Walk: choose a character and a location on the map to walk from" },
   picking: { label: "Walk", aria: "Close the character picker" },
-  choosing: { label: "Click a location", aria: "Cancel choosing a first-person location" },
+  choosing: { label: "Click a location", aria: "Cancel choosing a walk location" },
   active: { label: "Exit", aria: "Exit walk mode" }
 };
 
@@ -183,8 +183,8 @@ export function createWalkMode({
   const player = { position: null, heading: 0 };
   const saved = readPreferences();
   let characterId = characters.some((item) => item.id === saved.character) ? saved.character : characters[0]?.id;
-  let view = saved.view === "first" ? "first" : "third";
-  let blend = view === "third" ? 1 : 0; // camera: 0 first person, 1 third person
+  let view = "third"; // reset to third person at every start (enterAt)
+  let blend = 1; // camera: 0 first person, 1 third person
   let pitch = 0; // look up/down, degrees
   let facing = 0; // the character's facing, degrees
   let facingTarget = null; // where the character turns to: the way he walks
@@ -439,7 +439,6 @@ export function createWalkMode({
     view = next;
     if (view === "first") facing = player.heading;
     else { facing = player.heading; facingTarget = null; followDistance = 0; }
-    savePreferences({ character: characterId, view });
     showView();
     wake(true);
   }
@@ -447,20 +446,18 @@ export function createWalkMode({
   // ---- Picker ----------------------------------------------------------------------------
   function renderPicker() {
     if (!pickerCharacters) return;
-    // With one character there is nothing to choose: only the view.
-    pickerCharacters.hidden = characters.length < 2;
-    if (pickerTitle) pickerTitle.textContent = characters.length < 2 ? "Walk mode" : "Choose your character";
+    if (pickerTitle) pickerTitle.textContent = "Choose your character";
     pickerCharacters.innerHTML = characters.map((item) => `<label><input type="radio" name="walk-picker-character" value="${item.id}"${item.id === characterId ? " checked" : ""} /><span class="walk-picker-card">${characterIcon(item)}<span>${item.name}</span></span></label>`).join("");
-    picker?.querySelectorAll('input[name="walk-picker-view"]').forEach((input) => { input.checked = input.value === view; });
   }
 
+  // With one character there is nothing to choose: straight to the location.
   function openPicker() {
-    if (!picker || !characters.length) { startChoosing(); return; }
+    if (!picker || characters.length < 2) { startChoosing(); return; }
     picking = true;
     renderPicker();
     picker.hidden = false;
     setToggleState("picking");
-    ((characters.length > 1 && picker.querySelector('input[name="walk-picker-character"]:checked')) || pickerStart)?.focus();
+    (picker.querySelector('input[name="walk-picker-character"]:checked') || pickerStart)?.focus();
   }
 
   function closePicker({ restoreFocus = true } = {}) {
@@ -473,10 +470,8 @@ export function createWalkMode({
 
   function confirmPicker() {
     const chosen = picker?.querySelector('input[name="walk-picker-character"]:checked')?.value;
-    const chosenView = picker?.querySelector('input[name="walk-picker-view"]:checked')?.value;
     if (chosen) characterId = chosen;
-    if (chosenView === "third" || chosenView === "first") { view = chosenView; blend = view === "third" ? 1 : 0; }
-    savePreferences({ character: characterId, view });
+    savePreferences({ character: characterId });
     closePicker({ restoreFocus: false });
     startChoosing();
   }
@@ -568,7 +563,8 @@ export function createWalkMode({
     running = false;
     Object.assign(jump, { height: 0, velocity: 0, held: false });
     followDistance = 0;
-    blend = view === "third" ? 1 : 0;
+    view = "third";
+    blend = 1;
     entering = true;
     sky.show();
     const id = ++descent;
