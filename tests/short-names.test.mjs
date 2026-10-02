@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { shortBuildingName, wrapName } from "../src/short-names.js";
 
-const buildings = JSON.parse(readFileSync(new URL("../public/data/BuildingBoundary.geojson", import.meta.url), "utf8"));
+const buildings = JSON.parse(readFileSync(new URL("../public/data/bcsir/BuildingBoundary.geojson", import.meta.url), "utf8"));
 const byId = (id) => buildings.features.find((feature) => feature.properties.id === id).properties;
 
 test("minimap names: the data's short name, else a friendly short form of the full name", () => {

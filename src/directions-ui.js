@@ -25,7 +25,9 @@ const ROLE = { source: "starting point", destination: "destination" };
 // onNavigate(view) starts live guidance ("map") or the first-person 3D mode
 // ("walk") on the drawn route; the Start / 3D mode buttons show only when a
 // walking route is drawn (description.navigable).
-export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, onClearEndpoint, onSwap, onClearRoute, onPick, onWalkChange, onMessage, onNavigate }) {
+// onStep(step) shows a step of an indoor route; onStepFreeChange(on) recalculates
+// the route with or without stairs.
+export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, onClearEndpoint, onSwap, onClearRoute, onPick, onWalkChange, onMessage, onNavigate, onStep, onStepFreeChange }) {
   const panel = document.querySelector("#directions");
   const toggle = document.querySelector("#directions-toggle");
   const hint = document.querySelector("#direction-hint");
@@ -44,7 +46,7 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
   let picking = null;
   let walkOn = true;
 
-  const entryText = (entry) => (entry.kind === "test" && entry.subtitle ? `${entry.title} · ${entry.subtitle}` : entry.title);
+  const entryText = (entry) => (entry.kind === "test" && entry.subtitle ? `${entry.title} · ${entry.subtitle}` : entry.kind === "place" && entry.meta ? `${entry.title} · ${entry.meta}` : entry.title);
   const otherKind = (kind) => (kind === "source" ? "destination" : "source");
 
   function setExpanded(expanded) {
@@ -67,7 +69,7 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
     });
     swap.disabled = !slots.source && !slots.destination;
     clearRoute.hidden = !slots.source && !slots.destination;
-    hint.textContent = picking ? `Click a building on the map to set the ${ROLE[picking]}. Press Esc to cancel.` : "";
+    hint.textContent = picking ? `Click a building (or a room on an open floor) to set the ${ROLE[picking]}. Press Esc to cancel.` : "";
     hint.hidden = !picking;
   }
 
@@ -90,7 +92,7 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
     slots[kind] = { entry, feature };
     inputs[kind].value = entryText(entry);
     updateControls();
-    onSetEndpoint(kind, feature);
+    onSetEndpoint(kind, feature, entry);
   }
 
   const combos = {};
@@ -99,7 +101,7 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
     combos[kind] = createCombobox({
       input,
       list: document.querySelector(`#${input.id}-results`),
-      search: (query) => getDirectory().search(query, { kinds: kind === "source" ? ["building", "lab"] : ["building", "lab", "test"], limit: 20 }),
+      search: (query) => getDirectory().search(query, { kinds: kind === "source" ? ["building", "place", "lab"] : ["building", "place", "lab", "test"], limit: 20 }),
       onSelect: (entry) => {
         choose(kind, entry);
         if (!touchScreen.matches) return;
@@ -107,7 +109,7 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
         else input.blur();
       },
       onClear: () => { if (slots[kind]) onClearEndpoint(kind); },
-      emptyText: kind === "source" ? "No buildings or labs" : "No buildings, labs or tests",
+      emptyText: "Nothing",
       fitToScreen: true
     });
     input.addEventListener("focus", () => {
@@ -146,9 +148,10 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
       const kind = pick.dataset.pick;
       if (picking === kind) { stopPicking(); return; }
       picking = kind;
-      onPick?.(kind, (feature) => {
+      // entry: the room chosen on an open floor plan, when the click was on one.
+      onPick?.(kind, (feature, entry = null) => {
         picking = null;
-        choose(kind, getDirectory().entryForBuilding(feature) || { kind: "building", title: feature.properties?.name_en || "Building", buildingId: String(feature.properties?.id) });
+        choose(kind, entry || getDirectory().entryForBuilding(feature) || { kind: "building", title: feature.properties?.name_en || "Building", buildingId: String(feature.properties?.id) });
       });
       updateControls();
     }
@@ -188,8 +191,13 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
       if (!feature) {
         slots[kind] = null;
         if (document.activeElement !== inputs[kind]) inputs[kind].value = "";
-      } else if (slots[kind]?.feature !== feature) {
-        const entry = getDirectory().entryForBuilding(feature) || { kind: "building", title: feature.properties?.name_en || "Building" };
+      } else {
+        // selection.entries: the room chosen inside that building, when the endpoint is a room.
+        const place = selection.entries?.[kind] || null;
+        const current = slots[kind];
+        const same = current?.feature === feature && (place ? current.entry.key === place.key : current.entry.kind !== "place");
+        if (same) return;
+        const entry = place || getDirectory().entryForBuilding(feature) || { kind: "building", title: feature.properties?.name_en || "Building" };
         slots[kind] = { entry, feature };
         inputs[kind].value = entryText(entry);
       }
@@ -198,10 +206,29 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
     updateControls();
   }
 
-  // Route summary: `description` from route-summary.js, or null.
+  // Steps of a route that goes through floor plans (trip.js); clicking one shows it.
+  const steps = document.querySelector("#route-steps");
+  const accessibleOption = document.querySelector("#route-accessible-option");
+  const accessible = document.querySelector("#route-accessible");
+  let shownSteps = [];
+  steps.addEventListener("click", (event) => {
+    const item = event.target.closest("[data-step]");
+    if (item) onStep?.(shownSteps[Number(item.dataset.step)]);
+  });
+  accessible.addEventListener("change", () => onStepFreeChange?.(accessible.checked));
+  function showSteps(list) {
+    shownSteps = list || [];
+    steps.hidden = !shownSteps.length;
+    steps.innerHTML = shownSteps.map((step, index) => `<li><button type="button" class="route-step" data-step="${index}"><span class="route-step-icon route-step-${escapeHTML(step.kind)}" data-icon="${escapeHTML(step.icon)}" aria-hidden="true"></span><span class="route-step-text"><strong>${escapeHTML(step.title)}</strong><small>${escapeHTML(step.detail)}</small></span></button></li>`).join("");
+  }
+
+  // Route summary: `description` from route-summary.js or trip.js, or null.
   function showRoute(description) {
     summary.dataset.status = description?.status || "idle";
     notes.innerHTML = "";
+    const complete = Boolean(walkOn && slots.source && slots.destination && description);
+    showSteps(complete ? description.steps : []);
+    accessibleOption.hidden = !(complete && (description.floorChanges > 0 || accessible.checked));
     if (routeActions) routeActions.hidden = !(description?.navigable && walkOn && slots.source && slots.destination);
     if (!slots.source && !slots.destination) {
       headline.textContent = "";
@@ -236,6 +263,7 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
     setEndpointEntry,
     setExpanded,
     isWalkOn: () => walkOn,
+    isStepFree: () => accessible.checked,
     closeLists() { KINDS.forEach((kind) => combos[kind].close()); stopPicking(); }
   };
 }

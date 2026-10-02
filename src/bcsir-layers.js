@@ -1,4 +1,4 @@
-// MapLibre sources and layers for the BCSIR datasets.
+// MapLibre sources and layers for an organisation's site datasets.
 //
 // Follows the reference addIndoorLayers() pattern: GeoJSON sources with
 // promoteId, body + roof fill-extrusion layers, thin roof seams and corner
@@ -24,7 +24,7 @@ import { collectModelPlacements } from "./model-placements.js";
 export { lineStrips };
 
 // GLB trees placed by TreeLineModels.geojson replace the procedural trees.
-const hasTreeModels = (collection) => collectModelPlacements([{ label: "TreeLineModels.geojson", collection }]).collection.features.length > 0;
+const hasTreeModels = (collection) => collectModelPlacements([{ label: "tree models", collection }]).collection.features.length > 0;
 
 const EMPTY = { type: "FeatureCollection", features: [] };
 const base = ["get", "render_base_m"];
@@ -35,7 +35,9 @@ const state = (name) => ["boolean", ["feature-state", name], false];
 
 // Layer groups used by the layer manager. `layers` are MapLibre layer ids;
 // `custom` names are toggled through their own APIs; `models` lists the datasets
-// whose Point/MultiPoint features (or model_points) place GLB models.
+// whose Point/MultiPoint features (or model_points) place GLB models. `dataset` is
+// the dataset a group draws: the layer list names its file and leaves out the
+// groups whose dataset the organisation does not have.
 // See-through copies of the building layers. route-occlusion.js moves the
 // buildings that hide the drawn route into them (by filter); they hold no
 // building otherwise.
@@ -46,24 +48,25 @@ export const ROUTE_FADED_LAYERS = { body: "buildings-body-route-faded", roof: "b
 export const MODEL_HIT_LAYER = "buildings-model-hit";
 
 export const LAYER_GROUPS = [
-  { id: "buildings", label: "Buildings (3D)", source: "BuildingBoundary.geojson", layers: ["buildings-footprint", "buildings-body", "buildings-roof", "buildings-roof-seams", "buildings-corners", ROUTE_FADED_LAYERS.body, ROUTE_FADED_LAYERS.roof, MODEL_HIT_LAYER], models: ["buildings"] },
-  { id: "labels", label: "Building labels", source: "BuildingBoundary.geojson", layers: ["building-labels-major", "building-labels-minor"] },
-  { id: "roads", label: "Connected roads", source: "ConnectedRoad.geojson", layers: ["roads-3d"], models: ["roads"] },
-  { id: "roadsDrawing", label: "Connected roads (drawing version)", source: "ConnectedRoadsDrawingVersion.geojson", layers: ["roads-drawing-3d"], models: ["roadsDrawing"] },
-  { id: "pathways", label: "Pathways", source: "Pathway.geojson", layers: ["pathways-3d"], models: ["pathways"] },
-  { id: "boundary", label: "BCSIR boundary", source: "BCSIRBoundary.geojson", layers: ["boundary-fill", "boundary-wall"], models: ["boundary"] },
-  { id: "internal", label: "Internal boundaries", source: "InternalBoundary.geojson", layers: ["internal-wall"], models: ["internal"] },
-  { id: "garden", label: "Garden", source: "Garden.geojson", layers: ["garden-3d"], custom: "garden", models: ["garden", "gardenModels"] },
-  { id: "trees", label: "Tree line", source: "TreeLine.geojson", layers: [], custom: "trees", models: ["treeLine", "treeLineModels"] },
-  { id: "route", label: "Calculated route", source: "r2.json + original Dijkstra", layers: ["route-casing", "route-line", "route-access"], custom: "routeMarkers" },
-  { id: "models", label: "3D models", source: "models.geojson", layers: [], custom: "models", models: ["models"] },
+  { id: "buildings", label: "Buildings (3D)", dataset: "buildings", layers: ["buildings-footprint", "buildings-body", "buildings-roof", "buildings-roof-seams", "buildings-corners", ROUTE_FADED_LAYERS.body, ROUTE_FADED_LAYERS.roof, MODEL_HIT_LAYER], models: ["buildings"] },
+  { id: "labels", label: "Building labels", dataset: "buildings", layers: ["building-labels-major", "building-labels-minor"] },
+  { id: "roads", label: "Connected roads", dataset: "roads", layers: ["roads-3d"], models: ["roads"] },
+  { id: "roadsDrawing", label: "Connected roads (drawing version)", dataset: "roadsDrawing", layers: ["roads-drawing-3d"], models: ["roadsDrawing"] },
+  { id: "pathways", label: "Pathways", dataset: "pathways", layers: ["pathways-3d"], models: ["pathways"] },
+  { id: "area", label: "Site area", dataset: "area", layers: ["area-fill"] },
+  { id: "boundary", label: "Site boundary", dataset: "boundary", layers: ["boundary-fill", "boundary-wall"], models: ["boundary"] },
+  { id: "internal", label: "Internal boundaries", dataset: "internal", layers: ["internal-wall"], models: ["internal"] },
+  { id: "garden", label: "Garden", dataset: "garden", layers: ["garden-3d"], custom: "garden", models: ["garden", "gardenModels"] },
+  { id: "trees", label: "Tree line", dataset: "treeLine", layers: [], custom: "trees", models: ["treeLine", "treeLineModels"] },
+  { id: "route", label: "Calculated route", source: "Walking network and floor plans", layers: ["route-casing", "route-line", "route-access"], custom: "routeMarkers" },
+  { id: "models", label: "3D models", dataset: "models", layers: [], custom: "models", models: ["models"] },
   { id: "basemap", label: "Basemap", source: "Street (© OpenStreetMap) or satellite (Esri)", layers: [], custom: "basemap" }
 ];
 
 // Drawn campus geometry and GLB models. The satellite basemap shows the imagery
 // alone, so these groups are hidden while it is active; building labels, the
 // route and its pins stay.
-export const SATELLITE_HIDDEN_GROUPS = ["buildings", "roads", "roadsDrawing", "pathways", "boundary", "internal", "garden", "trees", "models"];
+export const SATELLITE_HIDDEN_GROUPS = ["buildings", "roads", "roadsDrawing", "pathways", "area", "boundary", "internal", "garden", "trees", "models"];
 
 const extrusion = (id, source, extra = {}) => ({
   id,
@@ -80,23 +83,27 @@ const extrusion = (id, source, extra = {}) => ({
   }
 });
 
-// Campus ground: the BCSIRBoundary polygon and the strips built around roads,
-// pathways and walls share ONE source; each layer draws its own part (render_part).
+// Campus ground: the site area and boundary polygons and the strips built around
+// roads, pathways and walls share ONE source; each layer draws its own part (render_part).
 // MapLibre updates every source on every camera frame, so one source instead of
 // six keeps camera moves light; the layers, their order and paint are unchanged.
 const CAMPUS_SOURCE = "campus-ground";
-const GROUND_KEYS = ["boundary", "internal", "roads", "roadsDrawing", "pathways"];
+const GROUND_KEYS = ["area", "boundary", "internal", "roads", "roadsDrawing", "pathways"];
 const ground = Object.fromEntries(GROUND_KEYS.map((key) => [key, EMPTY]));
 // Openings in the drawn boundary wall where a gate is drawn from a GLB model
 // (building-models.js, wall_gap_m): [{ point: [lon, lat], halfWidth }]. Render
 // geometry only: the data and the walk collision keep the whole wall.
 let wallGaps = [];
 const tagged = (name, collection) => collection.features.map((feature) => ({ ...feature, properties: { ...feature.properties, render_part: name } }));
+// The ground colour fills boundary polygons only: a boundary drawn as a line is a
+// wall, and a fill layer would close the line into an area.
+const polygonsOnly = (collection) => ({ ...collection, features: collection.features.filter((feature) => feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon") });
 function campusGround() {
   return {
     type: "FeatureCollection",
     features: [
-      ...tagged("boundary", ground.boundary),
+      ...tagged("area", ground.area),
+      ...tagged("boundary", polygonsOnly(ground.boundary)),
       ...tagged("boundary-wall", lineStrips(cutLineGaps(ground.boundary, wallGaps))),
       ...tagged("internal-wall", lineStrips(ground.internal)),
       ...tagged("roads-drawing", lineStrips(ground.roadsDrawing)),
@@ -126,6 +133,8 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
   map.addSource("route", { type: "geojson", data: EMPTY });
 
   // ---- Ground ---------------------------------------------------------------------
+  // Site area (area.geojson): the ground alone, in `fill_color` (or `color`).
+  map.addLayer({ id: "area-fill", type: "fill", source: CAMPUS_SOURCE, filter: partOf("area"), paint: { "fill-color": ["get", "render_fill_color"], "fill-opacity": 0.62 } });
   // BCSIRBoundary: `fill_color` colours the campus ground; `color` its wall.
   map.addLayer({ id: "boundary-fill", type: "fill", source: CAMPUS_SOURCE, filter: partOf("boundary"), paint: { "fill-color": ["get", "render_fill_color"], "fill-opacity": 0.62 } });
   map.addLayer({
@@ -262,6 +271,7 @@ export function updateDatasetLayers(map, key, render, extras = {}) {
       set("building-corners", verticalCorners(data));
       set("building-labels", buildingLabelPoints(data, extras.badgeFor));
       break;
+    case "area":
     case "boundary":
     case "internal":
     case "roads":
@@ -284,8 +294,24 @@ export function setBuildingOpacity(map, opacity) {
 }
 
 // Buildings (render_ids) drawn by a GLB model: they get the invisible hit extrusion.
+// A building whose floor plan is open has no shell, so no hit extrusion and no label.
+let modelHitIds = [];
+let shellHiddenIds = [];
+const LABEL_FILTERS = { "building-labels-major": [">=", ["get", "labeling_priority"], 8], "building-labels-minor": ["<", ["get", "labeling_priority"], 8] };
+function applyShellFilters(map) {
+  if (map.getLayer(MODEL_HIT_LAYER)) map.setFilter(MODEL_HIT_LAYER, ["in", ["get", "render_id"], ["literal", modelHitIds.filter((id) => !shellHiddenIds.includes(id))]]);
+  for (const [id, filter] of Object.entries(LABEL_FILTERS)) {
+    if (map.getLayer(id)) map.setFilter(id, shellHiddenIds.length ? ["all", filter, ["!", ["in", ["get", "render_id"], ["literal", shellHiddenIds]]]] : filter);
+  }
+}
 export function setModelHitBuildings(map, ids) {
-  if (map.getLayer(MODEL_HIT_LAYER)) map.setFilter(MODEL_HIT_LAYER, ["in", ["get", "render_id"], ["literal", (ids || []).map(String)]]);
+  modelHitIds = (ids || []).map(String);
+  applyShellFilters(map);
+}
+// ids: render_ids of the buildings whose floor plan is open ([] = none).
+export function setShellHiddenBuildings(map, ids) {
+  shellHiddenIds = (ids || []).map(String);
+  applyShellFilters(map);
 }
 
 // Route line and access legs. Endpoint pins are HTML markers (route-markers.js).

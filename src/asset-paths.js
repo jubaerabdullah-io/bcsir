@@ -20,6 +20,34 @@ export function encodeAssetPath(path) {
   return `${encoded}${suffix}`;
 }
 
+const REMOTE = /^(?:[a-z][a-z0-9+.-]*:)?\/\//i;
+const INLINE = /^(?:data|blob):/i;
+
+// Path in public/ of an organisation's file, from the value written in its data.
+// Every organisation has its own folder in public/models/ and public/image/
+// (public/models/bcsir/, public/image/bcsir/), and files any organisation may use
+// are in the "shared" folder. `folder` is "models" or "image". The data may name a
+// file with or without those folders; all of these give models/bcsir/tree.glb for
+// organisation "bcsir":
+//   "tree.glb"  "/models/tree.glb"  "models/tree.glb"  "models/bcsir/tree.glb"
+// and "shared/tree.glb" gives models/shared/tree.glb. Remote URLs are kept.
+export function orgAssetPath(folder, value, orgId) {
+  const text = String(value ?? "").trim();
+  if (!text || REMOTE.test(text) || INLINE.test(text)) return text;
+  let rest = text.replace(/^\.\//, "").replace(/^\/+/, "").replace(/^public\//i, "");
+  if (rest.toLowerCase().startsWith(`${folder}/`)) rest = rest.slice(folder.length + 1);
+  if (rest.startsWith("shared/") || !orgId || rest.startsWith(`${orgId}/`)) return `${folder}/${rest}`;
+  return `${folder}/${orgId}/${rest}`;
+}
+
+// The same file relative to the organisation's own folder ("buildings/igcrt.glb"),
+// or null for a remote URL or a shared file.
+export function orgAssetKey(folder, value, orgId) {
+  const full = orgAssetPath(folder, value, orgId);
+  const prefix = `${folder}/${orgId}/`;
+  return full.startsWith(prefix) ? full.slice(prefix.length) : null;
+}
+
 // Path of `requested` inside a folder listing (["101.jpg", "Sub/Photo.PNG"]),
 // matched exactly, else ignoring capitalisation and URL encoding. Returns the
 // listed spelling, or null when the file is not in the listing.

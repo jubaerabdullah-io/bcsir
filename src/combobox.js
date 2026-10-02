@@ -5,11 +5,12 @@
 import { escapeHTML } from "./html.js";
 
 const ICONS = {
+  place: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20.5V4.5h9.5v16"/><path d="M3.5 20.5h17"/><path d="M15.5 7.5h3v13"/><path d="M12.2 12.5v.6"/></g></svg>',
   building: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.4c-3.9 0-7.1 3.1-7.1 7 0 5.3 7.1 12.2 7.1 12.2s7.1-6.9 7.1-12.2c0-3.9-3.2-7-7.1-7Zm0 9.6a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z"/></svg>',
   lab: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.2 3.6 3.4 2-3.9 6.7-3.4-2Z"/><path d="m10.2 8.9 2.3 1.3"/><path d="M13.6 11.4a5.2 5.2 0 0 1-1.1 8.1"/><path d="M5 20.6h14"/><path d="M8 17.6h6"/></g></svg>',
   test: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" opacity=".3" d="M7.6 14.2h8.8l2.6 4a1.5 1.5 0 0 1-1.3 2.3H6.3A1.5 1.5 0 0 1 5 18.2Z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 3.2h6M10.2 3.2v5.3l-5.3 9A2.3 2.3 0 0 0 6.9 21h10.2a2.3 2.3 0 0 0 2-3.5l-5.3-9V3.2"/></svg>'
 };
-export const KIND_LABELS = { building: "Building", lab: "Laboratory", test: "Test" };
+export const KIND_LABELS = { building: "Building", place: "Room", lab: "Laboratory", test: "Test" };
 
 export function kindIcon(kind) {
   return `<span class="result-icon result-icon-${kind}">${ICONS[kind] || ICONS.building}</span>`;

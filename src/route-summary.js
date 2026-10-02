@@ -52,7 +52,7 @@ export function describeRoute(result) {
     return {
       status: "error",
       headline: "No walking route",
-      detail: "These places are not connected in the campus road network (ConnectedRoads/v0/r2.json). No route is drawn, because the network has no path between them.",
+      detail: "These places are not connected in the road network. No route is drawn, because the network has no path between them.",
       notes
     };
   }

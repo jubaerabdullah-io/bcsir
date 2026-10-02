@@ -7,7 +7,7 @@ import { verifyRouting } from "../scripts/verify-routing.mjs";
 
 test("all original BCSIR files are byte-identical to the recorded checksums", async () => {
   const results = await verifyOriginals();
-  assert.equal(results.length, 16);
+  assert.equal(results.length, 14);
   const changed = results.filter((result) => !result.ok);
   assert.deepEqual(changed, [], changed.map((result) => `${result.file}: ${result.detail}`).join("\n"));
 });

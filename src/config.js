@@ -1,34 +1,23 @@
-// BCSIR 3D map configuration.
+// 3D map configuration.
 //
 // Heights, thicknesses and colours of map features come from the GeoJSON files
-// in public/data/ (properties base_m, top_m, thickness_m, color, ...). The values
-// below are only FALLBACKS, used when a feature has no valid value of its own.
+// in public/data/<organisation>/ (properties base_m, top_m, thickness_m, color, ...).
+// The values below are only FALLBACKS, used when a feature has no valid value of
+// its own.
 
-// Dataset URLs (relative to the site root, served from public/data/).
-export const DATA_PATHS = {
-  boundary: "data/BCSIRBoundary.geojson",
-  buildings: "data/BuildingBoundary.geojson",
-  roads: "data/ConnectedRoad.geojson",
-  roadsDrawing: "data/ConnectedRoadsDrawingVersion.geojson",
-  pathways: "data/Pathway.geojson",
-  internal: "data/InternalBoundary.geojson",
-  garden: "data/Garden.geojson",
-  treeLine: "data/TreeLine.geojson",
-  models: "data/models.geojson",
-  gardenModels: "data/GardenModels.geojson",
-  treeLineModels: "data/TreeLineModels.geojson",
-  network: "data/ConnectedRoads/v0/r2.json" // routing network (byte-identical copy of the original)
-};
+// The datasets of an organisation. Which file holds each one is recorded in the
+// organisation's index (org.json "datasets", or the default file names in
+// scripts/lib/catalog.mjs); an organisation only needs the files it has.
+// "network" is the routing network: without one, roads and pathways are used.
+export const DATASET_KEYS = ["area", "boundary", "buildings", "roads", "roadsDrawing", "pathways", "internal", "garden", "treeLine", "models", "gardenModels", "treeLineModels", "network"];
 
-// Published data path -> dataset key. Used for live reload during `npm run dev`.
-export const DATASET_BY_FILE = Object.fromEntries(Object.entries(DATA_PATHS).map(([key, file]) => [file, key]));
-
-// Initial camera. The map is re-framed to the BCSIR boundary once data loads.
+// Initial camera when the organisation's org.json sets no "view". The map is
+// re-framed to the site boundary once data loads.
 export const INITIAL_VIEW = { center: [90.38612, 23.74024], zoom: 16.6, pitch: 58, bearing: -20 };
 
 // Visibility of GLB models by zoom level and distance (models3d.js). Within these
 // limits each model is drawn with the detail level that suits its height on screen
-// (public/models/lod/manifest.json, written by `npm run models:optimize`).
+// (public/models/<organisation>/lod/manifest.json, written by `npm run models:optimize`).
 export const MODEL_VISIBILITY = {
   minZoom: 14, // below this zoom no GLB model is drawn (a 7.5 m tree is under 2 px)
   maxDistanceM: 3000, // models farther than this from the camera are not drawn
@@ -53,6 +42,9 @@ export const MODEL_VISIBILITY = {
 //                          face: the building's long side nearest to it is used
 //                          (model_rotation 180 takes the other long side)
 // Add ?buildingDebug to the page URL to outline footprints, anchors, fronts and model boxes.
+// The modules of an organisation are listed in its org.json ("model_modules", same
+// values); BCSIR's residential module is also here for the model builder
+// (scripts/building-models/specs.mjs).
 export const RESIDENTIAL_MODULE = { bay: 3.3, depth: 12, floor: 3.5, parapet: 0.8, front: 180 };
 export const BUILDING_MODELS = {
   enabled: true,
@@ -61,13 +53,13 @@ export const BUILDING_MODELS = {
 };
 
 // The Walk Mode character (walk-character.js): the cartoon walker,
-// models/characters/male.glb (`npm run models:character`), with clips named Idle,
+// models/shared/characters/male.glb (`npm run models:character`), with clips named Idle,
 // Walk, Run and Jump; `colors` recolour its materials (Skin, Hair, Shirt, Trousers,
 // Shoes) and the picker's figure. More entries would add a choice of character in
 // the picker; an entry may also set height (m) and walkPace, runPace (m/s its Walk
 // and Run clips are animated for).
 export const WALK_CHARACTERS = [
-  { id: "blue-shirt", name: "Walker", model: "models/characters/male.glb", colors: { Skin: "#a8744f", Hair: "#17110d", Shirt: "#2f6db0", Trousers: "#2a2e36", Shoes: "#1b1b1b" } }
+  { id: "blue-shirt", name: "Walker", model: "models/shared/characters/male.glb", colors: { Skin: "#a8744f", Hair: "#17110d", Shirt: "#2f6db0", Trousers: "#2a2e36", Shoes: "#1b1b1b" } }
 ];
 
 // Look of the ground surfaces made from a GLB (surface-layer.js), by model file
@@ -83,6 +75,7 @@ export const SURFACE_APPEARANCE = {
 
 // Fallbacks for missing or invalid feature properties, per dataset.
 export const LAYER_DEFAULTS = {
+  area: { base_m: 0, top_m: 0, color: "#FFFFE6" },
   boundary: { base_m: 0, top_m: 3, thickness_m: 0.25, color: "#FFFFFF", fill_color: "#FFFFE6" },
   buildings: { base_m: 0, top_m: 3, color: "#FFFFFF" },
   roads: { base_m: 0, top_m: 0.06, thickness_m: 3, color: "#FFFFFF" },
@@ -104,7 +97,7 @@ export const METRES_PER_LEVEL = 3.2;
 
 // BuildingBoundary.geojson already had a `color` attribute holding the QGIS
 // category codes o / r / b / g. Those codes still work and map to the QGIS
-// colours below (also listed in ReadMeColor.md); a hex value such as "#FF0000"
+// colours below; a hex value such as "#FF0000"
 // replaces them.
 export const BUILDING_CATEGORIES = {
   o: { label: "Office", color: "#d9d0c9" },

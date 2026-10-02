@@ -1,0 +1,32 @@
+{
+  "name": "Bangladesh Council of Scientific and Industrial Research",
+  "short_name": "BCSIR",
+  "tagline": "Science Laboratory campus, Dhanmondi, Dhaka",
+  "logo": "logo.png",
+  "accent": "#0f766e",
+  "order": 1,
+  "default": true,
+  "view": { "center": [90.38612, 23.74024], "zoom": 16.6, "pitch": 58, "bearing": -20 },
+  "search_placeholder": "Search buildings, labs, rooms or tests...",
+  "datasets": {
+    "boundary": "BCSIRBoundary.geojson",
+    "buildings": "BuildingBoundary.geojson",
+    "roads": "ConnectedRoad.geojson",
+    "roadsDrawing": "ConnectedRoadsDrawingVersion.geojson",
+    "pathways": "Pathway.geojson",
+    "internal": "InternalBoundary.geojson",
+    "garden": "Garden.geojson",
+    "treeLine": "TreeLine.geojson",
+    "models": "models.geojson",
+    "gardenModels": "GardenModels.geojson",
+    "treeLineModels": "TreeLineModels.geojson",
+    "network": "ConnectedRoads/v0/r2.json"
+  },
+  "directory": {
+    "laboratories": "directory/laboratories.json",
+    "services": "directory/testing-services.json"
+  },
+  "model_modules": {
+    "models/buildings/residential.glb": { "bay": 3.3, "depth": 12, "floor": 3.5, "parapet": 0.8, "front": 180 }
+  }
+}

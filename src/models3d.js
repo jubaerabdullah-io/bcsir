@@ -48,6 +48,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { MercatorCoordinate } from "maplibre-gl";
 import { MODEL_VISIBILITY, STYLE } from "./config.js";
 import { publicAssetUrl } from "./paths.js";
+import { activeOrg, modelPath as orgModelPath, orgId } from "./org.js";
 import { acquireRenderer, releaseRenderer } from "./three-shared.js";
 
 THREE.Cache.enabled = true;
@@ -57,6 +58,7 @@ const placementsByKey = new Map(); // geojsonUrl -> placements
 const lastSignatureByUrl = new Map();
 const hiddenKeys = new Set(); // model sets (geojsonUrl keys) hidden by the layer manager
 const fadedBuildings = new Set(); // building_id of building models drawn see-through
+const hiddenBuildings = new Set(); // building_id of building models not drawn (their floor plan is open)
 let modelsVisible = true;
 let modelLayer = null;
 let lastStats = { placements: 0, drawn: 0, culled: 0, pendingDrawable: 0, loading: 0, levels: {} };
@@ -84,9 +86,11 @@ function safeId(value) {
   return cleaned || "model";
 }
 
+// "models/tree.glb" in the data is the open organisation's public/models/<org>/tree.glb.
 function resolveModelUrl(modelPath) {
-  return publicAssetUrl(modelPath);
+  return publicAssetUrl(orgModelPath(modelPath));
 }
+const modelsFolderUrl = () => publicAssetUrl(`models/${orgId()}/`);
 
 function firstFinite(properties, names) {
   for (const name of names) {
@@ -215,16 +219,17 @@ export function whenModelLoaded(url) {
 let manifestPromise = null;
 function loadManifest() {
   if (!manifestPromise) {
-    manifestPromise = fetch(publicAssetUrl("models/lod/manifest.json"), { cache: "no-cache" })
+    // An organisation without optimized models has no manifest to ask for.
+    manifestPromise = activeOrg()?.has_model_manifest === false ? Promise.resolve({ models: {} }) : fetch(new URL("lod/manifest.json", modelsFolderUrl()).href, { cache: "no-cache" })
       .then((response) => (response.ok ? response.json() : { models: {} }))
       .catch(() => ({ models: {} }));
   }
   return manifestPromise;
 }
 
-// Path of a model URL inside public/models/ ("mango_tree.glb"), or null.
+// Path of a model URL inside public/models/<org>/ ("mango_tree.glb"), or null.
 function manifestKey(url) {
-  const base = publicAssetUrl("models/");
+  const base = modelsFolderUrl();
   return url.startsWith(base) ? decodeURIComponent(url.slice(base.length).split(/[?#]/)[0]) : null;
 }
 
@@ -238,7 +243,7 @@ export function modelManifestEntry(url) {
       const key = manifestKey(url);
       const entry = key ? manifest.models?.[key] : null;
       if (!entry) return null;
-      const folder = publicAssetUrl("models/");
+      const folder = modelsFolderUrl();
       return {
         ...entry,
         lods: entry.lods.map((lod) => ({ ...lod, url: new URL(lod.url, folder).href })),
@@ -737,6 +742,11 @@ function buildSignature(entries) {
 
 // Route, labels and markers stay above the 3D models (reference behaviour).
 const OVERLAY_LAYERS = [
+  "indoor-route-other",
+  "indoor-route-casing",
+  "indoor-route-line",
+  "indoor-unit-labels",
+  "indoor-pois",
   "route-casing",
   "route-line",
   "route-access",
@@ -1017,6 +1027,7 @@ function createModelsLayer() {
           // drawn whenever that building would be: at every zoom and distance, in full
           // detail (never as an impostor), only culled outside the view.
           if (!zoomVisible && !placement.building) { stats.culled += 1; continue; }
+          if (placement.buildingId !== null && hiddenBuildings.has(placement.buildingId)) { stats.culled += 1; continue; }
           const template = placement.template;
           if (!template?.ready || !template.box) { stats.pendingDrawable += 1; continue; }
           if (placement.box !== template.box || placement.fitBox !== template.fitBox) placeModel(placement, template.box, origin, template.fitBox);
@@ -1190,6 +1201,16 @@ export function setFadedModelBuildings(map, ids) {
   if (next.size === fadedBuildings.size && [...next].every((id) => fadedBuildings.has(id))) return;
   fadedBuildings.clear();
   next.forEach((id) => fadedBuildings.add(id));
+  map.triggerRepaint();
+}
+
+// Building models that are not drawn at all: the buildings whose floor plan is open
+// (indoor/indoor-controller.js); [] = none.
+export function setHiddenModelBuildings(map, ids) {
+  const next = new Set((ids || []).map(String));
+  if (next.size === hiddenBuildings.size && [...next].every((id) => hiddenBuildings.has(id))) return;
+  hiddenBuildings.clear();
+  next.forEach((id) => hiddenBuildings.add(id));
   map.triggerRepaint();
 }
 

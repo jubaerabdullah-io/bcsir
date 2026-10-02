@@ -1,0 +1,17 @@
+{
+"type": "FeatureCollection",
+"name": "shops",
+"crs": {"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},
+"features": [
+{"type":"Feature","properties":{"id":"L05-01","name":"Storage Bay 501","class":"storage","room_number":"501"},"geometry":{"type":"Polygon","coordinates":[[[90.40204991,24.22103986],[90.40214159,24.22105775],[90.40216702,24.22094937],[90.40207534,24.22093148],[90.40204991,24.22103986]]]}},
+{"type":"Feature","properties":{"id":"L05-02","name":"Storage Bay 502","class":"storage","room_number":"502"},"geometry":{"type":"Polygon","coordinates":[[[90.40201829,24.22117463],[90.40210997,24.22119252],[90.4021354,24.22108414],[90.40204372,24.22106624],[90.40201829,24.22117463]]]}},
+{"type":"Feature","properties":{"id":"L05-03","name":"Storage Bay 503","class":"storage","room_number":"503"},"geometry":{"type":"Polygon","coordinates":[[[90.40214159,24.22105775],[90.40223327,24.22107565],[90.4022587,24.22096726],[90.40216702,24.22094937],[90.40214159,24.22105775]]]}},
+{"type":"Feature","properties":{"id":"L05-04","name":"Storage Bay 504","class":"storage","room_number":"504"},"geometry":{"type":"Polygon","coordinates":[[[90.40210997,24.22119252],[90.40220165,24.22121041],[90.40222708,24.22110203],[90.4021354,24.22108414],[90.40210997,24.22119252]]]}},
+{"type":"Feature","properties":{"id":"L05-05","name":"Store","class":"store","room_number":"505"},"geometry":{"type":"Polygon","coordinates":[[[90.40224029,24.22104575],[90.40233197,24.22106364],[90.40235038,24.22098516],[90.4022587,24.22096726],[90.40224029,24.22104575]]]}},
+{"type":"Feature","properties":{"id":"L05-06","name":"Storage Bay 506","class":"storage","room_number":"506"},"geometry":{"type":"Polygon","coordinates":[[[90.40220165,24.22121041],[90.40229333,24.22122831],[90.40231876,24.22111992],[90.40222708,24.22110203],[90.40220165,24.22121041]]]}},
+{"type":"Feature","properties":{"id":"L05-07","name":"Storage Bay 507","class":"storage","room_number":"507"},"geometry":{"type":"Polygon","coordinates":[[[90.40232495,24.22109354],[90.40241663,24.22111143],[90.40244206,24.22100305],[90.40235038,24.22098516],[90.40232495,24.22109354]]]}},
+{"type":"Feature","properties":{"id":"L05-08","name":"Storage Bay 508","class":"storage","room_number":"508"},"geometry":{"type":"Polygon","coordinates":[[[90.40229333,24.22122831],[90.40238501,24.2212462],[90.40241044,24.22113782],[90.40231876,24.22111992],[90.40229333,24.22122831]]]}},
+{"type":"Feature","properties":{"id":"L05-09","name":"Washroom","class":"toilet","room_number":"509"},"geometry":{"type":"Polygon","coordinates":[[[90.40241663,24.22111143],[90.40250831,24.22112933],[90.40253374,24.22102094],[90.40244206,24.22100305],[90.40241663,24.22111143]]]}},
+{"type":"Feature","properties":{"id":"L05-10","name":"Storage Bay 510","class":"storage","room_number":"510"},"geometry":{"type":"Polygon","coordinates":[[[90.40238501,24.2212462],[90.40247669,24.22126409],[90.40250212,24.22115571],[90.40241044,24.22113782],[90.40238501,24.2212462]]]}}
+]
+}

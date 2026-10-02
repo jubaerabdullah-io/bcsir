@@ -7,6 +7,7 @@ import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { INITIAL_VIEW } from "./config.js";
 import { BASEMAP_SOURCES, basemapLayers } from "./basemaps.js";
+import { activeOrg } from "./org.js";
 
 maplibregl.setWorkerUrl(workerUrl);
 const style = (basemap) => ({
@@ -20,7 +21,8 @@ const style = (basemap) => ({
 });
 
 export function createMap(container, { basemap } = {}) {
-  const map = new maplibregl.Map({ container, style: style(basemap), center: INITIAL_VIEW.center, zoom: INITIAL_VIEW.zoom, pitch: INITIAL_VIEW.pitch, bearing: INITIAL_VIEW.bearing, canvasContextAttributes: { antialias: true }, attributionControl: true, maxPitch: 78, dragRotate: true, pitchWithRotate: true, touchPitch: true, hash: false });
+  const view = { ...INITIAL_VIEW, ...(activeOrg()?.view || {}) };
+  const map = new maplibregl.Map({ container, style: style(basemap), center: view.center, zoom: view.zoom, pitch: view.pitch, bearing: view.bearing, canvasContextAttributes: { antialias: true }, attributionControl: true, maxPitch: 78, dragRotate: true, pitchWithRotate: true, touchPitch: true, hash: false });
   map.dragRotate.enable(); map.touchZoomRotate.enableRotation(); map.keyboard.enable();
   map.on("load", () => { try { map.setLight({ anchor: "map", color: "#ffffff", intensity: .42, position: [1.15, 205, 52] }); } catch (error) { console.info("Custom light unavailable", error); } });
   map.on("error", (event) => { const message = event?.error?.message || "Unknown map error"; if (!message.includes("tile")) console.warn("MapLibre:", message); });

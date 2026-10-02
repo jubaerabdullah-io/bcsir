@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Usage: npm run models:character
 //
-// Builds public/models/characters/male.glb, the walker shown in Walk Mode's
+// Builds public/models/shared/characters/male.glb, the walker shown in Walk Mode's
 // third-person view (src/walk-character.js): a lightweight low-poly man (about
 // 600 triangles, 1.75 m tall, feet at the origin, facing +Z, Y up, metres) on a
 // 17-bone skeleton, with three looping animations and a jump pose:
@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { Document, NodeIO } from "@gltf-transform/core";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const OUTPUT = path.join(root, "public/models/characters/male.glb");
+const OUTPUT = path.join(root, "public/models/shared/characters/male.glb");
 
 // ---- Skeleton (rest pose: no rotation; translations relative to the parent) ----------
 const BONES = [

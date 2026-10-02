@@ -8,6 +8,7 @@
 // still gets its heights, colours and category from BuildingBoundary.geojson.
 import { LAYER_GROUPS } from "./bcsir-layers.js";
 import { escapeHTML } from "./html.js";
+import { datasetFile } from "./org.js";
 
 const STORAGE_KEY = "bcsir-map-layers";
 
@@ -47,9 +48,13 @@ export function createLayerManager({ map, custom = {}, onVisibilityChange, datas
     });
   }
 
-  list.innerHTML = LAYER_GROUPS.map((group) => {
+  // A group whose dataset the organisation does not have gets no switch.
+  const listed = LAYER_GROUPS.filter((group) => !group.dataset || datasetFile(group.dataset));
+  LAYER_GROUPS.filter((group) => !listed.includes(group)).forEach((group) => applyGroup(group, true));
+  list.innerHTML = listed.map((group) => {
     const count = datasetCounts[group.id];
-    return `<label class="layer-toggle"><input type="checkbox" data-layer-group="${group.id}" checked /><span class="layer-switch" aria-hidden="true"></span><span class="layer-text"><strong>${escapeHTML(group.label)}</strong><small>${escapeHTML(group.source)}${Number.isFinite(count) ? ` · ${count} features` : ""}</small></span></label>`;
+    const source = group.dataset ? datasetFile(group.dataset) : group.source;
+    return `<label class="layer-toggle"><input type="checkbox" data-layer-group="${group.id}" checked /><span class="layer-switch" aria-hidden="true"></span><span class="layer-text"><strong>${escapeHTML(group.label)}</strong><small>${escapeHTML(source)}${Number.isFinite(count) ? ` · ${count} features` : ""}</small></span></label>`;
   }).join("");
 
   list.querySelectorAll("[data-layer-group]").forEach((input) => {

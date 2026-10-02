@@ -1,6 +1,7 @@
-// Keeps public/data/ complete.
+// Keeps public/data/bcsir/ complete.
 //
-// public/data/ is the single home of the BCSIR datasets. The GeoJSON layers
+// public/data/bcsir/ is the single home of the BCSIR datasets (every organisation
+// has its own folder in public/data/). The GeoJSON layers
 // (BCSIRBoundary, BuildingBoundary, ConnectedRoad, ConnectedRoadsDrawingVersion,
 // Pathway, InternalBoundary) and the routing network ConnectedRoads/v0/r2.json
 // are edited there directly; the QGIS project opens them from there. Their
@@ -29,32 +30,32 @@ import { readShapefile } from "./shapefile-reader.mjs";
 // Properties that belong to the visualization copies (kept on --refresh).
 export const VISUAL_KEYS = ["base_m", "top_m", "thickness_m", "color", "fill_color", "spacing_m", "image", "model", "model_points", "size", "scale", "rotation", "surface_model", "surface_scale"];
 
-// The GeoJSON datasets that live only in public/data/ (edited there directly).
+// The GeoJSON datasets that live only in public/data/bcsir/ (edited there directly).
 export const PUBLIC_DATASETS = [
-  { name: "BCSIRBoundary", target: "public/data/BCSIRBoundary.geojson" },
-  { name: "BuildingBoundary", target: "public/data/BuildingBoundary.geojson" },
-  { name: "ConnectedRoad", target: "public/data/ConnectedRoad.geojson" },
-  { name: "ConnectedRoadsDrawingVersion", target: "public/data/ConnectedRoadsDrawingVersion.geojson" },
-  { name: "Pathway", target: "public/data/Pathway.geojson" },
-  { name: "InternalBoundary", target: "public/data/InternalBoundary.geojson" }
+  { name: "BCSIRBoundary", target: "public/data/bcsir/BCSIRBoundary.geojson" },
+  { name: "BuildingBoundary", target: "public/data/bcsir/BuildingBoundary.geojson" },
+  { name: "ConnectedRoad", target: "public/data/bcsir/ConnectedRoad.geojson" },
+  { name: "ConnectedRoadsDrawingVersion", target: "public/data/bcsir/ConnectedRoadsDrawingVersion.geojson" },
+  { name: "Pathway", target: "public/data/bcsir/Pathway.geojson" },
+  { name: "InternalBoundary", target: "public/data/bcsir/InternalBoundary.geojson" }
 ];
 
 // The routing network (never modified; its sha256 is in original-files.sha256).
-export const ROUTING_NETWORK = "public/data/ConnectedRoads/v0/r2.json";
+export const ROUTING_NETWORK = "public/data/bcsir/ConnectedRoads/v0/r2.json";
 
 // Datasets converted from the shapefiles, with their initial visualization values.
 export const DATASETS = [
-  { name: "Garden", shapefile: "ShapefileFolder/Garden/Garden", target: "public/data/Garden.geojson",
+  { name: "Garden", shapefile: "ShapefileFolder/Garden/Garden", target: "public/data/bcsir/Garden.geojson",
     defaults: () => ({ base_m: 0, top_m: 0.03, color: "#CDEBB0" }) },
-  { name: "TreeLine", shapefile: "ShapefileFolder/TreeLine/TreeLine", target: "public/data/TreeLine.geojson",
+  { name: "TreeLine", shapefile: "ShapefileFolder/TreeLine/TreeLine", target: "public/data/bcsir/TreeLine.geojson",
     defaults: () => ({ base_m: 0, top_m: 7.5, color: "#3F8F3A", spacing_m: 7 }) }
 ];
 
 // Point files for GLB placements; created empty if missing, never overwritten.
 export const MODEL_FILES = [
-  "public/data/models.geojson",
-  "public/data/GardenModels.geojson",
-  "public/data/TreeLineModels.geojson"
+  "public/data/bcsir/models.geojson",
+  "public/data/bcsir/GardenModels.geojson",
+  "public/data/bcsir/TreeLineModels.geojson"
 ];
 
 const CRS84 = { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } };

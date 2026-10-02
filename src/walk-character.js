@@ -1,7 +1,7 @@
 // The walker shown in Walk Mode's third-person view.
 //
 // One small MapLibre custom layer ("walk-character") draws the chosen character
-// (WALK_CHARACTERS in config.js; models/characters/male.glb, built by
+// (WALK_CHARACTERS in config.js; models/shared/characters/male.glb, built by
 // `npm run models:character`) at the player's map position and floor height,
 // turned to `facing` (compass degrees). It shares the Three.js renderer of the
 // other 3D layers (three-shared.js) and the map's depth buffer, so buildings and

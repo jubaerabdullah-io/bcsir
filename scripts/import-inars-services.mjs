@@ -5,7 +5,7 @@
 //
 // Imports the "Service Charge list of Analytical Parameters" published by the
 // Institute of National Analytical Research & Services (INARS), BCSIR, into
-// public/data/directory/testing-services.json.
+// public/data/bcsir/directory/testing-services.json.
 //
 // Every record is copied from one table row of the official page: the test
 // parameter, sample type, method, fee and duration are kept exactly as
@@ -24,7 +24,7 @@ export const INARS_SOURCE = {
   url: "https://inars.bcsir.gov.bd/pages/static-pages/6922df91933eb65569e22ced"
 };
 const EXPECTED_HEADER = ["SI", "Name of Sample", "Test Parameter", "Methodology", "Fees", "Duration"];
-const TARGET = "public/data/directory/testing-services.json";
+const TARGET = "public/data/bcsir/directory/testing-services.json";
 
 const decode = (html) => html
   .replace(/<br\s*\/?>/gi, " ")

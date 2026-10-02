@@ -34,6 +34,7 @@ export function createRouteOcclusion(map, { getFeature, getViewpoint, setFadedMo
   let frame = null;
   let faded = [];
   let replaced = []; // render_ids of buildings drawn as GLB models: their extrusion is hidden
+  let hidden = []; // render_ids of buildings whose floor plan is open: no shell at all
   let timer = 0;
   let last = 0;
 
@@ -65,10 +66,11 @@ export function createRouteOcclusion(map, { getFeature, getViewpoint, setFadedMo
     return Boolean(feature && geometryPolygons(feature.geometry).some((rings) => insideRings(lngLat, rings)));
   }
 
-  // filter without the replaced buildings (unchanged when there are none).
+  // filter without the replaced and the hidden buildings (unchanged when there are none).
   function withoutReplaced(filter, property) {
-    if (!replaced.length) return filter;
-    const keep = ["!", ["in", ["get", property], ["literal", replaced]]];
+    const without = hidden.length ? [...new Set([...replaced, ...hidden])] : replaced;
+    if (!without.length) return filter;
+    const keep = ["!", ["in", ["get", property], ["literal", without]]];
     return filter ? ["all", filter, keep] : keep;
   }
 
@@ -137,6 +139,14 @@ export function createRouteOcclusion(map, { getFeature, getViewpoint, setFadedMo
       replaced = next;
       apply(faded, true);
     },
-    replacedIds: () => [...replaced]
+    replacedIds: () => [...replaced],
+    // ids: render_ids of the buildings whose floor plan is open (indoor-controller.js):
+    // their extrusion is not drawn; [] shows them all again.
+    setHiddenBuildings(ids) {
+      const next = [...new Set((ids || []).map(String))].sort();
+      if (next.length === hidden.length && next.every((id, i) => id === hidden[i])) return;
+      hidden = next;
+      apply(faded, true);
+    }
   };
 }

@@ -11,9 +11,9 @@ import { INARS_SOURCE, inarsRecords, parseTables } from "../scripts/import-inars
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
-const buildings = normalizeBuildings(readJSON("public/data/BuildingBoundary.geojson"));
-const labsFile = readJSON("public/data/directory/laboratories.json");
-const servicesFile = readJSON("public/data/directory/testing-services.json");
+const buildings = normalizeBuildings(readJSON("public/data/bcsir/BuildingBoundary.geojson"));
+const labsFile = readJSON("public/data/bcsir/directory/laboratories.json");
+const servicesFile = readJSON("public/data/bcsir/directory/testing-services.json");
 const directory = createDirectory({ buildings, laboratories: labsFile.laboratories, services: servicesFile.services, sources: servicesFile.sources });
 const buildingIds = new Set(buildings.features.map((feature) => String(feature.properties.id)));
 

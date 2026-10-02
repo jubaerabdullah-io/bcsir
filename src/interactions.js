@@ -15,7 +15,10 @@ const MODEL_HIT_LAYER = "buildings-model-hit";
 const BUILDING_LAYERS = ["buildings-roof", "buildings-body", "buildings-roof-route-faded", "buildings-body-route-faded", "building-labels-major", "building-labels-minor", MODEL_HIT_LAYER];
 const featureId = (feature) => feature?.properties?.render_id ?? feature?.id ?? null;
 
-export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHover, onHoverLeave, onRouteChange, isEnabled = () => true }) {
+// interceptClick(event, pick) and interceptMove(event) let the floor plans take a
+// click or the pointer first (app.js): a true result means it was theirs. `pick` is
+// set while a place is being chosen on the map: pick(feature, entry) hands it over.
+export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHover, onHoverLeave, onRouteChange, isEnabled = () => true, interceptClick, interceptMove }) {
   let hoveredId = null, selectedId = null, sourceFeature = null, destinationFeature = null, pickHandler = null;
 
   function setState(id, next) {
@@ -97,6 +100,11 @@ export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHo
   }
   function move(event) {
     if (!isEnabled()) return;
+    if (interceptMove?.(event)) {
+      if (hoveredId !== null) leave();
+      map.getCanvas().style.cursor = pickHandler ? "crosshair" : "pointer";
+      return;
+    }
     const feature = buildingAt(event.point), id = featureId(feature);
     if (!feature || id === null) { if (hoveredId !== null) leave(); return; }
     if (String(id) !== String(hoveredId)) {
@@ -110,6 +118,8 @@ export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHo
   function leave() { if (hoveredId !== null) setState(hoveredId, { hover: false }); hoveredId = null; map.getCanvas().style.cursor = pickHandler ? "crosshair" : ""; onHoverLeave?.(); }
   function click(event) {
     if (!isEnabled()) return;
+    const pick = pickHandler ? (picked, entry) => { const handler = pickHandler; setPickHandler(null); handler(canonical(picked), entry); } : null;
+    if (interceptClick?.(event, pick)) return;
     const feature = buildingAt(event.point);
     if (pickHandler) {
       if (!feature) return; // keep waiting for a building

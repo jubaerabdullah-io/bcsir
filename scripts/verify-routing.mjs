@@ -4,7 +4,7 @@
 // Proves that the 3D map routes with the ORIGINAL BCSIR routing implementation
 // and produces the same results:
 //  1. connection_check.js and the routing network the web app loads,
-//     public/data/ConnectedRoads/v0/r2.json, are byte-identical to the recorded
+//     public/data/bcsir/ConnectedRoads/v0/r2.json, are byte-identical to the recorded
 //     originals. (The root copy ConnectedRoads/v0/r2.json was a byte-identical
 //     duplicate and was removed; the recorded sha256 is unchanged.)
 //  2. The functions served to the browser are verbatim copies of the ones in
@@ -27,8 +27,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildRoutingModule, extractFunction, importOriginalRouting, ORIGINAL_ROUTING_FUNCTIONS, readOriginalRoutingSource } from "./lib/original-routing.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const NETWORK = "public/data/ConnectedRoads/v0/r2.json";
-const BUILDINGS = "public/data/BuildingBoundary.geojson";
+const NETWORK = "public/data/bcsir/ConnectedRoads/v0/r2.json";
+const BUILDINGS = "public/data/bcsir/BuildingBoundary.geojson";
 
 export async function verifyRouting({ log = console.log } = {}) {
   const results = [];

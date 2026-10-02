@@ -1,4 +1,4 @@
-// public/models/ matches public/models/lod/manifest.json (written by
+// public/models/bcsir/ matches public/models/bcsir/lod/manifest.json (written by
 // `npm run models:optimize`): every level and ground tile exists, the optimized
 // models are the files the manifest describes, and the Garden surfaces resolve.
 import assert from "node:assert/strict";
@@ -9,11 +9,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const modelsDir = path.join(root, "public/models");
+const modelsDir = path.join(root, "public/models/bcsir");
 const manifest = JSON.parse(readFileSync(path.join(modelsDir, "lod/manifest.json"), "utf8"));
 const glbs = readdirSync(modelsDir).filter((file) => /\.glb$/i.test(file));
 
-test("every GLB in public/models is optimized and listed in the manifest (run npm run models:optimize)", () => {
+test("every GLB in public/models/bcsir is optimized and listed in the manifest (run npm run models:optimize)", () => {
   for (const name of glbs) {
     const entry = manifest.models[name];
     assert.ok(entry, `${name} has a manifest entry`);
@@ -39,7 +39,7 @@ test("detail levels exist, get lighter and cover every on-screen size", () => {
 });
 
 test("Garden surface_model polygons have a ground tile", () => {
-  const garden = JSON.parse(readFileSync(path.join(root, "public/data/Garden.geojson"), "utf8"));
+  const garden = JSON.parse(readFileSync(path.join(root, "public/data/bcsir/Garden.geojson"), "utf8"));
   const surfaced = garden.features.filter((feature) => feature.properties.surface_model);
   assert.ok(surfaced.length > 0);
   for (const feature of surfaced) {

@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "level",
+"crs": {"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},
+"features": [
+{"type":"Feature","properties":{"id":"L02","name":"Level 2","short_name":"L2"},"geometry":{"type":"Polygon","coordinates":[[[90.40207345,24.22092881],[90.40253593,24.22101907],[90.40247858,24.22126676],[90.4020161,24.2211765],[90.40207345,24.22092881]]]}}
+]
+}

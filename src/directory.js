@@ -1,10 +1,12 @@
-// Campus directory: buildings, laboratories / research divisions and testing
-// services, with the lookups the search and the directions panel need.
+// Directory of the open organisation: buildings, rooms and points of the floor
+// plans, laboratories / research divisions and testing services, with the lookups
+// the search and the directions panel need.
 //
 // Data:
-//   buildings     render copy of public/data/BuildingBoundary.geojson
-//   laboratories  public/data/directory/laboratories.json
-//   services      public/data/directory/testing-services.json
+//   buildings     render copy of the organisation's buildings file
+//   places        named rooms and points of the floor plans (the organisation's index)
+//   laboratories  the organisation's directory files, when it has them
+//   services      (public/data/bcsir/directory/)
 // A service names its laboratory (laboratory_id); a laboratory names its
 // building (building_id) or inherits the building of its parent unit. Records
 // that set their own building_id use it. Nothing is guessed: when no building
@@ -14,7 +16,9 @@
 // Pure module (no DOM, no MapLibre) so it can be tested with node --test.
 
 export const LAB_TYPE_LABELS = { institute: "Institute", laboratory: "Laboratory", division: "Research division", section: "Research section" };
-const KIND_ORDER = { building: 0, lab: 1, test: 2 };
+const KIND_ORDER = { building: 0, place: 1, lab: 2, test: 3 };
+export const ALL_KINDS = ["building", "place", "lab", "test"];
+const classWords = (value) => { const text = String(value ?? "").replace(/[-_]+/g, " ").trim(); return text ? text[0].toUpperCase() + text.slice(1) : ""; };
 
 // Lower-case, Latin accents removed, punctuation to spaces. Bengali letters and
 // vowel signs are kept so Bengali building names stay searchable.
@@ -51,7 +55,9 @@ export function formatDuration(service) {
 // context: a field that can add to a match but cannot make one on its own.
 const field = (text, weight, context = false) => ({ text: normalizeText(text), weight, context });
 
-export function createDirectory({ buildings, laboratories = [], services = [], sources = [] }) {
+// places: [{ uid, kind, name, class, building, level, ... }] and indoor: the
+// buildings with floors ([{ key, building_id, name, levels }]) from the index.
+export function createDirectory({ buildings, laboratories = [], services = [], sources = [], places = [], indoor = [] }) {
   const buildingFeatures = buildings?.features || [];
   const buildingsById = new Map();
   buildingFeatures.forEach((feature) => {
@@ -101,6 +107,28 @@ export function createDirectory({ buildings, laboratories = [], services = [], s
       renderId: p.render_id ?? String(p.id),
       // The fields the original building search used, plus weights.
       fields: [field(title, 1), field(p.name_en_short, 0.95), field(p.name_en_alias, 0.9), field(p.name_bn, 0.9), field(p.id, 0.9), field(p.render_category_label, 0.4)]
+    });
+  });
+
+  // Rooms and points of the floor plans. Each is found by its name, room number
+  // and keywords; its kind and building only refine a search ("toilet admin").
+  const indoorByKey = new Map(indoor.map((building) => [building.key, building]));
+  places.forEach((place) => {
+    const building = indoorByKey.get(place.building);
+    if (!building || !place.name) return;
+    const level = building.levels.find((item) => item.id === place.level);
+    const typeLabel = classWords(place.class);
+    entries.push({
+      kind: "place",
+      key: `place:${place.uid}`,
+      id: place.uid,
+      title: place.name,
+      subtitle: [typeLabel.toLowerCase() === place.name.toLowerCase() ? "" : typeLabel, level?.name || place.level].filter(Boolean).join(" · "),
+      meta: building.name,
+      buildingId: building.building_id ?? null,
+      placeUid: place.uid,
+      place,
+      fields: [field(place.name, 1), field(place.number, 0.95), field(place.name_bn, 0.9), field(place.keywords, 0.8), field(typeLabel, 0.5), field(`${building.name} ${building.short_name || ""} ${level?.name || ""} ${level?.short || ""}`, 0.3, true)]
     });
   });
 
@@ -182,7 +210,7 @@ export function createDirectory({ buildings, laboratories = [], services = [], s
   }
 
   // kinds: entry kinds to return (default all). Returns { results, total }.
-  function search(query, { kinds = ["building", "lab", "test"], limit = 30 } = {}) {
+  function search(query, { kinds = ALL_KINDS, limit = 30 } = {}) {
     const phrase = normalizeText(query);
     if (!phrase) return { results: [], total: 0 };
     const tokens = phrase.split(" ");

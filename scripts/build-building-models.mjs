@@ -16,6 +16,7 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { orgAssetPath } from "../src/asset-paths.js";
 import { buildingModelPlacement } from "../src/building-footprint.js";
 import { createAtlas } from "./building-models/atlas.mjs";
 import { createMesh } from "./building-models/mesh.mjs";
@@ -40,8 +41,12 @@ import * as school from "./building-models/style-school.mjs";
 const STYLES = { screen, grid, gallery, tank, gate, modern, brick, classic, mosque, residential, playground, fibre, genomic, inars, garage, school };
 const root = fileURLToPath(new URL("..", import.meta.url));
 const PHOTOS = path.join(root, "backup/models/source");
-const buildings = JSON.parse(await readFile(path.join(root, "public/data/BuildingBoundary.geojson"), "utf8"));
-const campus = JSON.parse(await readFile(path.join(root, "public/data/BCSIRBoundary.geojson"), "utf8"));
+// BCSIR's buildings; the models are written to public/models/bcsir/ (a building_model
+// such as "models/buildings/igcrt.glb" names a file in the organisation's models folder).
+const ORG = "bcsir";
+const modelFile = (spec) => path.join("public", orgAssetPath("models", spec.file, ORG));
+const buildings = JSON.parse(await readFile(path.join(root, `public/data/${ORG}/BuildingBoundary.geojson`), "utf8"));
+const campus = JSON.parse(await readFile(path.join(root, `public/data/${ORG}/BCSIRBoundary.geojson`), "utf8"));
 const wanted = process.argv.slice(2).map((value) => value.trim().toUpperCase()).filter(Boolean);
 
 const outerRing = (feature) => (feature.geometry.type === "MultiPolygon" ? feature.geometry.coordinates[0][0] : feature.geometry.coordinates[0]);
@@ -76,7 +81,7 @@ async function buildModule(spec, style) {
   await style.paint(atlas, ctx);
   const mesh = createMesh({ regions: style.regions, swatches: style.swatches, atlasSize: style.atlasSize, W, D, rotation });
   const info = style.build(mesh, ctx);
-  const result = await mesh.write(path.join(root, "public", spec.file), {
+  const result = await mesh.write(path.join(root, modelFile(spec)), {
     atlas: await atlas.encode(),
     footprint: { min: [-W / 2, 0, -D / 2], max: [W / 2, H, D / 2] },
     name: spec.name,
@@ -84,7 +89,7 @@ async function buildModule(spec, style) {
   });
   const users = buildings.features.filter((feature) => feature.properties?.building_model === spec.file);
   console.log(`${spec.name} (module, ${spec.style}): ${info?.module ?? `${W} x ${D} x ${H} m`}, front faces ${front}°`);
-  console.log(`  wrote public/${spec.file}: ${result.triangles} triangles, ${result.vertices} vertices, 1 material, ${(result.bytes / 1024).toFixed(0)} KB`);
+  console.log(`  wrote ${modelFile(spec).split(path.sep).join("/")}: ${result.triangles} triangles, ${result.vertices} vertices, 1 material, ${(result.bytes / 1024).toFixed(0)} KB`);
   console.log(`  used by ${users.length} building${users.length === 1 ? "" : "s"}${users.length ? `: ${users.map((feature) => feature.properties.id).join(", ")}` : `; set "building_model": "${spec.file}" on buildings in BuildingBoundary.geojson`}`);
 }
 
@@ -127,7 +132,7 @@ for (const spec of BUILDING_SPECS) {
   await style.paint(atlas, ctx);
   const mesh = createMesh({ regions: style.regions, swatches: style.swatches, atlasSize: style.atlasSize, W, D, rotation: placement.rotation });
   const info = style.build(mesh, ctx);
-  const result = await mesh.write(path.join(root, "public", spec.file), {
+  const result = await mesh.write(path.join(root, modelFile(spec)), {
     atlas: await atlas.encode(),
     footprint: { min: [-W / 2, 0, -D / 2], max: [W / 2, H, D / 2] },
     name: spec.name,
@@ -138,7 +143,7 @@ for (const spec of BUILDING_SPECS) {
   if (info?.distance !== undefined) console.log(`  on the boundary wall ${info.distance.toFixed(2)} m from the marker, turned ${(info.angle * 180 / Math.PI).toFixed(1)}° in the model`);
   built += 1;
   console.log(`${spec.name} (building ${spec.id}, ${spec.style}): ${W.toFixed(2)} m front x ${D.toFixed(2)} m deep x ${H} m, front faces ${placement.frontBearing.toFixed(1)}°`);
-  console.log(`  wrote public/${spec.file}: ${result.triangles} triangles, ${result.vertices} vertices, 1 material, ${(result.bytes / 1024).toFixed(0)} KB`);
+  console.log(`  wrote ${modelFile(spec).split(path.sep).join("/")}: ${result.triangles} triangles, ${result.vertices} vertices, 1 material, ${(result.bytes / 1024).toFixed(0)} KB`);
   if (feature.properties.building_model !== spec.file) console.log(`  not used yet: set "building_model": "${spec.file}" on building ${spec.id} in BuildingBoundary.geojson`);
 }
 if (!built) console.warn(`No model built. Known: ${BUILDING_SPECS.map((spec) => `${spec.name} (${spec.id})`).join(", ")}`);

@@ -9,13 +9,14 @@ import { fileURLToPath } from "node:url";
 import { NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
+import { orgAssetPath } from "../src/asset-paths.js";
 import { buildingModelPlacement, findBuildingByShortName, footprintFront, orientedFootprint, placedBoxCorners, tiledModelParts } from "../src/building-footprint.js";
 import { BUILDING_MODELS, RESIDENTIAL_MODULE } from "../src/config.js";
 import { createLocalFrame } from "../src/navigation/local-frame.js";
 import { BUILDING_SPECS } from "../scripts/building-models/specs.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const buildings = JSON.parse(readFileSync(path.join(root, "public/data/BuildingBoundary.geojson"), "utf8"));
+const buildings = JSON.parse(readFileSync(path.join(root, "public/data/bcsir/BuildingBoundary.geojson"), "utf8"));
 const modelled = buildings.features.filter((feature) => feature.properties.building_model);
 const byId = (id) => buildings.features.find((feature) => feature.properties.id === id);
 const near = (value, expected, tolerance, label) => assert.ok(Math.abs(value - expected) < tolerance, `${label}: ${value} (expected ${expected})`);
@@ -62,7 +63,7 @@ test("building_model placement: fit to the footprint and top_m, model_rotation a
 
 test("wall_gap_m opens the drawn boundary wall at the gate only", async () => {
   const { cutLineGaps } = await import("../src/geo-utils.js");
-  const campus = JSON.parse(readFileSync(path.join(root, "public/data/BCSIRBoundary.geojson"), "utf8"));
+  const campus = JSON.parse(readFileSync(path.join(root, "public/data/bcsir/BCSIRBoundary.geojson"), "utf8"));
   assert.equal(cutLineGaps(campus, []), campus, "no gap: the walls are the same object");
   const gate = byId(301);
   const placement = buildingModelPlacement(gate);
@@ -87,7 +88,7 @@ test("every building_model is a light GLB built on its footprint", async () => {
     const name = feature.properties.name_en_short || feature.properties.id;
     const placement = buildingModelPlacement(feature);
     assert.ok(placement, `${name}: valid building_model and footprint`);
-    const file = path.join(root, "public", placement.model);
+    const file = path.join(root, "public", orgAssetPath("models", placement.model, "bcsir"));
     assert.ok(existsSync(file), `${name}: ${placement.model} exists`);
     const bytes = statSync(file).size;
     if (!counted.has(file)) total += bytes;

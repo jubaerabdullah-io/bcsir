@@ -1,10 +1,16 @@
-# Bangladesh Council of Scientific and Industrial Research: 3D campus map
+# 3D campus and indoor maps (BCSIR, Taqwa Fabrics, ...)
 
-An interactive 3D map of the BCSIR campus in Dhaka, built with **MapLibre GL JS** and
-**Three.js**. Everything on the map is controlled by the GeoJSON files in
-`public/data/`: building heights and colours, road and wall thickness, tree lines,
-building photos and GLB models. Routes are calculated with the **original BCSIR routing
-code** (`connection_check.js`) on the original road network.
+Interactive 3D maps of several organisations in one app, built with **MapLibre GL JS** and
+**Three.js**. The first screen asks which place to open. Each organisation has its own
+folder of GeoJSON files (`public/data/<organisation>/`), which control everything on its
+map: building heights and colours, road and wall thickness, tree lines, building photos,
+GLB models, and the **floor plans** of its buildings. A building with floor plans gets a
+floor selector, its rooms are searchable, and directions go **from room to room across
+floors and buildings** by the lifts and stairs.
+
+The first organisation is the BCSIR campus in Dhaka (`public/data/bcsir/`). Its routes
+between buildings are calculated with the **original BCSIR routing code**
+(`connection_check.js`) on the original road network.
 
 The search finds buildings, laboratories, research divisions and laboratory testing
 services. Selecting a test opens the building of the laboratory that offers it, and the
@@ -26,7 +32,8 @@ npm run build         # production build in dist/
 npm run preview       # serve dist/ at http://localhost:4173
 npm test              # data, search, routing, labels, basemaps (node --test)
 npm run verify        # originals unchanged + routing equivalence + npm test
-npm run data:prepare  # create missing files in public/data (see below)
+npm run data:prepare  # create missing BCSIR files in public/data/bcsir (see below)
+npm run floors:sample -- bcsir 127   # template floor plans for a building (see Organisations and floor plans)
 npm run data:services # re-import the official INARS testing-service list
 ```
 
@@ -45,9 +52,179 @@ matched to their real file names (GitHub Pages is case-sensitive, Windows is not
 
 Everything in `public/` must be committed. The original `.gitignore` ignored every
 `*.png`, which kept `public/route-walker.png` (the figure on the route) and
-`public/bcsir-logo.png` out of the repository: they worked locally but were missing
+the organisation logo (`public/image/bcsir/logo.png`) out of the repository: they worked locally but were missing
 (404, broken images) on a site built from the repository. `.gitignore` now ends with
 `!public/**`, and `npm test` checks it.
+
+## Organisations and floor plans
+
+### Folders
+
+```text
+public/
+├── data/
+│   ├── bcsir/                          one folder per organisation (its id, used in ?org=bcsir)
+│   │   ├── org.json                    name, logo, start view, options
+│   │   ├── BuildingBoundary.geojson    site layers: buildings, boundary, roads, pathways, ...
+│   │   ├── ...
+│   │   └── secretariat/                one folder per building that has floor plans
+│   │       ├── building.json           optional: { "building_id": 127 }
+│   │       ├── L01/                    one folder per floor
+│   │       │   ├── level.geojson       floor outline (Polygon) and the floor's name
+│   │       │   ├── corridor.geojson    walkable areas (Polygon)
+│   │       │   ├── shops.geojson       rooms (Polygon): any other file name is a room layer
+│   │       │   ├── walls.geojson       walls (LineString or Polygon)
+│   │       │   └── pois.geojson        points: lift, stairs, entrance, toilet, ...
+│   │       └── L02/ ...
+│   └── taqwafabrics/                   the next organisation, same layout
+├── models/
+│   ├── bcsir/                          that organisation's GLB files (lod/ = detail levels)
+│   ├── taqwafabrics/
+│   └── shared/                         models any organisation may use ("shared/tree.glb")
+└── image/
+    ├── bcsir/                          that organisation's photos and logo
+    └── taqwafabrics/
+```
+
+A browser cannot list folders, so the app reads a **catalog** generated from these
+folders (`scripts/lib/catalog.mjs`): `data/catalog.json` (the organisations, for the first
+screen) and `data/<organisation>/index.json` (its files, photos, floors and the search list
+of rooms). `npm run dev` builds them on every request and `npm run build` writes them into
+`dist/`; nothing is stored in `public/`. Adding a building is therefore: create the folder,
+save the GeoJSON files. `npm run dev` and `npm run build` print what they found and what
+looks wrong (a floor without an outline, a building folder that matches no footprint).
+
+### Adding an organisation
+
+1. Create `public/data/<id>/` (lower-case letters, digits, `-`, `_`) with an `org.json`:
+
+   ```json
+   {
+     "name": "Taqwa Fabrics Ltd",
+     "short_name": "Taqwa Fabrics",
+     "tagline": "Factory complex, Sreepur, Gazipur",
+     "logo": "logo.png",
+     "accent": "#b45309",
+     "order": 2,
+     "view": { "center": [90.4032, 24.2215], "zoom": 16.9, "pitch": 56, "bearing": -12 }
+   }
+   ```
+
+   `logo` is a file in `public/image/<id>/`; without one the card shows the initials.
+   `"default": true` marks the organisation that old links without `?org=` open.
+   `"sample": true` labels placeholder data on the first screen and in the header.
+2. Save the site layers into the folder. Only the files an organisation has are loaded:
+
+   | Dataset | File names looked for (or name yours in `org.json` `"datasets"`) |
+   |---|---|
+   | buildings | `buildings.geojson`, `buildingboundary.geojson` |
+   | area | `area.geojson`, `sitearea.geojson` (Polygon: the ground of the site, coloured by `fill_color` or `color`; no wall) |
+   | boundary | `boundary.geojson`, `siteboundary.geojson` (LineString along the wall, or Polygon: wall + ground colour) |
+   | roads / pathways | `roads.geojson`, `pathways.geojson` (LineStrings) |
+   | garden, tree line | `garden.geojson`, `treeline.geojson` |
+   | models | `models.geojson` (GLB placements) |
+   | routing network | `network.json`; without it the roads and pathways are the network (lines join where they share a vertex) |
+
+   Buildings use the properties described in
+   [Controlling the map with GeoJSON properties](#controlling-the-map-with-geojson-properties):
+   `id`, `name_en`, `name_en_short`, `entrance_coords`, `top_m`, `color`, `image`, `building_model`.
+
+   **Exporting from QGIS** (*Export > Save Features As…*, format GeoJSON, CRS EPSG:4326):
+   save into `public/data/<id>/`, not `dist/` (the build output). When the file already
+   exists, choose **Overwrite file**, not *Append to layer*: appending adds your features
+   to the ones already there, and a file that mixes lines and polygons opens in QGIS as
+   two layers. Use one geometry type per file. To keep working on a file, add it to the
+   QGIS project as a layer and save the edits there instead of exporting again.
+3. Put its GLB files in `public/models/<id>/` and its photos in `public/image/<id>/`. In the
+   data, `"model": "tree.glb"` or `"/models/tree.glb"` means `public/models/<id>/tree.glb`,
+   and `"image": "gate.jpg"` means `public/image/<id>/gate.jpg`.
+
+### Adding floors to a building
+
+Create a folder for the building inside the organisation's folder (any name, e.g.
+`building-01(secretariat)`) and one folder per floor inside it.
+
+- **Floor folders**: `L01`, `L02`, ... (also `L1`, `Level 1`, `1`), `G` for a ground floor
+  counted as zero, `B1`, `B2` for basements. Floors are ordered by their number. The floor
+  button shows `L1`, `G`, `B1`; to show something else, set `name` and `short_name` on the
+  feature of `level.geojson` (for example `"name": "Ground floor", "short_name": "G"` in `L01`).
+- **Which building it is**: the building whose footprint contains the floor outline. To say
+  it yourself, add `building.json` with `{ "building_id": 127 }` (the building's `id`).
+- **Files of a floor** (WGS 84 longitude / latitude, as exported from QGIS):
+
+  | File | Geometry | Properties |
+  |---|---|---|
+  | `level.geojson` | Polygon | floor outline; `name`, `short_name`, `is_default` (the floor the building opens on) |
+  | `corridor.geojson` | Polygon | where people walk: corridors, lobbies, halls. **Routes follow these.** |
+  | `shops.geojson` (or `rooms`, `offices`, ... any other name) | Polygon | `name` (searchable), `class` (office, shop, toilet, lab, ...: sets the colour), `color` (hex, replaces it), `room_number`, `phone`, `hours`, `description`, `name_bn` |
+  | `walls.geojson` | LineString or Polygon | `thickness_m` (0.18), `height_m` (1.5), `color` |
+  | `pois.geojson` | Point | `name`, `class`: `lift`, `stairs`, `escalator`, `ramp`, `entrance`, `toilet`, `info`, `food`, `prayer`, `atm`, `first-aid`, `fire`, `parking` |
+  | `doors.geojson` (optional) | Point | where a room opens to the corridor; without it a room is entered where its outline is nearest the corridor |
+
+  The class may be in a field called `class`, `type`, `category` or `kind`; `Elevator`,
+  `Staircase` and similar words are understood, and a point named "Lift B" or "Stair 2"
+  without a class is recognised by its name.
+- **Lifts and stairs between floors**: put a `lift` (or `stairs`) point on every floor it
+  serves, at the same place. Points of the same kind within 4 m of each other on different
+  floors are one lift. To join points that are not above each other, give them the same
+  `connector_id`.
+- **Entrance**: an `entrance` point on the floor people enter by. Without one, routes enter
+  at the walkable place nearest the building's `entrance_coords`.
+
+Save a file while `npm run dev` runs and the open floor is redrawn; a new floor or building
+folder reloads the page.
+
+### Template floors
+
+```bash
+npm run floors:sample -- <organisation> <building id> [--floors 6] [--theme office|factory|warehouse|lab] [--folder name]
+```
+
+writes a plain floor plan for each floor of a building, laid out inside its footprint (a
+corridor, rooms on both sides, a lift lobby with a lift and stairs, a second stair, an
+entrance on the first floor), in the five files above. It is a start for drawing the real
+floors in QGIS: correctly placed and with the right attributes, but **the rooms are
+invented**. `building.json` marks such a building `"sample": true` and the map says
+"sample" on its floor selector, its room cards and its routes. Draw the real plan over it,
+then remove `"sample"`. The script replaces only folders it generated itself.
+
+**What is sample data in this repository:** the six floors of the BCSIR Secretariat
+(`public/data/bcsir/secretariat/`) and the whole `taqwafabrics` organisation: its building
+names and storey counts follow the Taqwa Fabrics drawing set, but its footprints, roads and
+floor plans are placeholders at an invented location until the drawings are georeferenced.
+Only its `boundary.geojson` (the surveyed wall line) and `area.geojson` (the ground inside
+that line) are at the real site.
+
+### On the map
+
+| Action | How |
+|---|---|
+| Choose a place | The first screen lists the organisations. The grid button beside the name returns to it. `?org=bcsir` in the address opens one directly. |
+| See a floor | Select a building that has floor plans and choose a floor: in the **floor selector** (left edge; highest floor at the top) or on the building card. The building's shell is hidden and the floor is drawn at ground level. The house button shows the building from outside again. Zooming far in on such a building opens its first floor. |
+| Find a room | The search bar lists rooms and points (lifts, toilets, ...) with their floor and building; choosing one opens that floor and selects the room. Clicking a room on an open floor does the same. |
+| Directions between rooms | **Start here** / **Directions to here** on a room's card, or type room names in the Directions panel. |
+
+### Routes across floors
+
+A route between rooms goes: start room → corridor → the lift or stairs → directly to the
+destination floor → corridor → room. Between buildings it continues: → the building's
+entrance → the outdoor road network → the other building's entrance → its lift → the room.
+
+- **On a floor** the route follows the corridor polygons: they are turned into a 0.5 m
+  walking grid (`src/indoor/nav-grid.js`), the shortest way across it is found, and the path
+  is kept away from the walls and straightened. No routing lines need to be drawn.
+- **Between floors** the quickest connector is taken (`src/indoor/indoor-router.js`):
+  walking at 5 km/h, a lift 20 s + 3 s per floor, stairs 16 s per floor, an escalator 12 s
+  per floor. So one floor up beside a staircase uses the stairs, five floors up uses the
+  lift. **Lift only, no stairs** in the Directions panel gives a step-free route. When no
+  single lift or stair serves both floors, the route changes between them on a floor in between.
+- **The Directions panel** lists the steps ("Walk to Lift A", "Take Lift A up to L6",
+  "Walk to Conference Room"); clicking a step shows its floor. On the map, the red button at
+  the lift ("↑ L6") switches to the floor the route continues on, and the floors the route
+  uses carry a dot in the floor selector.
+- What it does not do: there is no positioning indoors (GPS does not tell floors), so
+  **Start** guides the outdoor part only; and a route never passes through a room to reach
+  another corridor.
 
 ## Using the map
 
@@ -67,7 +244,7 @@ Everything in `public/` must be committed. The original `.gitignore` ignored eve
 | First-person walk (game mode) | **Walk** (bottom left), choose the view, then click a location on the map: the camera goes down there. W/A/S/D or arrows to move fast (4.5 m/s, the cartoon walker runs), hold Shift for 9 m/s, **Space to jump**, mouse to look (looking up shows a blue sky with clouds), V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), **Jump** in their middle, drag the view to look. Walls and buildings cannot be walked through; a circular minimap (bottom left) shows the surroundings with short building names, the route and the destination. |
 | Live navigation | With a route drawn, **Start** under the route summary: follows the phone's GPS along the route, turns the map with its compass, shows the next turn and the remaining distance and time. See [Live navigation](#live-navigation-and-3d-mode). |
 | 3D mode | **3D mode** under the route summary: walk the route in first-person view with the same guidance. |
-| Deep link | `?buildingid=101` opens building 101 (the format used by the QR codes in `main_QRCode.zip`). |
+| Deep link | `?buildingid=101` opens building 101 of the default organisation (the format of the printed BCSIR QR codes). `?org=bcsir&buildingid=101` names the organisation; `?org=bcsir&place=secretariat/L06/shops/L06-01` opens a room on its floor. |
 
 ## Building labels
 
@@ -76,10 +253,10 @@ building name under it. Badge and name are one MapLibre symbol, so they are clic
 placed and hidden together.
 
 - **Photo**: the building's `image` property in `BuildingBoundary.geojson`, for example
-  `"image": "/image/pilot-plant.png"` for `public/image/pilot-plant.png` (PNG, JPG, JPEG,
+  `"image": "/image/pilot-plant.png"` for `public/image/bcsir/pilot-plant.png` (PNG, JPG, JPEG,
   WEBP). The original `image_url` attribute (for example `101.jpg`) is used when that file
-  is in `public/image/`. Without a usable photo the badge shows a neutral building icon. A
-  photo that is not in `public/image/` is never requested; the browser console names the
+  is in `public/image/bcsir/`. Without a usable photo the badge shows a neutral building icon. A
+  photo that is not in `public/image/bcsir/` is never requested; the browser console names the
   building to fix. The same photo heads the building card opened by clicking the label or
   the building.
 - **Photos from the original map**: `public/image/<id>.jpg` are the 38 building photos of
@@ -101,8 +278,8 @@ The repository had no laboratory or service data. Two structured files now hold 
 
 | File | Content |
 |---|---|
-| `public/data/directory/laboratories.json` | Institutes, laboratories, research divisions and sections, each linked to a building |
-| `public/data/directory/testing-services.json` | Laboratory testing services, each linked to a laboratory |
+| `public/data/bcsir/directory/laboratories.json` | Institutes, laboratories, research divisions and sections, each linked to a building |
+| `public/data/bcsir/directory/testing-services.json` | Laboratory testing services, each linked to a laboratory |
 
 Every record comes from an official BCSIR website and names its source:
 
@@ -157,7 +334,7 @@ records and keeps any others.
 The browser runs the original functions `buildGraph()`, `dijkstra()`,
 `isGraphConnected()` and `findConnectedComponents()`, extracted verbatim from the
 unmodified `connection_check.js` at build time (`scripts/lib/original-routing.mjs`).
-The network is `public/data/ConnectedRoads/v0/r2.json`, the original file, checked by
+The network is `public/data/bcsir/ConnectedRoads/v0/r2.json`, the original file, checked by
 sha256. Visual road properties never reach the router. The directions panel, the WALK
 tile and the building card only choose the endpoints; the route itself is unchanged.
 
@@ -250,7 +427,7 @@ remembered in the browser. Use of Esri World Imagery is subject to Esri's terms 
 
 ## Controlling the map with GeoJSON properties
 
-Edit a file in `public/data/` (in QGIS or a text editor), save it, and reload the
+Edit a file in `public/data/bcsir/` (in QGIS or a text editor), save it, and reload the
 page. While `npm run dev` runs, the open page reloads the changed file by itself.
 For a production build, run `npm run build` again, or edit the same file in `dist/data/`.
 
@@ -262,10 +439,10 @@ For a production build, run `npm run build` again, or edit the same file in `dis
 | `top_m` | Top elevation, metres (must be greater than `base_m`) | all layers |
 | `color` | Colour as a hex code: `"#FF0000"`, `"#f00"` | all layers |
 | `thickness_m` | Physical width in metres of the road or wall built around the line | roads, pathways, boundaries |
-| `fill_color` | Colour of the campus ground inside the boundary | `BCSIRBoundary` |
+| `fill_color` | Colour of the campus ground inside the boundary | `BCSIRBoundary`, `area` |
 | `spacing_m` | Distance between trees along the line | `TreeLine` |
-| `image` | Building photo URL, e.g. `"/image/abc.png"` for `public/image/abc.png` (PNG, JPG, JPEG, WEBP). Shown in the round label and the building card. | `BuildingBoundary` |
-| `model` | GLB/GLTF URL, e.g. `"/models/escalators.glb"` for `public/models/escalators.glb` | any Point/MultiPoint feature |
+| `image` | Building photo URL, e.g. `"/image/abc.png"` for `public/image/bcsir/abc.png` (PNG, JPG, JPEG, WEBP). Shown in the round label and the building card. | `BuildingBoundary` |
+| `model` | GLB/GLTF URL, e.g. `"/models/escalators.glb"` for `public/models/bcsir/escalators.glb` | any Point/MultiPoint feature |
 | `size`, `scale`, `rotation` | GLB model size, base scale and rotation (see below) | model features |
 | `model_points` | `[[lon, lat], …]` where to place `model` on a line or polygon feature | any feature |
 | `surface_model` | GLB whose top view covers the polygon, e.g. `"/models/grass.glb"` (see below) | `Garden` |
@@ -292,22 +469,23 @@ How each layer uses them:
 | `ConnectedRoad.geojson` | Road surface, `thickness_m` wide, from `base_m` to `top_m` |
 | `ConnectedRoadsDrawingVersion.geojson` | The wider grey road edge underneath (the QGIS "drawing version" style) |
 | `Pathway.geojson` | Pathways, like roads |
-| `BCSIRBoundary.geojson` | Wall along the boundary (`thickness_m`, `base_m`, `top_m`, `color`) and ground colour `fill_color` |
+| `BCSIRBoundary.geojson` | Wall along the boundary (`thickness_m`, `base_m`, `top_m`, `color`) and ground colour `fill_color`. A boundary drawn as a LineString (Taqwa `boundary.geojson`) gets the wall only. |
+| `area.geojson` | Ground of the site in `fill_color` (or `color`), without a wall: used with a LineString boundary (Taqwa) |
 | `InternalBoundary.geojson` | Walls along the internal boundary lines |
 | `Garden.geojson` | Garden surface at `top_m`: covered with the top view of `surface_model` (all gardens use `grass.glb`), otherwise from `base_m` to `top_m` in `color` |
 | `TreeLine.geojson` | 3D trees along each line: tree tops at `top_m`, crown `color`, one tree every `spacing_m` (not drawn while `TreeLineModels.geojson` places GLB trees) |
 
 Missing or invalid values fall back to defaults (`src/config.js`, `LAYER_DEFAULTS`) and
 the browser console lists every feature that needs fixing. `npm test` checks all files in
-`public/data/` for valid values.
+`public/data/bcsir/` for valid values.
 
 Roads, pathways and walls are built as 3D strips around the original centre lines.
 The line geometry itself, and therefore the routing network, never changes.
 
 ### GLB models
 
-Put the `.glb` file in `public/models/` and add a Point (one model) or MultiPoint
-(one model per point) feature with a `model` property to `public/data/models.geojson`:
+Put the `.glb` file in `public/models/bcsir/` and add a Point (one model) or MultiPoint
+(one model per point) feature with a `model` property to `public/data/bcsir/models.geojson`:
 
 ```json
 { "type": "Feature",
@@ -322,8 +500,8 @@ Put the `.glb` file in `public/models/` and add a Point (one model) or MultiPoin
 - `scale`: base scale used when `top_m` is not set (default 1).
 - `rotation`: degrees around the vertical axis, around the model's own centre.
 
-Models for other layers go in the same way: `public/data/GardenModels.geojson` and
-`public/data/TreeLineModels.geojson` are shown and hidden with the Garden and Tree line
+Models for other layers go in the same way: `public/data/bcsir/GardenModels.geojson` and
+`public/data/bcsir/TreeLineModels.geojson` are shown and hidden with the Garden and Tree line
 layers. A Point or MultiPoint feature with `model` in any other data file also works.
 Garden and TreeLine contain polygons and lines; to place a model on one of those
 features without adding a Point, give it `model_points`. Models are never placed at
@@ -331,7 +509,7 @@ guessed positions.
 
 `TreeLineModels.geojson` holds one Point per tree position of `TreeLine.geojson` (the
 start of each line, then every `spacing_m`), each with one of the four tree GLBs in
-`public/models/` chosen at random, and its own `base_m`, `top_m`, `size` and
+`public/models/bcsir/` chosen at random, and its own `base_m`, `top_m`, `size` and
 `rotation` to edit (`line_id` is the TreeLine line it belongs to). While this file
 places at least one model, the procedural trees are not drawn; empty its `features`
 to bring them back.
@@ -345,7 +523,7 @@ Every Garden polygon has `"surface_model": "/models/grass.glb", "surface_scale":
 `grass.glb` is a photo-scanned lawn about 1.2 × 2.8 m (in centimetres, hence 0.01)
 with 300,000 triangles; copies of it over the 24,000 m² of gardens would be billions
 of triangles. Its look is flat, so `npm run models:optimize` renders it once from
-straight above into a seamless tile (`public/models/lod/grass.surface.webp`, 0.13 MB)
+straight above into a seamless tile (`public/models/bcsir/lod/grass.surface.webp`, 0.13 MB)
 and the map repeats that tile over each polygon at its real size, mirrored at random
 per repeat so the pattern does not show. The polygon geometry is unchanged. Remove
 `surface_model` from a feature to give it its flat `color` again; any other GLB works as
@@ -363,15 +541,15 @@ entry for the original look.
 npm run models:optimize
 ```
 
-For each `public/models/*.glb` the script:
+For each `public/models/bcsir/*.glb` the script:
 
-- keeps the uploaded file unchanged in `backup/models/source/` (`--force` rebuilds from there);
+- keeps the uploaded file unchanged in `backup/models/<organisation>/` (`--force` rebuilds from there);
 - replaces `public/models/<name>.glb` with the same geometry, Meshopt-compressed, with WebP
   textures at the original resolution (GeoJSON keeps using the same URL);
-- writes lighter detail levels `public/models/lod/<name>.lod1-4.glb`: leaves and twigs are
+- writes lighter detail levels `public/models/bcsir/lod/<name>.lod1-4.glb`: leaves and twigs are
   thinned and each kept leaf is enlarged so crowns keep their density and colour; trunks
   are simplified; textures are the matching mipmap levels;
-- writes `public/models/lod/manifest.json`: the levels, the on-screen size each is used
+- writes `public/models/bcsir/lod/manifest.json`: the levels, the on-screen size each is used
   from, and the bounding box of the original model, with which every level is fitted, so
   positions and sizes are the same at every level;
 - bakes the ground tile of every `surface_model`.
@@ -415,7 +593,7 @@ Loading and drawing costs kept low (2026-09-25; same pictures, checked pixel by 
 
 ### Walk Mode character, sky and minimap names
 
-- **Character:** one cartoon walker, `models/characters/male.glb` (`npm run
+- **Character:** one cartoon walker, `models/shared/characters/male.glb` (`npm run
   models:character`, scripts/build-character.mjs: low-poly, Idle, Walk, Run and Jump),
   set in `WALK_CHARACTERS` in `src/config.js`. With one character the picker only asks
   for the view; more entries would bring back the choice of character.
@@ -453,7 +631,7 @@ that GLB instead of its extrusion; every other building is unchanged.
   of Energy Research & Development (107), the Central Mosque (203), the BCSIR Play Ground
   (244), the Fibre & Polymer Research Division (113), the Genomic Research Laboratories
   (101), INARS (102), the garage beside INARS (123) and the residential quarters (one
-  shared model, below), in `public/models/buildings/` (11–115 KB, 60–2,500 triangles, one
+  shared model, below), in `public/models/bcsir/buildings/` (11–115 KB, 60–2,500 triangles, one
   material and one WebP atlas each, 1024 px or 512 px (`atlasSize` in the style): one draw
   call per building). All of them load at start-up (about 1.06 MB); more models should
   come with loading by distance.
@@ -546,7 +724,7 @@ that GLB instead of its extrusion; every other building is unchanged.
   building, set `"building_model": "models/buildings/residential.glb"`; `model_size` is
   not used for modules. All 744 bays and storeys are one instanced draw call.
 - **Your own GLB (Blender):** model the building at any scale with Y up and its front
-  (entrance side) facing +Z, export it to `public/models/buildings/`, and set
+  (entrance side) facing +Z, export it to `public/models/bcsir/buildings/`, and set
   `building_model`. It is fitted like the generated ones.
 - **Extrusion:** hidden only after the building's GLB has loaded (body, roof, seams,
   corners and see-through copies are filtered out); an invisible extrusion keeps it
@@ -560,7 +738,7 @@ that GLB instead of its extrusion; every other building is unchanged.
 
 ## Data files
 
-`public/data/` is the only copy of each dataset. The app loads it and the QGIS project
+`public/data/bcsir/` is the only copy of each BCSIR dataset (every organisation has its own folder, see [Organisations and floor plans](#organisations-and-floor-plans)). The app loads it and the QGIS project
 `SrcDriveQMapBCSIR.qgz` opens its GeoJSON layers from it, so an edit saved in QGIS
 reaches the map directly.
 
@@ -574,9 +752,16 @@ reaches the map directly.
 
 - **Duplicates removed (2026-09-24).** The repository root held a second copy of the six
   GeoJSON layers and of `ConnectedRoads/v0/r2.json`. They were removed; a zip of them is
-  in `backup/` (ignored by git), and the QGIS project was repointed to `public/data/`.
+  in `backup/` (ignored by git), and the QGIS project was repointed to `public/data/bcsir/`.
   The original geometry text and attribute values of every feature are fingerprinted in
-  `original-data-fingerprints.json`; `npm test` proves `public/data/` still holds them.
+  `original-data-fingerprints.json`; `npm test` proves `public/data/bcsir/` still holds them.
+- **One folder per organisation (2026-10-02).** The BCSIR files moved from `public/data/`,
+  `public/models/` and `public/image/` into `public/data/bcsir/`, `public/models/bcsir/` and
+  `public/image/bcsir/`, unchanged (the routing network keeps its sha256 at its new path).
+  The QGIS project was repointed to `./public/data/bcsir/`. The data keeps its short
+  references: `"/image/101.jpg"` and `"models/buildings/igcrt.glb"` are read inside the
+  organisation's folders. Removed as unused: `main_QRCode.zip`, `ReadMeColor.md`,
+  `public/image/topten.png`; all remain in the git history.
 - All data is WGS 84 longitude/latitude (EPSG:4326), used directly by MapLibre.
   Coordinates are kept with their original number text.
 - `npm run data:prepare` creates missing model files and reports missing datasets.
@@ -591,20 +776,29 @@ reaches the map directly.
 ├── original-files.sha256        checksums of the original BCSIR files
 ├── original-data-fingerprints.json  geometry/attribute fingerprints of the original layers
 ├── public/
-│   ├── data/                    the datasets (edit these); data/directory/ = labs and tests
-│   ├── models/                  GLB/GLTF files (optimized); models/lod/ = detail levels, grass tile, manifest
-│   └── image/                   building photos
+│   ├── data/<org>/              the datasets of an organisation (edit these), org.json,
+│   │                            one folder per building with floors; bcsir/directory/ = labs and tests
+│   ├── models/<org>/            GLB/GLTF files (optimized); lod/ = detail levels, grass tile, manifest
+│   ├── models/shared/           models any organisation may use (the Walk Mode character)
+│   └── image/<org>/             building photos and the logo
 ├── src/
-│   ├── main.js                  start-up and wiring
+│   ├── main.js                  start-up: which organisation to open (picker or ?org=)
+│   ├── org.js, org-picker.js    the open organisation and its folders; the first screen
+│   ├── app.js                   the map: wiring of everything below
+│   ├── indoor/                  floor plans: levels.js (floor folders and files), indoor-model.js
+│   │                            (a floor from its files), nav-grid.js (walking grid),
+│   │                            indoor-router.js (lifts and stairs), indoor-store.js, trip.js
+│   │                            (room-to-room trips and their steps), indoor-layers.js,
+│   │                            floor-control.js, place-card.js, indoor-controller.js
 │   ├── map.js, basemaps.js      MapLibre map; street and satellite basemaps
-│   ├── config.js                dataset paths and fallback defaults
+│   ├── config.js                dataset keys and fallback defaults
 │   ├── visual-properties.js     reads and validates base_m, top_m, thickness_m, color, …
 │   ├── bcsir-data.js            loads datasets, builds render copies and label points
 │   ├── bcsir-layers.js          MapLibre layers (buildings, labels, route), layer groups
 │   ├── building-labels.js       round photo badges for the labels
 │   ├── building-images.js       building photo lookup (labels and card)
 │   ├── directory.js             search index, lab/test → building mapping
-│   ├── directory-data.js        loads public/data/directory/
+│   ├── directory-data.js        loads public/data/bcsir/directory/
 │   ├── combobox.js              accessible autocomplete list
 │   ├── search-ui.js             main search bar
 │   ├── directions-ui.js         From / To panel and WALK toggle
@@ -626,18 +820,20 @@ reaches the map directly.
 │   │                            guidance (route-progress.js), walk collision,
 │   │                            route geometry around buildings, walk minimap
 │   ├── routing/route-service.js route calculation with the original functions
-│   └── style.css
+│   └── style.css, indoor.css
 ├── scripts/
+│   ├── make-sample-floors.mjs     npm run floors:sample (template floors for a building)
 │   ├── import-inars-services.mjs  npm run data:services
 │   ├── optimize-models.mjs        npm run models:optimize
 │   ├── build-building-models.mjs  npm run models:buildings (styles and specs in building-models/)
 │   ├── prepare-public-data.mjs    npm run data:prepare
-│   ├── vite-plugin-bcsir.mjs      routing module, photo list, live data reload
+│   ├── vite-plugin-bcsir.mjs      routing module, the catalog of organisations, live data reload
 │   ├── verify-originals.mjs       npm run verify:originals
 │   ├── verify-routing.mjs         npm run verify:routing
-│   └── lib/                       shapefile reader, public-data helpers, routing extractor
+│   └── lib/                       catalog.mjs (organisations, floors, room list), sample-floors.mjs,
+│                                  shapefile reader, public-data helpers, routing extractor
 ├── tests/                       node --test suites + GLB fixture generator
-└── (original BCSIR files: QGIS project, shapefiles, connection_check.js, QR helper)
+└── (original BCSIR files: QGIS project, shapefiles, connection_check.js)
 ```
 
 ## Known limitations
@@ -656,7 +852,7 @@ reaches the map directly.
   fill one in. The original map uses one identical photo for 302 (Secondary Gate) and
   303 (Internal Residential Gate); it is kept for both, although it can show at most one
   of them. Building 101's `image` now points to `/image/101.jpg` (it named
-  `public/image/topten.png`, a non-BCSIR logo that still lies unused in `public/image/`).
+  `topten.png`, a non-BCSIR logo, since removed).
 - The road network has two disconnected parts. Pathway 223 forms a separate 5-node
   component. Buildings 305 (Residential School Gate, by its entrance), 230 and 235
   (by footprint centre) snap to it, so they have no route to the rest of the campus.

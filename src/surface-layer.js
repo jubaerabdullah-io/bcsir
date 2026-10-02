@@ -26,6 +26,7 @@ import { MercatorCoordinate } from "maplibre-gl";
 import { SURFACE_APPEARANCE } from "./config.js";
 import { modelManifestEntry } from "./models3d.js";
 import { publicAssetUrl } from "./paths.js";
+import { modelPath } from "./org.js";
 import { acquireRenderer, releaseRenderer } from "./three-shared.js";
 import { parseNumber } from "./visual-properties.js";
 
@@ -188,7 +189,7 @@ export function surfaceLayer(id, collection, { coveredLayerId } = {}) {
     const ready = [];
     await Promise.all([...byModel].map(async ([model, features]) => {
       try {
-        const tile = (await modelManifestEntry(publicAssetUrl(model)))?.surface;
+        const tile = (await modelManifestEntry(publicAssetUrl(modelPath(model))))?.surface;
         if (!tile) {
           console.warn(`${model}: no ground-surface tile; run "npm run models:optimize". Those Garden polygons keep their flat colour.`);
           return;

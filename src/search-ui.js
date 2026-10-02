@@ -1,5 +1,5 @@
-// Main search bar: buildings, laboratories, research divisions and testing
-// services in one list. Extends the original building search (same building
+// Main search bar: buildings, rooms of the floor plans, laboratories, research
+// divisions and testing services in one list. Extends the original building search (same building
 // fields: English, short and Bengali names, alias, ID and category) with the
 // campus directory (directory.js).
 import { createCombobox } from "./combobox.js";
@@ -16,7 +16,7 @@ export function createSearch({ getDirectory, onSelect, onMessage }) {
       onSelect(entry);
       input.blur();
     },
-    emptyText: "No buildings, labs or tests"
+    emptyText: "Nothing"
   });
 
   form.addEventListener("submit", (event) => {

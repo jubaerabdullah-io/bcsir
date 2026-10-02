@@ -1,23 +1,26 @@
 #!/usr/bin/env node
-// Usage: npm run models:optimize                  optimize new or replaced GLBs in public/models/
-//        npm run models:optimize -- --force       rebuild every model from its backed-up source
+// Usage: npm run models:optimize                    optimize new or replaced GLBs of every organisation
+//        npm run models:optimize -- --org bcsir     only that organisation (public/models/bcsir/)
+//        npm run models:optimize -- --force         rebuild every model from its backed-up source
 //        npm run models:optimize -- mango_tree.glb  only the named model(s)
 //
-// Prepares the GLB models for fast loading and drawing. For every public/models/*.glb:
+// Prepares the GLB models for fast loading and drawing. Every organisation has its
+// own folder, public/models/<org>/ ("shared" holds models any organisation may use).
+// For every public/models/<org>/*.glb (the paths below are inside that folder):
 //
-// 1. The uploaded file is kept unchanged in backup/models/source/<name>.glb (the
+// 1. The uploaded file is kept unchanged in backup/models/<org>/<name>.glb (the
 //    source for later rebuilds).
-// 2. public/models/<name>.glb is replaced by an optimized copy with the SAME geometry
+// 2. <name>.glb is replaced by an optimized copy with the SAME geometry
 //    (LOD 0): Meshopt-compressed vertex data and WebP textures at the original
 //    resolution (textures with transparency are stored lossless, keeping the colour
 //    under transparent pixels, which shows through mipmapping at a distance).
 //    GeoJSON files keep referencing "/models/<name>.glb".
-// 3. public/models/lod/<name>.lod1-4.glb are lighter versions used when the model is
+// 3. lod/<name>.lod1-4.glb are lighter versions used when the model is
 //    small on screen. Leaves and twigs (small separate pieces) are thinned out, and
 //    each kept piece is enlarged about its own centre so the crown keeps its density
 //    and colour; trunks and large parts are simplified. Their textures are the same
 //    box-filtered mipmap levels the GPU would use at those sizes.
-// 4. public/models/lod/manifest.json lists every model's levels, the screen height
+// 4. lod/manifest.json lists every model's levels, the screen height
 //    (pixels) from which each level is used, and the bounding box of the ORIGINAL
 //    model. The map fits and centres every model with that box, so positions and
 //    sizes do not depend on which level is drawn.
@@ -27,6 +30,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { buildOrgIndex, listOrganisations } from "./lib/catalog.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NodeIO } from "@gltf-transform/core";
@@ -36,10 +40,18 @@ import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer
 import sharp from "sharp";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const MODELS_DIR = path.join(root, "public/models");
-const LOD_DIR = path.join(MODELS_DIR, "lod");
-const SOURCE_DIR = path.join(root, "backup/models/source");
-const MANIFEST = path.join(LOD_DIR, "manifest.json");
+const MODELS_ROOT = path.join(root, "public/models");
+// The folders of the organisation being processed (useOrganisation).
+let MODELS_DIR;
+let LOD_DIR;
+let SOURCE_DIR;
+let MANIFEST;
+function useOrganisation(org) {
+  MODELS_DIR = path.join(MODELS_ROOT, org);
+  LOD_DIR = path.join(MODELS_DIR, "lod");
+  SOURCE_DIR = path.join(root, "backup/models", org);
+  MANIFEST = path.join(LOD_DIR, "manifest.json");
+}
 
 // Level ladder. minPx: smallest on-screen height (pixels) at which the level is drawn
 // (models under MODEL_VISIBILITY.impostorPixels, 32 px, are drawn as impostors).
@@ -430,10 +442,12 @@ async function optimize(name, sourceBuffer, { surface }) {
   return entry;
 }
 
-// Models used as ground surfaces by Garden.geojson ("surface_model").
-async function surfaceModels() {
+// Models used as ground surfaces by the organisation's garden file ("surface_model").
+async function surfaceModels(org) {
   try {
-    const garden = JSON.parse(await readFile(path.join(root, "public/data/Garden.geojson"), "utf8"));
+    const file = listOrganisations(root).includes(org) ? buildOrgIndex(root, org).datasets.garden : null;
+    if (!file) return new Set();
+    const garden = JSON.parse(await readFile(path.join(root, "public/data", org, file), "utf8"));
     return new Set(garden.features.map((f) => f.properties?.surface_model).filter(Boolean).map((url) => path.basename(String(url))));
   } catch { return new Set(); }
 }
@@ -441,14 +455,25 @@ async function surfaceModels() {
 async function main() {
   const args = process.argv.slice(2);
   const force = args.includes("--force");
-  const only = args.filter((a) => !a.startsWith("--"));
+  const orgFlag = args.indexOf("--org");
+  const wanted = orgFlag >= 0 ? args[orgFlag + 1] : null;
+  const only = args.filter((a, i) => !a.startsWith("--") && i !== orgFlag + 1);
   await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready, MeshoptSimplifier.ready]);
   io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "meshopt.encoder": MeshoptEncoder, "meshopt.decoder": MeshoptDecoder });
+  const folders = (await readdir(MODELS_ROOT, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name).filter((name) => !wanted || name === wanted).sort();
+  if (!folders.length) console.warn(wanted ? `No folder public/models/${wanted}/.` : "No organisation folder in public/models/.");
+  for (const org of folders) await optimizeOrganisation(org, { force, only });
+}
+
+async function optimizeOrganisation(org, { force, only }) {
+  useOrganisation(org);
+  const names = (await readdir(MODELS_DIR)).filter((file) => /\.glb$/i.test(file) && (!only.length || only.includes(file))).sort();
+  if (!names.length && !existsSync(MANIFEST)) return; // a folder of models that need no detail levels (e.g. shared/characters)
+  console.log(`\n${path.relative(root, MODELS_DIR).split(path.sep).join("/")}/`);
   await mkdir(LOD_DIR, { recursive: true });
   await mkdir(SOURCE_DIR, { recursive: true });
   const manifest = existsSync(MANIFEST) ? JSON.parse(await readFile(MANIFEST, "utf8")) : { version: 1, models: {} };
-  const surfaces = await surfaceModels();
-  const names = (await readdir(MODELS_DIR)).filter((file) => /\.glb$/i.test(file) && (!only.length || only.includes(file))).sort();
+  const surfaces = await surfaceModels(org);
 
   for (const name of names) {
     const current = await readFile(path.join(MODELS_DIR, name));
@@ -466,7 +491,7 @@ async function main() {
     for (const lod of entry.lods) console.log(`  ${lod.url.padEnd(34)} ${String(lod.triangles).padStart(7)} triangles  ${(lod.bytes / 1048576).toFixed(2).padStart(6)} MB  from ${lod.minPx} px`);
     if (entry.surface) console.log(`  ${entry.surface.url.padEnd(34)} ${entry.surface.pixels.join("x").padStart(9)} px tile   ${(entry.surface.bytes / 1048576).toFixed(2).padStart(6)} MB  (ground surface, ${entry.surface.width} x ${entry.surface.height} model units)`);
   }
-  // Forget models that were deleted from public/models/.
+  // Forget models that were deleted from the organisation's folder.
   for (const name of Object.keys(manifest.models)) if (!existsSync(path.join(MODELS_DIR, name))) delete manifest.models[name];
   await writeFile(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`\nManifest: ${path.relative(root, MANIFEST)} (${Object.keys(manifest.models).length} models)`);

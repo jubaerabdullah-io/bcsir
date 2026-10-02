@@ -1,4 +1,5 @@
-// Loads the BCSIR datasets from public/data/ and prepares in-memory RENDER copies.
+// Loads the open organisation's datasets from public/data/<organisation>/ and
+// prepares in-memory RENDER copies.
 //
 // Adapted from the reference project's loadIndoorData()/normalizeGeoJSON():
 // each file is loaded independently so one bad file cannot block the others,
@@ -12,7 +13,8 @@
 // - Geometry coordinates are passed through unchanged (no rounding, no reprojection).
 // - Original properties are kept; render-only values use the `render_` prefix.
 // - Nothing is written back to any file.
-import { BUILDING_CATEGORIES, DATA_PATHS, HEIGHT_FIELDS, LAYER_DEFAULTS, METRES_PER_LEVEL } from "./config.js";
+import { BUILDING_CATEGORIES, DATASET_KEYS, HEIGHT_FIELDS, LAYER_DEFAULTS, METRES_PER_LEVEL } from "./config.js";
+import { datasetFile, datasetPath } from "./org.js";
 import { labelAnchor } from "./geo-utils.js";
 import { publicAssetUrl } from "./paths.js";
 import { createReport, parseColor, parseNumber, resolveVisual } from "./visual-properties.js";
@@ -23,8 +25,11 @@ const POINTS = ["Point", "MultiPoint"];
 
 // Geometry types drawn by each dataset's MapLibre/Three.js layers. Point and
 // MultiPoint features are also accepted everywhere: they can carry a `model`.
+// The site boundary is a polygon (wall along its outline + ground colour) or a
+// line drawn along the wall (wall only); the site area is the ground alone.
 const GEOMETRY_RULES = {
-  boundary: POLYGONS,
+  area: POLYGONS,
+  boundary: [...POLYGONS, ...LINES],
   buildings: POLYGONS,
   roads: LINES,
   roadsDrawing: LINES,
@@ -34,20 +39,10 @@ const GEOMETRY_RULES = {
   treeLine: LINES
 };
 
-export const DATASET_LABELS = {
-  boundary: "BCSIRBoundary.geojson",
-  buildings: "BuildingBoundary.geojson",
-  roads: "ConnectedRoad.geojson",
-  roadsDrawing: "ConnectedRoadsDrawingVersion.geojson",
-  pathways: "Pathway.geojson",
-  internal: "InternalBoundary.geojson",
-  garden: "Garden.geojson",
-  treeLine: "TreeLine.geojson",
-  models: "models.geojson",
-  gardenModels: "GardenModels.geojson",
-  treeLineModels: "TreeLineModels.geojson",
-  network: "ConnectedRoads/v0/r2.json"
-};
+// File name of a dataset in the open organisation, for messages ("Pathway.geojson").
+export const datasetLabel = (key) => datasetFile(key) || `${key} dataset`;
+
+const EMPTY_COLLECTION = () => ({ type: "FeatureCollection", features: [] });
 
 // Case-insensitive property lookup (reference: firstProperty()).
 function firstProperty(properties, names) {
@@ -78,14 +73,18 @@ function hash(text) {
   return (result >>> 0).toString(36);
 }
 
+// Resolves to { data, signature }; an organisation without that dataset gets an
+// empty collection (signature "none").
 export async function fetchDataset(key, { fresh = false } = {}) {
-  const url = publicAssetUrl(DATA_PATHS[key]);
+  const published = datasetPath(key);
+  if (!published) return { data: EMPTY_COLLECTION(), signature: "none" };
+  const url = publicAssetUrl(published);
   const response = await fetch(fresh ? `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}` : url, fresh ? { cache: "no-store" } : undefined);
-  if (!response.ok) throw new Error(`${DATASET_LABELS[key]}: ${response.status} ${response.statusText}`);
+  if (!response.ok) throw new Error(`${datasetLabel(key)}: ${response.status} ${response.statusText}`);
   const text = await response.text();
   const data = JSON.parse(text);
   if (data?.type !== "FeatureCollection" || !Array.isArray(data.features)) {
-    throw new Error(`${DATASET_LABELS[key]} must be a GeoJSON FeatureCollection.`);
+    throw new Error(`${datasetLabel(key)} must be a GeoJSON FeatureCollection.`);
   }
   return { data, signature: hash(text) };
 }
@@ -100,7 +99,7 @@ function filterGeometry(key, data) {
     if (!POINTS.includes(type)) skipped += 1;
     return false;
   });
-  if (skipped) console.warn(`${DATASET_LABELS[key]}: ${skipped} feature(s) skipped because of missing or unsupported geometry.`);
+  if (skipped) console.warn(`${datasetLabel(key)}: ${skipped} feature(s) skipped because of missing or unsupported geometry.`);
   return { type: "FeatureCollection", features, _skippedFeatures: skipped };
 }
 
@@ -139,7 +138,7 @@ export function resolveBuildingHeight(properties, { report, featureId } = {}) {
 
 export function normalizeBuildings(raw, heightScale = 1) {
   const filtered = filterGeometry("buildings", raw);
-  const report = createReport(DATASET_LABELS.buildings);
+  const report = createReport(datasetLabel("buildings"));
   const seen = new Map();
   const features = filtered.features.map((feature, index) => {
     const properties = { ...(feature.properties || {}) };
@@ -202,7 +201,7 @@ export function buildingLabelPoints(buildings, badgeFor = () => "bcsir-badge:non
 // Generic render copy: original properties + validated render_* values.
 function normalizeVisual(key, raw) {
   const filtered = filterGeometry(key, raw);
-  const report = createReport(DATASET_LABELS[key]);
+  const report = createReport(datasetLabel(key));
   const features = filtered.features.map((feature, index) => {
     const visual = resolveVisual(feature.properties || {}, LAYER_DEFAULTS[key], { report, featureId: featureLabel(feature, index) });
     return {
@@ -214,7 +213,8 @@ function normalizeVisual(key, raw) {
         render_top_m: visual.topM,
         render_thickness_m: visual.thicknessM,
         render_color: visual.color,
-        render_fill_color: visual.fillColor,
+        // The site area has one colour: `fill_color` (as on a boundary polygon) or `color`.
+        render_fill_color: key === "area" && parseColor(feature.properties?.fill_color) === null ? visual.color : visual.fillColor,
         render_spacing_m: visual.spacingM
       },
       geometry: feature.geometry
@@ -231,7 +231,7 @@ export function prepareDataset(key, raw, options = {}) {
 }
 
 export async function loadAllData(previous = null, options = {}) {
-  const keys = Object.keys(DATA_PATHS);
+  const keys = DATASET_KEYS;
   const results = await Promise.allSettled(keys.map((key) => fetchDataset(key, options)));
   const output = { raw: {}, render: {}, signatures: {}, errors: [] };
   results.forEach((result, index) => {
@@ -242,14 +242,30 @@ export async function loadAllData(previous = null, options = {}) {
       output.render[key] = prepareDataset(key, result.value.data, options);
     } else {
       const message = result.reason?.message || String(result.reason);
-      console.warn(`Could not load ${DATASET_LABELS[key]}:`, message);
+      console.warn(`Could not load ${datasetLabel(key)}:`, message);
       output.errors.push(message);
       output.raw[key] = previous?.raw?.[key] || { type: "FeatureCollection", features: [] };
       output.render[key] = previous?.render?.[key] || { type: "FeatureCollection", features: [] };
       output.signatures[key] = previous?.signatures?.[key] || "missing";
     }
   });
+  if (!datasetPath("network")) output.raw.network = deriveNetwork(output.raw.roads, output.raw.pathways);
   return output;
+}
+
+// Routing network of an organisation without a network file: its road and
+// pathway centrelines, in the form the original routing code reads (one
+// MultiLineString feature per line). Lines join where they share a vertex.
+export function deriveNetwork(...collections) {
+  const features = [];
+  for (const collection of collections) {
+    for (const feature of collection?.features || []) {
+      const geometry = feature?.geometry;
+      const lines = geometry?.type === "LineString" ? [geometry.coordinates] : geometry?.type === "MultiLineString" ? geometry.coordinates : [];
+      for (const line of lines) if (Array.isArray(line) && line.length > 1) features.push({ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: [line] } });
+    }
+  }
+  return { type: "FeatureCollection", features };
 }
 
 export { parseColor };

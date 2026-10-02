@@ -25,6 +25,7 @@ import { BUILDING_MODELS } from "./config.js";
 import { buildingModelPlacement, offsetLngLat, placedBoxCorners, tiledModelParts } from "./building-footprint.js";
 import { whenModelLoaded } from "./models3d.js";
 import { publicAssetUrl } from "./paths.js";
+import { modelPath } from "./org.js";
 
 const TAG = "[Building 3D]";
 const DEBUG_SOURCE = "building-models-debug";
@@ -123,7 +124,7 @@ export function createBuildingModels({ map, getBuildings, onReplacedChange, conf
       }
       const module = moduleOf(placement.model);
       const parts = module ? tiledModelParts(feature, module) : null;
-      entries.push({ renderId: String(feature.properties.render_id ?? feature.properties.id), feature, placement, url: publicAssetUrl(placement.model), parts: parts?.length ? parts : null });
+      entries.push({ renderId: String(feature.properties.render_id ?? feature.properties.id), feature, placement, url: publicAssetUrl(modelPath(placement.model)), parts: parts?.length ? parts : null });
     }
     if (entries.length) {
       console.info(`${TAG} ${entries.length} building${entries.length > 1 ? "s" : ""} drawn from GLB models:\n${entries.map(({ feature, placement: p, parts }) => (parts

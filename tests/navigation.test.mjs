@@ -15,8 +15,8 @@ import { encodeAssetPath, findListedFile } from "../src/asset-paths.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
-const buildings = normalizeBuildings(readJSON("public/data/BuildingBoundary.geojson"));
-const network = readJSON("public/data/ConnectedRoads/v0/r2.json");
+const buildings = normalizeBuildings(readJSON("public/data/bcsir/BuildingBoundary.geojson"));
+const network = readJSON("public/data/bcsir/ConnectedRoads/v0/r2.json");
 const { createRouteService } = await import("../src/routing/route-service.js");
 const service = createRouteService(network);
 const building = (id) => buildings.features.find((feature) => feature.properties.id === id);
@@ -111,8 +111,8 @@ test("collision: indoor areas are entered only through an entrance and stay on t
 });
 
 const walls = [
-  { collection: lineStrips(prepareDataset("internal", readJSON("public/data/InternalBoundary.geojson"))), kind: "wall", name: "Internal wall" },
-  { collection: lineStrips(prepareDataset("boundary", readJSON("public/data/BCSIRBoundary.geojson"))), kind: "wall", name: "Boundary wall" }
+  { collection: lineStrips(prepareDataset("internal", readJSON("public/data/bcsir/InternalBoundary.geojson"))), kind: "wall", name: "Internal wall" },
+  { collection: lineStrips(prepareDataset("boundary", readJSON("public/data/bcsir/BCSIRBoundary.geojson"))), kind: "wall", name: "Boundary wall" }
 ];
 
 test("collision on the campus data: walking a route is never blocked, walking into a building is", () => {

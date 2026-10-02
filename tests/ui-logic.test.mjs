@@ -12,7 +12,7 @@ import { describeEndpoint, describeRoute, formatDistance, walkingMinutes } from 
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
-const buildings = normalizeBuildings(readJSON("public/data/BuildingBoundary.geojson"));
+const buildings = normalizeBuildings(readJSON("public/data/bcsir/BuildingBoundary.geojson"));
 // Loaded after the routing hook is registered (it resolves "virtual:bcsir-routing").
 const { createRouteService } = await import("../src/routing/route-service.js");
 
@@ -64,7 +64,7 @@ test("basemaps: the street layer is unchanged, satellite has Esri attribution, o
 test("layer groups: labels, route and basemap keep a switch in the layer list", async () => {
   const { LAYER_GROUPS } = await import("../src/bcsir-layers.js");
   const ids = LAYER_GROUPS.map((group) => group.id);
-  assert.deepEqual(ids, ["buildings", "labels", "roads", "roadsDrawing", "pathways", "boundary", "internal", "garden", "trees", "route", "models", "basemap"]);
+  assert.deepEqual(ids, ["buildings", "labels", "roads", "roadsDrawing", "pathways", "area", "boundary", "internal", "garden", "trees", "route", "models", "basemap"]);
   assert.deepEqual(LAYER_GROUPS.find((group) => group.id === "labels").layers, ["building-labels-major", "building-labels-minor"]);
 });
 
@@ -74,7 +74,7 @@ test("route summary: walking time and distance from the network length only", ()
   assert.equal(walkingMinutes(0), 0);
   assert.equal(formatDistance(249.4), "249 m");
   assert.equal(formatDistance(1234), "1.23 km");
-  const service = createRouteService(readJSON("public/data/ConnectedRoads/v0/r2.json"));
+  const service = createRouteService(readJSON("public/data/bcsir/ConnectedRoads/v0/r2.json"));
   const find = (id) => buildings.features.find((feature) => feature.properties.id === id);
   const result = service.route(find(101), find(119));
   const summary = describeRoute(result);
@@ -84,7 +84,7 @@ test("route summary: walking time and distance from the network length only", ()
 });
 
 test("route summary: a missing entrance and a missing connection are stated, not hidden", () => {
-  const service = createRouteService(readJSON("public/data/ConnectedRoads/v0/r2.json"));
+  const service = createRouteService(readJSON("public/data/bcsir/ConnectedRoads/v0/r2.json"));
   const find = (id) => buildings.features.find((feature) => feature.properties.id === id);
   const noEntrance = buildings.features.find((feature) => !Number.isFinite(feature.properties.entrance_lon));
   const endpoint = service.endpointFor(noEntrance);

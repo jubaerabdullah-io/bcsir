@@ -24,7 +24,7 @@ const fingerprints = readJSON("original-data-fingerprints.json").datasets;
 // The GeoJSON layers live only in public/data/. Their original geometry text and
 // attribute values were fingerprinted before the root duplicates were removed.
 for (const dataset of PUBLIC_DATASETS) {
-  test(`${dataset.name} in public/data keeps every original feature, geometry text, ID and attribute`, () => {
+  test(`${dataset.name} in public/data/bcsir keeps every original feature, geometry text, ID and attribute`, () => {
     const fingerprint = fingerprints[dataset.name];
     const text = read(dataset.target);
     const copy = JSON.parse(text);
@@ -81,30 +81,30 @@ test("routing network is the original r2.json and model files exist", () => {
   for (const file of MODEL_FILES) assert.equal(readJSON(file).type, "FeatureCollection", file);
 });
 
-test("each dataset exists once: no duplicate data files outside public/data", () => {
-  for (const { name } of PUBLIC_DATASETS) assert.throws(() => readFileSync(path.join(root, `${name}.geojson`)), `${name}.geojson should only be in public/data/`);
-  assert.throws(() => readFileSync(path.join(root, "ConnectedRoads/v0/r2.json")), "the routing network should only be in public/data/");
+test("each dataset exists once: no duplicate data files outside public/data/bcsir", () => {
+  for (const { name } of PUBLIC_DATASETS) for (const folder of ["", "public/data"]) assert.throws(() => readFileSync(path.join(root, folder, `${name}.geojson`)), `${name}.geojson should only be in public/data/bcsir/`);
+  assert.throws(() => readFileSync(path.join(root, "ConnectedRoads/v0/r2.json")), "the routing network should only be in public/data/bcsir/");
 });
 
 // Photos from the original map (map-bcsir.srcdrive.com/images/) keep their file
 // name "<building id>.jpg", which is that building's original image_url.
-test("each building photo in public/image belongs to the building with its ID", () => {
-  const buildings = readJSON("public/data/BuildingBoundary.geojson").features.map((feature) => feature.properties);
-  const photos = readdirSync(path.join(root, "public/image")).filter((file) => /^\d+\.jpg$/.test(file));
+test("each building photo in public/image/bcsir belongs to the building with its ID", () => {
+  const buildings = readJSON("public/data/bcsir/BuildingBoundary.geojson").features.map((feature) => feature.properties);
+  const photos = readdirSync(path.join(root, "public/image/bcsir")).filter((file) => /^\d+\.jpg$/.test(file));
   assert.ok(photos.length > 0, "building photos present");
   for (const file of photos) {
     const owners = buildings.filter((building) => building.image_url === file);
     assert.equal(owners.length, 1, `${file} is the image_url of exactly one building`);
     assert.equal(`${owners[0].id}.jpg`, file, `${file} belongs to building ${owners[0].id}`);
-    assert.equal(readFileSync(path.join(root, "public/image", file)).subarray(0, 3).toString("hex"), "ffd8ff", `${file} is a JPEG`);
+    assert.equal(readFileSync(path.join(root, "public/image/bcsir", file)).subarray(0, 3).toString("hex"), "ffd8ff", `${file} is a JPEG`);
   }
 });
 
 test("r2.json is exactly ConnectedRoad.geojson plus Pathway.geojson", () => {
   const key = (feature) => JSON.stringify(feature.geometry.coordinates);
-  const network = new Set(readJSON("public/data/ConnectedRoads/v0/r2.json").features.map(key));
-  const roads = readJSON("public/data/ConnectedRoad.geojson").features;
-  const pathways = readJSON("public/data/Pathway.geojson").features;
+  const network = new Set(readJSON("public/data/bcsir/ConnectedRoads/v0/r2.json").features.map(key));
+  const roads = readJSON("public/data/bcsir/ConnectedRoad.geojson").features;
+  const pathways = readJSON("public/data/bcsir/Pathway.geojson").features;
   assert.equal(network.size, roads.length + pathways.length);
   assert.ok([...roads, ...pathways].every((feature) => network.has(key(feature))));
 });
@@ -117,16 +117,17 @@ test("parseColor accepts hex colours only", () => {
 });
 
 test("buildings take base_m, top_m and color from GeoJSON", () => {
-  const raw = readJSON("public/data/BuildingBoundary.geojson");
+  const raw = readJSON("public/data/bcsir/BuildingBoundary.geojson");
   const snapshot = JSON.stringify(raw);
   const edit = (id, props) => ({ ...raw, features: raw.features.map((feature) => (feature.properties.id === id ? { ...feature, properties: { ...feature.properties, ...props } } : feature)) });
   const building = (collection, id) => normalizeBuildings(collection).features.find((feature) => feature.properties.id === id).properties;
 
   const current = building(raw, 102);
   assert.equal(current.render_base_m, 0);
-  assert.equal(current.render_top_m, 12);
-  assert.equal(current.render_color, "#d9d0c9", "legacy code \"o\" keeps the QGIS office colour");
-  assert.equal(building(raw, 207).render_color, "#ff9a87", "hex colour set by the owner");
+  // The height is the owner's value in the file, whatever it is today.
+  assert.equal(current.render_top_m, raw.features.find((feature) => feature.properties.id === 102).properties.top_m);
+  assert.equal(building(edit(102, { color: "o" }), 102).render_color, "#d9d0c9", "legacy code \"o\" keeps the QGIS office colour");
+  assert.equal(building(raw, 207).render_color, parseColor(raw.features.find((feature) => feature.properties.id === 207).properties.color), "hex colour set by the owner");
 
   const changed = building(edit(102, { base_m: 5, top_m: 25, color: "#FF0000" }), 102);
   assert.deepEqual([changed.render_base_m, changed.render_top_m, changed.render_color], [5, 25, "#ff0000"]);
@@ -153,7 +154,7 @@ test("buildings take base_m, top_m and color from GeoJSON", () => {
 });
 
 test("road, pathway and boundary strips follow thickness_m, base_m, top_m and color", () => {
-  const raw = readJSON("public/data/ConnectedRoad.geojson");
+  const raw = readJSON("public/data/bcsir/ConnectedRoad.geojson");
   const road = raw.features[1]; // a straight 3-vertex road
   const centreline = JSON.stringify(road.geometry);
   const withProps = (props) => prepareDataset("roads", { type: "FeatureCollection", features: [{ ...road, properties: { ...road.properties, ...props } }] });
@@ -167,12 +168,43 @@ test("road, pathway and boundary strips follow thickness_m, base_m, top_m and co
     assert.deepEqual([strip.properties.render_base_m, strip.properties.render_top_m, strip.properties.render_color], [1, 1.5, "#59636d"]);
   }
   assert.equal(JSON.stringify(road.geometry), centreline, "centreline untouched");
-  assert.equal(sha256(rawGeometries(read("public/data/ConnectedRoad.geojson"))[1]), fingerprints.ConnectedRoad.features[1].geometry, "centreline is the original");
+  assert.equal(sha256(rawGeometries(read("public/data/bcsir/ConnectedRoad.geojson"))[1]), fingerprints.ConnectedRoad.features[1].geometry, "centreline is the original");
 
-  const walls = lineStrips(prepareDataset("boundary", readJSON("public/data/BCSIRBoundary.geojson")));
+  const walls = lineStrips(prepareDataset("boundary", readJSON("public/data/bcsir/BCSIRBoundary.geojson")));
   assert.equal(walls.features.length, 1);
   assert.equal(walls.features[0].geometry.coordinates.length, 2, "closed boundary ring becomes a band with a hole");
-  assert.equal(lineStrips(prepareDataset("internal", readJSON("public/data/InternalBoundary.geojson"))).features.length, 6);
+  assert.equal(lineStrips(prepareDataset("internal", readJSON("public/data/bcsir/InternalBoundary.geojson"))).features.length, 6);
+});
+
+test("a site boundary drawn as a line (QGIS LineString layer) is kept and gets its wall", () => {
+  const line = (coordinates, properties, type = "LineString") => ({ type: "Feature", properties, geometry: { type, coordinates } });
+  const path = [[90.4066, 24.1947], [90.4069, 24.1948], [90.407, 24.1946]];
+  const prepared = prepareDataset("boundary", { type: "FeatureCollection", features: [
+    line(path, { base_m: 0, top_m: 1, thickness_m: 0.2 }),
+    line([path, [[90.4071, 24.1946], [90.4072, 24.1947]]], { top_m: 2 }, "MultiLineString")
+  ] });
+  assert.equal(prepared.features.length, 2);
+  assert.equal(prepared._skippedFeatures, 0, "no line is skipped");
+  assert.equal(prepared.features[0].geometry.coordinates, path, "geometry object passed through");
+  const walls = lineStrips(prepared);
+  assert.equal(walls.features.length, 3, "one strip per line");
+  assert.ok(walls.features.every((feature) => feature.geometry.type === "Polygon"));
+  assert.deepEqual([walls.features[0].properties.render_base_m, walls.features[0].properties.render_top_m], [0, 1]);
+  assert.deepEqual([walls.features[1].properties.render_top_m, walls.features[1].properties.render_color], [2, LAYER_DEFAULTS.boundary.color.toLowerCase()]);
+});
+
+test("the site area (area.geojson) is a ground polygon coloured by fill_color or color", () => {
+  const ring = [[90.4066, 24.1947], [90.4069, 24.1948], [90.407, 24.1946], [90.4066, 24.1947]];
+  const polygon = (properties) => ({ type: "Feature", properties, geometry: { type: "Polygon", coordinates: [ring] } });
+  const prepared = prepareDataset("area", { type: "FeatureCollection", features: [
+    polygon({ fill_color: "#F4F4EA", color: "#000000" }),
+    polygon({ color: "#DDEEDD" }),
+    polygon({}),
+    { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: ring } }
+  ] });
+  assert.deepEqual(prepared.features.map((feature) => feature.properties.render_fill_color), ["#f4f4ea", "#ddeedd", LAYER_DEFAULTS.area.color.toLowerCase()]);
+  assert.equal(prepared._skippedFeatures, 1, "a line is not an area");
+  assert.equal(prepared.features[0].geometry.coordinates[0], ring, "geometry object passed through");
 });
 
 test("GLB placements come only from Point, MultiPoint or explicit model_points", () => {
