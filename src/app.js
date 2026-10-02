@@ -11,7 +11,8 @@ import { createMap, waitForMap } from "./map.js";
 import { BUILDING_MODELS, DATASET_KEYS, INITIAL_VIEW } from "./config.js";
 import { activeOrg, datasetKeyOfPath } from "./org.js";
 import { datasetLabel, fetchDataset, loadAllData, prepareDataset } from "./bcsir-data.js";
-import { addBcsirLayers, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setModelHitBuildings, setRouteData, setShellHiddenBuildings, setWallGaps, updateDatasetLayers } from "./bcsir-layers.js";
+import { addBcsirLayers, getBuildingStateRef, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setModelHitBuildings, setRouteData, setShellHiddenBuildings, setWallGaps, updateDatasetLayers } from "./bcsir-layers.js";
+import { hasTiles, registerProtocol } from "./vector-tiles.js";
 import { calculateBounds, lineStrips } from "./geo-utils.js";
 import { setupInteractions } from "./interactions.js";
 import { createUI } from "./ui.js";
@@ -407,11 +408,12 @@ function selectFromUrl() {
 async function start() {
   await waitForMap(map);
   const directoryLoad = loadDirectory();
-  data = await loadAllData(null, { heightScale });
+  const [, useTiles] = await Promise.all([loadAllData(null, { heightScale }).then((d) => { data = d; }), hasTiles()]);
+  if (useTiles) registerProtocol(maplibregl);
   indexBuildings();
   routeService = createRouteService(data.raw.network);
   labels = createBuildingLabels(map, { onChange: () => refreshLabels() });
-  layerHandles = addBcsirLayers(map, data.render, { badgeFor: labels.badgeFor });
+  layerHandles = addBcsirLayers(map, data.render, { badgeFor: labels.badgeFor, useTiles });
   labels.load(data.render.buildings);
   routeMarkers = createRouteMarkers(map);
   routeWalker = createRouteWalker(map);
@@ -504,6 +506,7 @@ async function start() {
 
   interactionController = setupInteractions(map, {
     resolveFeature: (id) => buildingsById.get(String(id)),
+    buildingSource: getBuildingStateRef(),
     // Off in walk mode, while a first-person location is being chosen and while
     // the navigation position is being set on the map.
     isEnabled: () => !walkController?.isActive() && !walkController?.isChoosing() && !navigation?.isPickingPosition(),

@@ -18,12 +18,13 @@ const featureId = (feature) => feature?.properties?.render_id ?? feature?.id ?? 
 // interceptClick(event, pick) and interceptMove(event) let the floor plans take a
 // click or the pointer first (app.js): a true result means it was theirs. `pick` is
 // set while a place is being chosen on the map: pick(feature, entry) hands it over.
-export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHover, onHoverLeave, onRouteChange, isEnabled = () => true, interceptClick, interceptMove }) {
+export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHover, onHoverLeave, onRouteChange, isEnabled = () => true, interceptClick, interceptMove, buildingSource = null }) {
   let hoveredId = null, selectedId = null, sourceFeature = null, destinationFeature = null, pickHandler = null;
+  const stateRef = buildingSource || { source: "buildings" };
 
   function setState(id, next) {
     if (id === null) return;
-    try { if (map.getSource("buildings")) map.setFeatureState({ source: "buildings", id: String(id) }, next); }
+    try { if (map.getSource(stateRef.source)) map.setFeatureState({ ...stateRef, id: String(id) }, next); }
     catch (error) { console.warn("Building state failed", error); }
   }
   // Features from queryRenderedFeatures() carry serialized properties; always use

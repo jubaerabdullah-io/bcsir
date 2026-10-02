@@ -20,8 +20,15 @@ import { cutLineGaps, lineStrips, roofSeams, verticalCorners } from "./geo-utils
 import { treeLayer } from "./tree-layer.js";
 import { surfaceLayer } from "./surface-layer.js";
 import { collectModelPlacements } from "./model-placements.js";
+import { SOURCE_LAYERS, vectorSource } from "./vector-tiles.js";
 
 export { lineStrips };
+
+// Whether the current map session uses vector tiles (set during addBcsirLayers).
+let usingTiles = false;
+// The source + sourceLayer reference for building feature-state (interactions.js).
+let buildingStateRef = null;
+export const getBuildingStateRef = () => buildingStateRef;
 
 // GLB trees placed by TreeLineModels.geojson replace the procedural trees.
 const hasTreeModels = (collection) => collectModelPlacements([{ label: "tree models", collection }]).collection.features.length > 0;
@@ -114,6 +121,7 @@ function campusGround() {
 }
 const partOf = (name) => ["==", ["get", "render_part"], name];
 export function setWallGaps(map, gaps) {
+  if (usingTiles) return;
   const next = gaps || [];
   if (JSON.stringify(next) === JSON.stringify(wallGaps)) return;
   wallGaps = next;
@@ -121,38 +129,72 @@ export function setWallGaps(map, gaps) {
 }
 
 // badgeFor(properties) gives the icon id of a building label (building-labels.js).
-export function addBcsirLayers(map, render, { badgeFor } = {}) {
+export function addBcsirLayers(map, render, { badgeFor, useTiles = false } = {}) {
+  usingTiles = useTiles;
   const buildings = render.buildings;
-  GROUND_KEYS.forEach((key) => { ground[key] = render[key] || EMPTY; });
-  map.addSource(CAMPUS_SOURCE, { type: "geojson", data: campusGround() });
-  map.addSource("garden", { type: "geojson", data: render.garden });
-  map.addSource("buildings", { type: "geojson", data: buildings, promoteId: "render_id" });
-  map.addSource("building-seams", { type: "geojson", data: roofSeams(buildings) });
-  map.addSource("building-corners", { type: "geojson", data: verticalCorners(buildings) });
-  map.addSource("building-labels", { type: "geojson", data: buildingLabelPoints(buildings, badgeFor), promoteId: "render_id" });
+
+  // Source names: with vector tiles all layers read from one "tiles" source and
+  // select their data through source-layer. With GeoJSON each dataset is its own source.
+  const VT = "tiles";
+  const src = {
+    ground: useTiles ? VT : CAMPUS_SOURCE,
+    garden: useTiles ? VT : "garden",
+    buildings: useTiles ? VT : "buildings",
+    seams: useTiles ? VT : "building-seams",
+    corners: useTiles ? VT : "building-corners",
+    labels: useTiles ? VT : "building-labels"
+  };
+  buildingStateRef = useTiles
+    ? { source: VT, sourceLayer: SOURCE_LAYERS.buildings }
+    : { source: "buildings" };
+
+  if (useTiles) {
+    map.addSource(VT, {
+      ...vectorSource(),
+      promoteId: {
+        [SOURCE_LAYERS.buildings]: "render_id",
+        [SOURCE_LAYERS.buildingLabels]: "render_id"
+      }
+    });
+  } else {
+    GROUND_KEYS.forEach((key) => { ground[key] = render[key] || EMPTY; });
+    map.addSource(CAMPUS_SOURCE, { type: "geojson", data: campusGround() });
+    map.addSource("garden", { type: "geojson", data: render.garden });
+    map.addSource("buildings", { type: "geojson", data: buildings, promoteId: "render_id" });
+    map.addSource("building-seams", { type: "geojson", data: roofSeams(buildings) });
+    map.addSource("building-corners", { type: "geojson", data: verticalCorners(buildings) });
+    map.addSource("building-labels", { type: "geojson", data: buildingLabelPoints(buildings, badgeFor), promoteId: "render_id" });
+  }
   map.addSource("route", { type: "geojson", data: EMPTY });
 
+  // source-layer spread: adds "source-layer" for vector tiles, empty for GeoJSON.
+  const sl = (sourceLayer) => useTiles ? { "source-layer": sourceLayer } : {};
+  const slGround = sl(SOURCE_LAYERS.campusGround);
+  const slBuildings = sl(SOURCE_LAYERS.buildings);
+  const slSeams = sl(SOURCE_LAYERS.buildingSeams);
+  const slCorners = sl(SOURCE_LAYERS.buildingCorners);
+  const slGarden = sl(SOURCE_LAYERS.garden);
+  const slLabels = sl(SOURCE_LAYERS.buildingLabels);
+
   // ---- Ground ---------------------------------------------------------------------
-  // Site area (area.geojson): the ground alone, in `fill_color` (or `color`).
-  map.addLayer({ id: "area-fill", type: "fill", source: CAMPUS_SOURCE, filter: partOf("area"), paint: { "fill-color": ["get", "render_fill_color"], "fill-opacity": 0.62 } });
-  // BCSIRBoundary: `fill_color` colours the campus ground; `color` its wall.
-  map.addLayer({ id: "boundary-fill", type: "fill", source: CAMPUS_SOURCE, filter: partOf("boundary"), paint: { "fill-color": ["get", "render_fill_color"], "fill-opacity": 0.62 } });
+  map.addLayer({ id: "area-fill", type: "fill", source: src.ground, ...slGround, filter: partOf("area"), paint: { "fill-color": ["get", "render_fill_color"], "fill-opacity": 0.62 } });
+  map.addLayer({ id: "boundary-fill", type: "fill", source: src.ground, ...slGround, filter: partOf("boundary"), paint: { "fill-color": ["get", "render_fill_color"], "fill-opacity": 0.62 } });
   map.addLayer({
-    id: "buildings-footprint", type: "fill", source: "buildings",
+    id: "buildings-footprint", type: "fill", source: src.buildings, ...slBuildings,
     paint: { "fill-color": ["get", "render_side_color"], "fill-opacity": 0.35 }
   });
 
   // ---- 3D ground surfaces, roads and boundaries ------------------------------------
-  map.addLayer(extrusion("garden-3d", "garden"));
+  map.addLayer(extrusion("garden-3d", src.garden, slGarden));
   // Garden polygons with a "surface_model" are covered with that model's top view
   // (grass.glb); they leave garden-3d once the grass is drawn (surface-layer.js).
   const garden = surfaceLayer("garden-surface", render.garden, { coveredLayerId: "garden-3d" });
   map.addLayer(garden);
-  map.addLayer(extrusion("roads-drawing-3d", CAMPUS_SOURCE, { filter: partOf("roads-drawing") }));
-  map.addLayer(extrusion("pathways-3d", CAMPUS_SOURCE, { filter: partOf("pathway") }));
-  map.addLayer(extrusion("roads-3d", CAMPUS_SOURCE, { filter: partOf("road") }));
-  map.addLayer(extrusion("boundary-wall", CAMPUS_SOURCE, { filter: partOf("boundary-wall"), paint: { "fill-extrusion-vertical-gradient": true } }));
-  map.addLayer(extrusion("internal-wall", CAMPUS_SOURCE, { filter: partOf("internal-wall"), paint: { "fill-extrusion-vertical-gradient": true } }));
+  map.addLayer(extrusion("roads-drawing-3d", src.ground, { ...slGround, filter: partOf("roads-drawing") }));
+  map.addLayer(extrusion("pathways-3d", src.ground, { ...slGround, filter: partOf("pathway") }));
+  map.addLayer(extrusion("roads-3d", src.ground, { ...slGround, filter: partOf("road") }));
+  map.addLayer(extrusion("boundary-wall", src.ground, { ...slGround, filter: partOf("boundary-wall"), paint: { "fill-extrusion-vertical-gradient": true } }));
+  map.addLayer(extrusion("internal-wall", src.ground, { ...slGround, filter: partOf("internal-wall"), paint: { "fill-extrusion-vertical-gradient": true } }));
 
   // ---- Buildings ----------------------------------------------------------------------
   // Route endpoints take precedence so A/B stay visible while selected.
@@ -163,7 +205,7 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
     state("hover"), STYLE.hover,
     fallback];
   map.addLayer({
-    id: "buildings-body", type: "fill-extrusion", source: "buildings",
+    id: "buildings-body", type: "fill-extrusion", source: src.buildings, ...slBuildings,
     paint: {
       "fill-extrusion-color": highlight(["get", "render_side_color"]),
       "fill-extrusion-base": base,
@@ -173,7 +215,7 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
     }
   });
   map.addLayer({
-    id: "buildings-roof", type: "fill-extrusion", source: "buildings",
+    id: "buildings-roof", type: "fill-extrusion", source: src.buildings, ...slBuildings,
     paint: {
       "fill-extrusion-color": highlight(color),
       "fill-extrusion-base": roofBase,
@@ -183,26 +225,26 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
     }
   });
   map.addLayer({
-    id: "buildings-roof-seams", type: "fill-extrusion", source: "building-seams", minzoom: 15.5,
+    id: "buildings-roof-seams", type: "fill-extrusion", source: src.seams, ...slSeams, minzoom: 15.5,
     paint: { "fill-extrusion-color": color, "fill-extrusion-base": base, "fill-extrusion-height": top, "fill-extrusion-opacity": 0.6, "fill-extrusion-vertical-gradient": false }
   });
   map.addLayer({
-    id: "buildings-corners", type: "fill-extrusion", source: "building-corners", minzoom: 16.5,
+    id: "buildings-corners", type: "fill-extrusion", source: src.corners, ...slCorners, minzoom: 16.5,
     paint: { "fill-extrusion-color": color, "fill-extrusion-base": base, "fill-extrusion-height": top, "fill-extrusion-opacity": 0.6, "fill-extrusion-vertical-gradient": false }
   });
   // Same as buildings-body / buildings-roof, see-through, empty until a building
   // hides the route. Drawn after the opaque buildings so those show through.
   const noBuilding = ["in", ["get", "render_id"], ["literal", []]];
   map.addLayer({
-    id: ROUTE_FADED_LAYERS.body, type: "fill-extrusion", source: "buildings", filter: noBuilding,
+    id: ROUTE_FADED_LAYERS.body, type: "fill-extrusion", source: src.buildings, ...slBuildings, filter: noBuilding,
     paint: { "fill-extrusion-color": highlight(["get", "render_side_color"]), "fill-extrusion-base": base, "fill-extrusion-height": roofBase, "fill-extrusion-opacity": STYLE.routeObscuringOpacity, "fill-extrusion-vertical-gradient": false }
   });
   map.addLayer({
-    id: ROUTE_FADED_LAYERS.roof, type: "fill-extrusion", source: "buildings", filter: noBuilding,
+    id: ROUTE_FADED_LAYERS.roof, type: "fill-extrusion", source: src.buildings, ...slBuildings, filter: noBuilding,
     paint: { "fill-extrusion-color": highlight(color), "fill-extrusion-base": roofBase, "fill-extrusion-height": top, "fill-extrusion-opacity": STYLE.routeObscuringOpacity, "fill-extrusion-vertical-gradient": false }
   });
   map.addLayer({
-    id: MODEL_HIT_LAYER, type: "fill-extrusion", source: "buildings", filter: noBuilding,
+    id: MODEL_HIT_LAYER, type: "fill-extrusion", source: src.buildings, ...slBuildings, filter: noBuilding,
     paint: { "fill-extrusion-color": "#000000", "fill-extrusion-base": base, "fill-extrusion-height": top, "fill-extrusion-opacity": 0 }
   });
 
@@ -254,14 +296,16 @@ export function addBcsirLayers(map, render, { badgeFor } = {}) {
     "symbol-sort-key": ["-", 0, ["get", "labeling_priority"]]
   };
   const labelPaint = { "text-color": "#1f2328", "text-halo-color": "rgba(255,255,255,0.95)", "text-halo-width": 1.6, "text-halo-blur": 0.2 };
-  map.addLayer({ id: "building-labels-major", type: "symbol", source: "building-labels", minzoom: 15, filter: [">=", ["get", "labeling_priority"], 8], layout: labelLayout, paint: labelPaint });
-  map.addLayer({ id: "building-labels-minor", type: "symbol", source: "building-labels", minzoom: 17, filter: ["<", ["get", "labeling_priority"], 8], layout: labelLayout, paint: labelPaint });
+  map.addLayer({ id: "building-labels-major", type: "symbol", source: src.labels, ...slLabels, minzoom: 15, filter: [">=", ["get", "labeling_priority"], 8], layout: labelLayout, paint: labelPaint });
+  map.addLayer({ id: "building-labels-minor", type: "symbol", source: src.labels, ...slLabels, minzoom: 17, filter: ["<", ["get", "labeling_priority"], 8], layout: labelLayout, paint: labelPaint });
 
   return { trees, garden };
 }
 
 // Replace one dataset's render data (live reload during development).
+// Vector tile sources are pre-baked; only GeoJSON sources support setData.
 export function updateDatasetLayers(map, key, render, extras = {}) {
+  if (usingTiles) { map.triggerRepaint(); return; }
   const data = render[key];
   const set = (id, value) => map.getSource(id)?.setData(value);
   switch (key) {
@@ -321,5 +365,6 @@ export function setRouteData(map, routeGeoJSON) {
 
 // Refresh the label points after building photos loaded (badge icons changed).
 export function refreshBuildingLabels(map, buildings, badgeFor) {
+  if (usingTiles) return;
   map.getSource("building-labels")?.setData(buildingLabelPoints(buildings, badgeFor));
 }
