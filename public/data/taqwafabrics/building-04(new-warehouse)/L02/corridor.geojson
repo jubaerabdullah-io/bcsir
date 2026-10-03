@@ -1,9 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "corridor",
-"crs": {"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},
-"features": [
-{"type":"Feature","properties":{"id":1,"name":"Corridor","class":"corridor"},"geometry":{"type":"Polygon","coordinates":[[[90.40204372,24.22106624],[90.40250212,24.22115571],[90.40250831,24.22112933],[90.40204991,24.22103986],[90.40204372,24.22106624]]]}},
-{"type":"Feature","properties":{"id":2,"name":"Lift lobby","class":"lobby"},"geometry":{"type":"Polygon","coordinates":[[[90.40223327,24.22107565],[90.40232495,24.22109354],[90.40233197,24.22106364],[90.40224029,24.22104575],[90.40223327,24.22107565]]]}}
-]
-}

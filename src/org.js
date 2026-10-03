@@ -36,8 +36,11 @@ export function datasetKeyOfPath(published) {
 
 export const modelPath = (value) => orgAssetPath("models", value, active?.id);
 export const modelKey = (value) => orgAssetKey("models", value, active?.id);
-export const imagePath = (value) => orgAssetPath("image", value, active?.id);
-export const imageKey = (value) => orgAssetKey("image", value, active?.id);
+// Photos and the logo are in public/image/<id>/, or in another organisation's
+// folder when org.json names one ("image_folder": "bcsir").
+const imageFolder = () => active?.image_folder || active?.id;
+export const imagePath = (value) => orgAssetPath("image", value, imageFolder());
+export const imageKey = (value) => orgAssetKey("image", value, imageFolder());
 
 // Preference key in localStorage, kept apart per organisation.
 export const storageKey = (name) => `indoor-map:${active?.id || "none"}:${name}`;

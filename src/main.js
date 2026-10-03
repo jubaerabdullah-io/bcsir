@@ -1,5 +1,8 @@
-// Start-up: which organisation's map to open.
+// Start-up: the landing page, or which organisation's map to open.
 //
+// 0. An address that names no map (no ?org=, ?buildingid=, ?place= or ?maps) shows
+//    the IndoorWay landing page (src/landing/). Its showcase opens the maps below
+//    in frames; ?maps shows the organisation picker.
 // 1. data/catalog.json lists the organisations (BCSIR, Taqwa Fabrics, ...).
 // 2. The address may name one (?org=bcsir). Addresses made before organisations
 //    existed (?buildingid=101, the printed QR codes) open the default organisation.
@@ -12,6 +15,7 @@ import "./indoor.css";
 import { setActiveOrg } from "./org.js";
 import { hideOrgPicker, showOrgPicker } from "./org-picker.js";
 import { publicAssetUrl } from "./paths.js";
+import { opensMap, viewMode } from "./view-mode.js";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -33,7 +37,7 @@ function applyBranding(org) {
   document.title = org.name;
   $("#app-name").textContent = org.name;
   $("#app-sample").hidden = org.sample !== true;
-  if (org.logo) $("#app-logo").src = publicAssetUrl(`image/${org.id}/${org.logo}`);
+  if (org.logo) $("#app-logo").src = publicAssetUrl(`image/${org.image_folder || org.id}/${org.logo}`);
   if (org.accent) document.documentElement.style.setProperty("--org-accent", org.accent);
   $("#map").setAttribute("aria-label", `Interactive 3D map of ${org.short_name || org.name}`);
   const hasRooms = org.places?.some((place) => place.kind === "unit");
@@ -44,6 +48,13 @@ function applyBranding(org) {
 }
 
 async function boot() {
+  if (!opensMap()) {
+    document.documentElement.dataset.stage = "landing";
+    const { showLanding } = await import("./landing/landing.js");
+    showLanding();
+    return;
+  }
+  const mode = viewMode();
   // The saved map theme also styles the picker.
   try { if (localStorage.getItem("bcsir-map-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (_) { /* preference is optional */ }
   $("#status-chip").hidden = true;
@@ -77,13 +88,14 @@ async function boot() {
   catch (error) { hideOrgPicker(); fail("This map could not be loaded", error); return; }
   if (org.problems?.length) console.warn(`${org.id}: check the data folder:\n  ${org.problems.join("\n  ")}`);
   setActiveOrg(org);
+  if (viewMode().flat) document.documentElement.dataset.view = "2d"; // the address or the organisation asks for the flat map
   applyBranding(org);
 
   const change = $("#org-switch");
-  change.hidden = single;
+  change.hidden = single || mode.embed;
   change.addEventListener("click", () => {
     const url = new URL(window.location.href);
-    url.search = "";
+    url.search = "?maps";
     window.location.assign(url);
   });
 

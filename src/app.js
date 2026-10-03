@@ -39,6 +39,7 @@ import { createMinimap } from "./navigation/minimap.js";
 import { createBuildingModels } from "./building-models.js";
 import { createIndoor } from "./indoor/indoor-controller.js";
 import { describeTrip, planIndoorTrip } from "./indoor/trip.js";
+import { viewMode } from "./view-mode.js";
 
 const org = activeOrg();
 const map = createMap("map", { basemap: savedBasemap() });
@@ -147,13 +148,16 @@ function campusExtent() {
   return [data.render.boundary, data.render.area].find((collection) => collection.features.length) || data.render.buildings;
 }
 
+// The whole-site view: tilted 3D, or straight above and north up with ?view=2d.
+const HOME_CAMERA = viewMode().flat ? { bearing: 0, pitch: 0 } : { bearing: -20, pitch: 58 };
+
 function frameCampus(animated = true) {
   const extent = campusExtent();
   if (!extent.features.length) return;
   const bounds = calculateBounds(extent, maplibregl.LngLatBounds);
   if (bounds.isEmpty()) return;
-  map.fitBounds(bounds, { padding: window.innerWidth < 700 ? 40 : 90, bearing: -20, pitch: 58, duration: animated ? 1300 : 0, maxZoom: 18.5, essential: true });
-  const rememberView = () => { homeView = { center: map.getCenter(), zoom: map.getZoom(), pitch: 58, bearing: -20 }; };
+  map.fitBounds(bounds, { padding: window.innerWidth < 700 ? 40 : 90, ...HOME_CAMERA, duration: animated ? 1300 : 0, maxZoom: 18.5, essential: true });
+  const rememberView = () => { homeView = { center: map.getCenter(), zoom: map.getZoom(), ...HOME_CAMERA }; };
   if (animated) map.once("moveend", rememberView); else rememberView();
 }
 

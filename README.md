@@ -33,6 +33,8 @@ npm run preview       # serve dist/ at http://localhost:4173
 npm test              # data, search, routing, labels, basemaps (node --test)
 npm run verify        # originals unchanged + routing equivalence + npm test
 npm run data:prepare  # create missing BCSIR files in public/data/bcsir (see below)
+npm run data:pull-2d  # refresh public/data/bcsir-2d from the QGIS repository (Basic 2D map)
+npm run landing:images  # remake the landing page pictures from public/image/ui/*.svg
 npm run floors:sample -- bcsir 127   # template floor plans for a building (see Organisations and floor plans)
 npm run data:services # re-import the official INARS testing-service list
 ```
@@ -55,6 +57,80 @@ Everything in `public/` must be committed. The original `.gitignore` ignored eve
 the organisation logo (`public/image/bcsir/logo.png`) out of the repository: they worked locally but were missing
 (404, broken images) on a site built from the repository. `.gitignore` now ends with
 `!public/**`, and `npm test` checks it.
+
+## Landing page (IndoorWay)
+
+The first screen is the IndoorWay landing page. Its first page has the hero (headline, text
+and the "Talk to us" row), a picture of the map on a laptop and a phone, a headline and one
+card that shows the features one at a time (text on the left, picture on the right; on a
+phone the picture is on top). Solutions, Showcase, Industries and the demo request form are pages
+of their own, opened from the header menus (`/#solutions`, `/#showcase`, `/#industries`,
+`/#demo`). The footer under every page has the logo and office address, then the lists of
+solutions, industries and showcase maps.
+
+| Address | Opens |
+| --- | --- |
+| `/` | the landing page |
+| `/?org=bcsir` | that organisation's map, as before |
+| `/?buildingid=101` | the default organisation's map (the printed QR codes) |
+| `/?maps` | the organisation picker |
+| `/?org=bcsir&view=2d` | the same map kept flat: camera straight above, north up, no tilt or Walk buttons |
+| `/?org=bcsir&embed=1` | the map inside a frame: no "choose another place" button, directions panel closed |
+
+- **Wording, links and lists:** `src/landing/content.js` (hero text, menus, solutions,
+  industries, the Premium / Standard / Basic lists, demo form texts, social links).
+  `npm test` checks that the wording has no hyphens or dashes.
+- **Layout and behaviour:** `src/landing/landing.js`, `landing.css`, `icons.js`.
+- **Feature card:** the arrows, the dots, a swipe or the left and right keys change the
+  feature. Until a visitor does that the card moves on by itself every `FEATURES.seconds`
+  (the ring around the current dot fills meanwhile); it waits while the pointer or the
+  keyboard is on the card or the card is off the screen, and never moves by itself when
+  the visitor's system asks for reduced motion. `seconds: 0` switches that off.
+- **First page pictures and feature texts:** the text of the features is `FEATURES` in
+  `content.js`. The artwork is `public/image/ui/<file>.svg`. Those files are 2 to 9 MB
+  each (photos and screenshots are stored inside the SVG), so the page never loads them:
+  `npm run landing:images` draws each one and saves light WebP copies in
+  `public/landing/ui/` (about 25 to 125 KB), in the widths listed in
+  `src/landing/pictures.js`, and the browser takes the one that fits the screen. Run the
+  command after changing an SVG or adding a feature, then commit `public/landing/ui/`.
+- **Loading:** the Manrope font is served with the site (`public/fonts/`, SIL Open Font
+  License), so nothing is fetched from another server. `index.html` asks for the font and
+  the first picture at once, and a build adds the landing page's own script and
+  stylesheet to that list (`scripts/vite-plugin-bcsir.mjs`), so they all arrive together
+  and the page is drawn once, in its own font. If the widths or `sizes` of the first
+  picture change in `pictures.js`, change them in `index.html` too (`npm test` checks).
+- **Showcase:** each entry of `SHOWCASE.items` names an organisation folder (`org`) and
+  optional address switches (`query`). The map is loaded in a frame only when the
+  visitor clicks it, so the page stays light. "Full screen" uses the browser's full
+  screen, or stretches the frame over the page where that is not available (iPhone).
+
+  | Tier | Map | Shown as |
+  | --- | --- | --- |
+  | Premium | Taqwa Fabrics (`taqwafabrics`) | locked: a blurred picture with a lock, the map is not loaded |
+  | Standard | BCSIR (`bcsir`) | the full 3D map |
+  | Basic | BCSIR 2D (`bcsir-2d`) | the flat map made from the QGIS repository |
+
+  `"locked": true` on an entry locks it in the showcase only. This is a static site, so
+  the map itself still opens for anyone who types its address (`/?org=taqwafabrics`)
+  or finds it in the picker (`/?maps`).
+- **Basic 2D map:** `public/data/bcsir-2d/` holds the original flat QGIS layers of
+  https://github.com/mohammadrhoque/bcsir-qgis-map (buildings, roads, pathways,
+  boundaries, the routing network, garden and tree line), without the heights, models
+  and floor plans added to `public/data/bcsir/`. That repository is private, so the
+  site cannot read it directly: `npm run data:pull-2d` clones it with your git login
+  and copies the files in (`source.json` records the commit). Run it again after the
+  repository changes, then commit the folder. Two `org.json` options make it work:
+  `"view_mode": "2d"` keeps the organisation's map flat at every address, and
+  `"image_folder": "bcsir"` takes the photos and logo from `public/image/bcsir/`
+  instead of a second copy.
+- **Footnotes:** a feature ending in `*` or `**` points to the note with the same mark
+  in `FOOTNOTES`. A note left empty is not printed.
+- **Demo requests:** the form opens the visitor's email app with the request written out,
+  addressed to `BRAND.email`. To collect requests with a form service instead, put its
+  address in `DEMO.endpoint`.
+- **Pictures:** `public/landing/` holds one preview picture per showcase map
+  (screenshots of the maps themselves); `public/indoorway-logo.svg` is the logo.
+  Retake the previews when a map changes a lot.
 
 ## Organisations and floor plans
 

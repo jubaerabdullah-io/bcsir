@@ -262,18 +262,26 @@ export function buildOrgIndex(root, id) {
   const datasets = resolveDatasets(directory, config, problems);
   const buildings = datasets.buildings ? collectionOf(readJSON(path.join(directory, datasets.buildings), problems, datasets.buildings)) : [];
   const { indoor, places } = scanIndoor(directory, buildings, problems);
-  const images = filesIn(path.join(root, IMAGE_DIR, id), IMAGE_EXTENSIONS);
+  // Photos come from the organisation's own folder, or from the one org.json names
+  // ("image_folder": "bcsir": two maps of the same site share one set of photos).
+  let imageFolder = id;
+  if (config.image_folder !== undefined) {
+    if (ORG_ID.test(String(config.image_folder)) && isDirectory(path.join(root, IMAGE_DIR, String(config.image_folder)))) imageFolder = String(config.image_folder);
+    else problems.push(`org.json: image_folder "${config.image_folder}" is not a folder in ${IMAGE_DIR}/`);
+  }
+  const images = filesIn(path.join(root, IMAGE_DIR, imageFolder), IMAGE_EXTENSIONS);
   const directoryFiles = {};
   for (const [key, file] of Object.entries(config.directory || {})) {
     if (existsSync(path.join(directory, file))) directoryFiles[key] = file;
     else problems.push(`org.json: directory.${key} names "${file}", which is not in the organisation's data folder`);
   }
   const logo = config.logo && images.find((file) => file.toLowerCase() === String(config.logo).toLowerCase());
-  if (config.logo && !logo) problems.push(`org.json: logo "${config.logo}" is not in ${IMAGE_DIR}/${id}/`);
+  if (config.logo && !logo) problems.push(`org.json: logo "${config.logo}" is not in ${IMAGE_DIR}/${imageFolder}/`);
   const name = String(config.name || id).trim();
   return {
     ...config,
     id,
+    image_folder: imageFolder === id ? undefined : imageFolder,
     name,
     short_name: String(config.short_name || name).trim(),
     logo: logo || null,
@@ -303,6 +311,7 @@ export function buildCatalog(root) {
       short_name: index.short_name,
       tagline: index.tagline || null,
       logo: index.logo,
+      ...(index.image_folder ? { image_folder: index.image_folder } : {}),
       accent: index.accent || null,
       sample: index.sample === true,
       default: index.default === true,

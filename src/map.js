@@ -8,6 +8,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { INITIAL_VIEW } from "./config.js";
 import { BASEMAP_SOURCES, basemapLayers } from "./basemaps.js";
 import { activeOrg } from "./org.js";
+import { viewMode } from "./view-mode.js";
 
 maplibregl.setWorkerUrl(workerUrl);
 const style = (basemap) => ({
@@ -22,7 +23,10 @@ const style = (basemap) => ({
 
 export function createMap(container, { basemap } = {}) {
   const view = { ...INITIAL_VIEW, ...(activeOrg()?.view || {}) };
-  const map = new maplibregl.Map({ container, style: style(basemap), center: view.center, zoom: view.zoom, pitch: view.pitch, bearing: view.bearing, canvasContextAttributes: { antialias: true }, attributionControl: true, maxPitch: 78, dragRotate: true, pitchWithRotate: true, touchPitch: true, hash: false });
+  // ?view=2d: the camera cannot tilt, so every camera move stays straight above the site.
+  const flat = viewMode().flat;
+  if (flat) { view.pitch = 0; view.bearing = 0; }
+  const map = new maplibregl.Map({ container, style: style(basemap), center: view.center, zoom: view.zoom, pitch: view.pitch, bearing: view.bearing, canvasContextAttributes: { antialias: true }, attributionControl: true, maxPitch: flat ? 0 : 78, dragRotate: true, pitchWithRotate: true, touchPitch: true, hash: false });
   map.dragRotate.enable(); map.touchZoomRotate.enableRotation(); map.keyboard.enable();
   map.on("load", () => { try { map.setLight({ anchor: "map", color: "#ffffff", intensity: .42, position: [1.15, 205, 52] }); } catch (error) { console.info("Custom light unavailable", error); } });
   map.on("error", (event) => { const message = event?.error?.message || "Unknown map error"; if (!message.includes("tile")) console.warn("MapLibre:", message); });

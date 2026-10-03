@@ -18,6 +18,7 @@
 // phone the panel moves to the top of the screen (.directions-editing).
 import { createCombobox } from "./combobox.js";
 import { escapeHTML } from "./html.js";
+import { viewMode } from "./view-mode.js";
 
 const KINDS = ["source", "destination"];
 const ROLE = { source: "starting point", destination: "destination" };
@@ -254,7 +255,8 @@ export function createDirections({ getDirectory, resolveFeature, onSetEndpoint, 
     choose(kind, entry);
   }
 
-  setExpanded(!window.matchMedia("(max-width: 700px)").matches);
+  // Starts closed on phones, and inside a frame (?embed=1), where the map has little room.
+  setExpanded(!viewMode().embed && !window.matchMedia("(max-width: 700px)").matches);
   showRoute(null);
 
   return {

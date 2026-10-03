@@ -82,7 +82,7 @@ test("catalog: every organisation folder is listed with its datasets, photos and
     const index = buildOrgIndex(root, id);
     assert.deepEqual(index.problems, [], `${id}: ${index.problems.join("; ")}`);
     for (const file of Object.values(index.datasets)) assert.ok(existsSync(path.join(root, "public/data", id, file)), `${id}/${file}`);
-    if (index.logo) assert.ok(existsSync(path.join(root, "public/image", id, index.logo)), `${id} logo`);
+    if (index.logo) assert.ok(existsSync(path.join(root, "public/image", index.image_folder || id, index.logo)), `${id} logo`); // image_folder: photos shared with another organisation
     const uids = index.places.map((place) => place.uid);
     assert.equal(new Set(uids).size, uids.length, `${id}: place ids are unique`);
     for (const building of index.indoor) {

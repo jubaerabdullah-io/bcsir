@@ -359,3 +359,11 @@ html[data-theme="dark"] .result-icon-place { color: #93c5fd; background: rgba(96
   .route-steps { max-height: 26vh; }
 }
 @media (max-height: 620px) { .floor-list { max-height: 136px; } }
+
+/* ---- Flat map (?view=2d, used by the 2D showcase on the landing page) --------
+   The camera stays straight above the site (map.js), so the controls that tilt
+   it or walk through the 3D scene are left out. */
+html[data-view="2d"] #walk-mode,
+html[data-view="2d"] #route-3d,
+html[data-view="2d"] #view-toggle,
+html[data-view="2d"] [data-camera-tilt] { display: none !important; }

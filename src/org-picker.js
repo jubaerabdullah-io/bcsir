@@ -25,7 +25,7 @@ export function statLabels(stats = {}) {
 
 function cardHTML(org) {
   const logo = org.logo
-    ? `<img src="${escapeHTML(publicAssetUrl(`image/${org.id}/${org.logo}`))}" alt="" loading="lazy" />`
+    ? `<img src="${escapeHTML(publicAssetUrl(`image/${org.image_folder || org.id}/${org.logo}`))}" alt="" loading="lazy" />`
     : `<span>${escapeHTML(initials(org.short_name || org.name))}</span>`;
   const stats = statLabels(org.stats);
   return `<button class="org-card" type="button" data-org="${escapeHTML(org.id)}"${org.accent ? ` style="--org-accent: ${escapeHTML(org.accent)}"` : ""}>
