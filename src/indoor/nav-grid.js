@@ -13,7 +13,7 @@
 // side cells, so a route never cuts a wall corner). Cells beside a wall cost more,
 // which keeps routes in the middle of a corridor; the found path is then
 // straightened wherever the straight line stays clear.
-import { createLocalFrame, distance, polylineLength } from "../navigation/local-frame.js";
+import { createLocalFrame, distance, polylineLength } from "../utils/local-frame.js";
 
 const MAX_CELLS = 600000;
 const SQRT2 = Math.SQRT2;

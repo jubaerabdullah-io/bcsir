@@ -12,9 +12,10 @@
 // inside each footprint; the nearest buildings (and the institutes) are named
 // first, a label that would overlap another or the walker is left out, and a
 // name shown once (PPPDC's three parts, Quarter 05's blocks) is not repeated.
-import { createLocalFrame, geometryPolygons } from "./local-frame.js";
-import { labelAnchor } from "../geo-utils.js";
-import { shortBuildingName, wrapName } from "../short-names.js";
+import { createLocalFrame, geometryLines, geometryPolygons } from "../utils/local-frame.js";
+import { labelAnchor } from "../utils/geo-utils.js";
+import { shortBuildingName, wrapName } from "../buildings/short-names.js";
+import { STYLE } from "../core/config.js";
 
 const SIZES = { small: 132, large: 264 };
 const RADIUS_M = { small: 70, large: 150 }; // metres from the centre to the rim
@@ -26,10 +27,10 @@ const COLORS = {
   buildingEdge: "#b9c0cc",
   road: "#ffffff",
   roadEdge: "#d3d7dd",
-  route: "#e53935",
-  routeCasing: "#ffffff",
-  destination: "#e53935",
-  walker: "#1e88e5",
+  route: STYLE.route,
+  routeCasing: STYLE.routeCasing,
+  destination: STYLE.pinDestination,
+  walker: STYLE.pinSource,
   rim: "rgba(15, 23, 42, 0.18)",
   label: "#334155",
   labelHalo: "rgba(255, 255, 255, 0.92)"
@@ -39,10 +40,8 @@ const LABEL_FONT = { small: 9, large: 10.5 }; // px
 function linePaths(collection, toLocal) {
   const paths = [];
   (collection?.features || []).forEach((feature) => {
-    const g = feature.geometry;
-    const lines = g?.type === "LineString" ? [g.coordinates] : g?.type === "MultiLineString" ? g.coordinates : [];
     const width = Math.max(1, Number(feature.properties?.render_thickness_m) || 2);
-    lines.forEach((line) => {
+    geometryLines(feature.geometry).forEach((line) => {
       if (!Array.isArray(line) || line.length < 2) return;
       const path = new Path2D();
       line.forEach((point, i) => { const [x, y] = toLocal(point); if (i) path.lineTo(x, y); else path.moveTo(x, y); });

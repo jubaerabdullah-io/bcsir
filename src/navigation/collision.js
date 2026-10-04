@@ -10,7 +10,7 @@
 // Inside, movement stays on the walkable areas of that level and leaves the
 // building only through an entrance. Buildings without indoor data are solid.
 // The BCSIR data has no indoor maps yet, so every building is solid.
-import { closestOnSegment, createLocalFrame, distance, geometryPolygons, insideRings, ringsBounds, segmentIntersection } from "./local-frame.js";
+import { closestOnSegment, createLocalFrame, distance, geometryPolygons, insideRings, ringsBounds, segmentIntersection } from "../utils/local-frame.js";
 
 const STEP_M = 0.25; // longest move tested at once (smaller than any wall is thick)
 const DOOR_HALF_WIDTH_M = 1.1;

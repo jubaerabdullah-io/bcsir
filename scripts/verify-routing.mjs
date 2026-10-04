@@ -54,7 +54,7 @@ export async function verifyRouting({ log = console.log } = {}) {
   const network = JSON.parse(readFileSync(path.join(root, NETWORK), "utf8"));
   const original = await importOriginalRouting(root);
   const { createRouteService } = await import(pathToFileURL(path.join(root, "src/routing/route-service.js")).href);
-  const { normalizeBuildings } = await import(pathToFileURL(path.join(root, "src/bcsir-data.js")).href);
+  const { normalizeBuildings } = await import(pathToFileURL(path.join(root, "src/data/bcsir-data.js")).href);
   const service = createRouteService(network);
   const reference = original.buildGraph(network);
   const sameGraph = service.graph.size === reference.size && [...reference].every(([node, edges]) => {

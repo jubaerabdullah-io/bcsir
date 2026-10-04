@@ -21,7 +21,8 @@
 //   public/data/<org>/<building folder>/L01/*.geojson one folder per floor
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { labelAnchor, pointInRings } from "../../src/geo-utils.js";
+import { labelAnchor, pointInRings } from "../../src/utils/geo-utils.js";
+import { geometryPolygons } from "../../src/utils/local-frame.js";
 import { featureKeys, featureName, firstProperty, folderKey, isConnectorClass, levelFileKind, parseLevelFolder, placeUid, poiClass, sortLevels, unitClass } from "../../src/indoor/levels.js";
 
 export const DATA_DIR = "public/data";
@@ -96,7 +97,6 @@ function resolveDatasets(directory, config, problems) {
 }
 
 const collectionOf = (data) => (data?.type === "FeatureCollection" && Array.isArray(data.features) ? data.features : []);
-const polygonsOf = (geometry) => (geometry?.type === "Polygon" ? [geometry.coordinates] : geometry?.type === "MultiPolygon" ? geometry.coordinates : []);
 const round7 = (value) => Math.round(value * 1e7) / 1e7;
 
 function extend(bbox, geometry) {
@@ -185,7 +185,7 @@ function buildingAt(features, buildings) {
   for (const feature of features) {
     const point = featurePoint(feature);
     if (!point) continue;
-    const hit = buildings.find((building) => polygonsOf(building.geometry).some((rings) => pointInRings(point, rings)));
+    const hit = buildings.find((building) => geometryPolygons(building.geometry).some((rings) => pointInRings(point, rings)));
     if (hit) return hit;
   }
   return null;

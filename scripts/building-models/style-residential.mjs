@@ -1,7 +1,7 @@
 // "residential" style: the BCSIR residential quarters (reference photos
 // backup/models/source/residential/). All quarters share one architecture, so this
 // is ONE module, one bay of one floor, which the map tiles over every residential
-// footprint (src/building-footprint.js tiledModelParts): bays along each strip of the
+// footprint (src/buildings/building-footprint.js tiledModelParts): bays along each strip of the
 // stepped plan, floors stacked up to top_m.
 //   front (+Z)  veranda side: a solid railing wall with the concrete jali lattice
 //               above it, beside a green-framed window with a grille

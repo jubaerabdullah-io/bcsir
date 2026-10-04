@@ -11,11 +11,11 @@
 // - iOS reports accuracy; above 30° (or negative: not calibrated) the status is
 //   "inaccurate" and the navigation falls back to the walking direction.
 // Status: "off" | "requesting" | "live" | "inaccurate" | "unavailable" | "denied".
+import { DEG, normalizeDegrees as normalize } from "../utils/local-frame.js";
+
 const WAIT_FOR_READING_MS = 2500;
 const MAX_ACCURACY_DEG = 30;
-const DEG = Math.PI / 180;
 
-const normalize = (value) => ((value % 360) + 360) % 360;
 const screenAngle = () => Number(screen.orientation?.angle ?? window.orientation ?? 0) || 0;
 
 // Heading of the direction the back camera looks (phone held upright).

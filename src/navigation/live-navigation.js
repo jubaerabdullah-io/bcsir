@@ -6,7 +6,7 @@
 // next turn and its distance, the sheet the remaining distance and time.
 // Leaving the route shows the way back to it; staying off it re-routes from
 // the current position with the original routing algorithm.
-// 3D mode: the same session in first-person walk mode (walkMode.js), with the
+// 3D mode: the same session in first-person walk mode (walk/walk-mode.js), with the
 // route and destination kept. Driven by the on-screen / keyboard controls, or
 // by GPS and the compass after "Follow GPS".
 //
@@ -20,10 +20,12 @@
 // position is eased in over ~1 s; the heading is smoothed); it stops when the
 // position and heading are settled. DOM text is only written when it changes.
 import * as maplibregl from "maplibre-gl";
-import { formatDistance, walkingMinutes } from "../route-summary.js";
-import { routePathCoordinates } from "../route-walker.js";
+import { STYLE } from "../core/config.js";
+import { GARDEN_LAYER } from "../map/layer-ids.js";
+import { formatDistance, walkingMinutes } from "../routing/route-summary.js";
+import { routePathCoordinates } from "../routing/route-service.js";
 import { createCompass } from "./compass.js";
-import { angleDelta, bearingOf, createLocalFrame, distance, geometryPolygons, insideRings, normalizeDegrees } from "./local-frame.js";
+import { angleDelta, bearingOf, createLocalFrame, distance, geometryPolygons, insideRings, normalizeDegrees } from "../utils/local-frame.js";
 import { bearingAt, compassWord, createRouteModel, formatGuidanceDistance, guidance, locate, maneuverText, pointAt } from "./route-progress.js";
 
 const FOLLOW_ZOOM = 19;
@@ -361,7 +363,7 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     if (!source) {
       if (!position) return;
       map.addSource("nav-accuracy", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      map.addLayer({ id: "nav-accuracy-fill", type: "fill", source: "nav-accuracy", paint: { "fill-color": "#1e88e5", "fill-opacity": 0.12, "fill-outline-color": "rgba(30, 136, 229, 0.45)" } }, map.getLayer("garden-3d") ? "garden-3d" : undefined);
+      map.addLayer({ id: "nav-accuracy-fill", type: "fill", source: "nav-accuracy", paint: { "fill-color": STYLE.pinSource, "fill-opacity": 0.12, "fill-outline-color": "rgba(30, 136, 229, 0.45)" } }, map.getLayer(GARDEN_LAYER) ? GARDEN_LAYER : undefined);
     }
     const data = position && Number.isFinite(accuracy) && accuracy > 3 ? { type: "FeatureCollection", features: [circlePolygon(position, Math.min(accuracy, 150))] } : { type: "FeatureCollection", features: [] };
     map.getSource("nav-accuracy")?.setData(data);

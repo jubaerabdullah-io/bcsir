@@ -31,10 +31,10 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 
 // These imports use the same source files the browser app uses, so the
 // properties and derived geometry are identical.
-import { DATASET_KEYS, LAYER_DEFAULTS } from "../src/config.js";
-import { buildingLabelPoints, normalizeBuildings, prepareDataset } from "../src/bcsir-data.js";
-import { cutLineGaps, lineStrips, roofSeams, verticalCorners } from "../src/geo-utils.js";
-import { listOrganisations, buildOrgIndex, DATASET_FILES } from "./lib/catalog.mjs";
+import { DATASET_KEYS } from "../src/core/config.js";
+import { buildingLabelPoints, prepareDataset } from "../src/data/bcsir-data.js";
+import { lineStrips, roofSeams, verticalCorners } from "../src/utils/geo-utils.js";
+import { listOrganisations, buildOrgIndex } from "./lib/catalog.mjs";
 
 const EMPTY = { type: "FeatureCollection", features: [] };
 

@@ -12,6 +12,7 @@
 // Times decide the choice: walking at 5 km/h, a lift 20 s + 3 s per floor, stairs
 // 16 s per floor, an escalator 12 s per floor, a ramp 25 s per floor. "Step-free"
 // routes use lifts and ramps only.
+import { planarDistanceMeters } from "../utils/geo-utils.js";
 import { CONNECTOR_CLASSES } from "./levels.js";
 
 export const WALK_SPEED_MPS = 5 / 3.6;
@@ -22,11 +23,6 @@ export const CONNECTOR_SECONDS = {
   ramp: { wait: 0, perFloor: 25 }
 };
 const SAME_SHAFT_M = 4; // connectors of one kind within this distance on different floors are one shaft
-
-const metres = (a, b) => {
-  const k = Math.cos((a[1] + b[1]) / 2 * Math.PI / 180);
-  return Math.hypot((b[0] - a[0]) * 111320 * k, (b[1] - a[1]) * 110574);
-};
 
 // Groups the connector points of a building into shafts.
 // connectors: [{ uid, class, name, level, point, connector_id? }]
@@ -46,7 +42,7 @@ export function groupShafts(connectors) {
       let best = Infinity;
       for (const candidate of shafts) {
         if (candidate.explicit || candidate.class !== connector.class || candidate.members.has(connector.level)) continue;
-        const d = Math.min(...[...candidate.members.values()].map((member) => metres(member.point, connector.point)));
+        const d = Math.min(...[...candidate.members.values()].map((member) => planarDistanceMeters(member.point, connector.point)));
         if (d <= SAME_SHAFT_M && d < best) { best = d; shaft = candidate; }
       }
       if (!shaft) { shaft = { id: `${connector.class}:${shafts.length + 1}`, class: connector.class, name: connector.name || "", members: new Map() }; shafts.push(shaft); }
@@ -148,7 +144,7 @@ export function createBuildingRouter({ key, levels, shafts }) {
       for (const point of head.filter(Boolean)) coordinates.unshift(point);
       for (const point of tail.filter(Boolean)) coordinates.push(point);
       let distanceM = 0;
-      for (let i = 1; i < coordinates.length; i += 1) distanceM += metres(coordinates[i - 1], coordinates[i]);
+      for (let i = 1; i < coordinates.length; i += 1) distanceM += planarDistanceMeters(coordinates[i - 1], coordinates[i]);
       legs.push({
         type: "walk",
         building: key,

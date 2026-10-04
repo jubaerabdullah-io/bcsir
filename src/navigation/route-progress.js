@@ -6,7 +6,7 @@
 // curves do not produce a turn at every vertex; turns closer than 10 m are
 // merged into the sharpest one. locate() snaps a position to the route and
 // guidance() gives the next manoeuvre and the remaining distance.
-import { angleDelta, bearingOf, closestOnSegment, createLocalFrame, distance, lerp } from "./local-frame.js";
+import { angleDelta, bearingOf, closestOnSegment, createLocalFrame, distance, lerp, normalizeDegrees } from "../utils/local-frame.js";
 
 const LOOK_M = 7;
 const MIN_TURN_DEG = 28;
@@ -131,7 +131,7 @@ export function guidance(model, along) {
 
 const COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
 export function compassWord(bearing) {
-  return COMPASS[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
+  return COMPASS[Math.round(normalizeDegrees(bearing) / 45) % 8];
 }
 
 const TURN_TEXT = {

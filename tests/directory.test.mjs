@@ -5,8 +5,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { normalizeBuildings } from "../src/bcsir-data.js";
-import { createDirectory, displaySampleType, formatDuration, formatFee, LAB_TYPE_LABELS, normalizeText } from "../src/directory.js";
+import { normalizeBuildings } from "../src/data/bcsir-data.js";
+import { createDirectory, displaySampleType, formatDuration, formatFee, LAB_TYPE_LABELS, normalizeText } from "../src/search/directory.js";
 import { INARS_SOURCE, inarsRecords, parseTables } from "../scripts/import-inars-services.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));

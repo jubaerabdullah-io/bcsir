@@ -10,8 +10,8 @@
 // building.json marks it "sample": true, and the map says so.
 //
 // Pure module (no files written here), used by scripts/make-sample-floors.mjs.
-import { footprintFront, orientedFootprint } from "../../src/building-footprint.js";
-import { labelAnchor, pointInRings } from "../../src/geo-utils.js";
+import { footprintFront, orientedFootprint } from "../../src/buildings/building-footprint.js";
+import { labelAnchor, pointInRings } from "../../src/utils/geo-utils.js";
 
 const CRS84 = { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } };
 const round = (value) => Math.round(value * 1e8) / 1e8;

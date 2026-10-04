@@ -5,10 +5,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { buildingLabelPoints, normalizeBuildings } from "../src/bcsir-data.js";
-import { labelAnchor, pointInRings, polygonCentroid } from "../src/geo-utils.js";
-import { BASEMAP_SOURCES, BASEMAPS, basemapLayers, basemapVisibility, thumbnailUrl } from "../src/basemaps.js";
-import { describeEndpoint, describeRoute, formatDistance, walkingMinutes } from "../src/route-summary.js";
+import { buildingLabelPoints, normalizeBuildings } from "../src/data/bcsir-data.js";
+import { labelAnchor, pointInRings, polygonCentroid } from "../src/utils/geo-utils.js";
+import { BASEMAP_SOURCES, BASEMAPS, basemapLayers, basemapVisibility, thumbnailUrl } from "../src/map/basemaps.js";
+import { describeEndpoint, describeRoute, formatDistance, walkingMinutes } from "../src/routing/route-summary.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
@@ -62,7 +62,7 @@ test("basemaps: the street layer is unchanged, satellite has Esri attribution, o
 });
 
 test("layer groups: labels, route and basemap keep a switch in the layer list", async () => {
-  const { LAYER_GROUPS } = await import("../src/bcsir-layers.js");
+  const { LAYER_GROUPS } = await import("../src/map/bcsir-layers.js");
   const ids = LAYER_GROUPS.map((group) => group.id);
   assert.deepEqual(ids, ["buildings", "labels", "roads", "roadsDrawing", "pathways", "area", "boundary", "internal", "garden", "trees", "route", "models", "basemap"]);
   assert.deepEqual(LAYER_GROUPS.find((group) => group.id === "labels").layers, ["building-labels-major", "building-labels-minor"]);

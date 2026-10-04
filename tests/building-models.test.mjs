@@ -1,4 +1,4 @@
-// Buildings drawn from GLB models (src/building-models.js): every BuildingBoundary
+// Buildings drawn from GLB models (src/buildings/building-models.js): every BuildingBoundary
 // feature with a building_model gets a placement derived from its footprint, and
 // each generated GLB (npm run models:buildings) is light and built on that footprint.
 import assert from "node:assert/strict";
@@ -9,10 +9,10 @@ import { fileURLToPath } from "node:url";
 import { NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
-import { orgAssetPath } from "../src/asset-paths.js";
-import { buildingModelPlacement, findBuildingByShortName, footprintFront, orientedFootprint, placedBoxCorners, tiledModelParts } from "../src/building-footprint.js";
-import { BUILDING_MODELS, RESIDENTIAL_MODULE } from "../src/config.js";
-import { createLocalFrame } from "../src/navigation/local-frame.js";
+import { orgAssetPath } from "../src/core/asset-paths.js";
+import { buildingModelPlacement, findBuildingByShortName, footprintFront, orientedFootprint, placedBoxCorners, tiledModelParts } from "../src/buildings/building-footprint.js";
+import { BUILDING_MODELS, RESIDENTIAL_MODULE } from "../src/core/config.js";
+import { createLocalFrame } from "../src/utils/local-frame.js";
 import { BUILDING_SPECS } from "../scripts/building-models/specs.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -62,7 +62,7 @@ test("building_model placement: fit to the footprint and top_m, model_rotation a
 });
 
 test("wall_gap_m opens the drawn boundary wall at the gate only", async () => {
-  const { cutLineGaps } = await import("../src/geo-utils.js");
+  const { cutLineGaps } = await import("../src/utils/geo-utils.js");
   const campus = JSON.parse(readFileSync(path.join(root, "public/data/bcsir/BCSIRBoundary.geojson"), "utf8"));
   assert.equal(cutLineGaps(campus, []), campus, "no gap: the walls are the same object");
   const gate = byId(301);

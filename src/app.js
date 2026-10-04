@@ -6,40 +6,41 @@
 // properties. 3D models are configured in GeoJSON only; there is no model editor.
 // Laboratories and testing services come from the organisation's directory files.
 import * as maplibregl from "maplibre-gl";
-import "./style.css";
-import { createMap, waitForMap } from "./map.js";
-import { BUILDING_MODELS, DATASET_KEYS, INITIAL_VIEW } from "./config.js";
-import { activeOrg, datasetKeyOfPath } from "./org.js";
-import { datasetLabel, fetchDataset, loadAllData, prepareDataset } from "./bcsir-data.js";
-import { addBcsirLayers, getBuildingStateRef, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setModelHitBuildings, setRouteData, setShellHiddenBuildings, setWallGaps, updateDatasetLayers } from "./bcsir-layers.js";
-import { hasTiles, registerProtocol } from "./vector-tiles.js";
-import { calculateBounds, lineStrips } from "./geo-utils.js";
-import { setupInteractions } from "./interactions.js";
-import { createUI } from "./ui.js";
-import { createModelGroups } from "./model-placements.js";
-import { get3DModelStats, setFadedModelBuildings, setHiddenModelBuildings } from "./models3d.js";
-import { createCameraController } from "./camera-controls.js";
-import { createWalkMode } from "./walkMode.js";
-import { createLayerManager } from "./layer-manager.js";
-import { createRouteService, routeToGeoJSON } from "./routing/route-service.js";
-import { createBuildingLabels } from "./building-labels.js";
-import { createDirectory } from "./directory.js";
-import { directoryFiles, loadDirectory } from "./directory-data.js";
-import { createSearch } from "./search-ui.js";
-import { createDirections } from "./directions-ui.js";
-import { createRouteMarkers } from "./route-markers.js";
-import { createRouteWalker, routePathCoordinates } from "./route-walker.js";
-import { createBasemapControl, savedBasemap } from "./basemap-control.js";
-import { describeRoute } from "./route-summary.js";
-import { createRouteOcclusion } from "./route-occlusion.js";
+import "./styles/style.css";
+import { createMap, waitForMap } from "./map/map.js";
+import { BUILDING_MODELS, DATASET_KEYS, INITIAL_VIEW } from "./core/config.js";
+import { activeOrg, datasetKeyOfPath } from "./core/org.js";
+import { datasetLabel, fetchDataset, loadAllData, prepareDataset } from "./data/bcsir-data.js";
+import { addBcsirLayers, getBuildingStateRef, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setModelHitBuildings, setRouteData, setShellHiddenBuildings, setWallGaps, updateDatasetLayers } from "./map/bcsir-layers.js";
+import { hasTiles, registerProtocol } from "./map/vector-tiles.js";
+import { calculateBounds, lineStrips } from "./utils/geo-utils.js";
+import { setupInteractions } from "./map/interactions.js";
+import { createUI } from "./ui/ui.js";
+import { createModelGroups } from "./three/model-placements.js";
+import { get3DModelStats, setFadedModelBuildings, setHiddenModelBuildings } from "./three/models3d.js";
+import { createCameraController } from "./map/camera-controls.js";
+import { FIT_PADDING } from "./map/fit-padding.js";
+import { createWalkMode } from "./walk/walk-mode.js";
+import { createLayerManager } from "./map/layer-manager.js";
+import { createRouteService, routePathCoordinates, routeToGeoJSON } from "./routing/route-service.js";
+import { createBuildingLabels } from "./buildings/building-labels.js";
+import { createDirectory } from "./search/directory.js";
+import { directoryFiles, loadDirectory } from "./data/directory-data.js";
+import { createSearch } from "./search/search-ui.js";
+import { createDirections } from "./ui/directions-ui.js";
+import { createRouteMarkers } from "./routing/route-markers.js";
+import { createRouteWalker } from "./routing/route-walker.js";
+import { createBasemapControl, savedBasemap } from "./map/basemap-control.js";
+import { describeDisplayRoute } from "./routing/route-summary.js";
+import { createRouteOcclusion } from "./routing/route-occlusion.js";
 import { blocksWalking, collisionBlockers, createCollisionWorld } from "./navigation/collision.js";
 import { correctRouteResult, prepareObstacles } from "./navigation/route-detour.js";
 import { createLiveNavigation } from "./navigation/live-navigation.js";
 import { createMinimap } from "./navigation/minimap.js";
-import { createBuildingModels } from "./building-models.js";
+import { createBuildingModels } from "./buildings/building-models.js";
 import { createIndoor } from "./indoor/indoor-controller.js";
 import { describeTrip, planIndoorTrip } from "./indoor/trip.js";
-import { viewMode } from "./view-mode.js";
+import { viewMode } from "./core/view-mode.js";
 
 const org = activeOrg();
 const map = createMap("map", { basemap: savedBasemap() });
@@ -106,16 +107,11 @@ function showRouteGeometry(result) {
   minimap?.setRoute(result?.ok ? routePathCoordinates(result) : null, result?.destination?.point || null);
 }
 
-const listNames = (items) => items.map((item) => item.name || `building ${item.id}`).join(", ");
-
-// Route summary for the drawn route, with notes on corrected geometry.
-function describeDisplayRoute(result) {
-  const description = describeRoute(result);
-  if (!description) return description;
-  const notes = [...description.notes];
-  if (result.detours?.length) notes.push(`The route line goes around ${listNames(result.detours)}: no building here has an indoor passage.`);
-  if (result.unresolved?.length) notes.push(`The route line crosses ${listNames(result.unresolved)}: the endpoint lies inside that building's footprint, so no outdoor path to it is mapped.`);
-  return { ...description, notes, navigable: Boolean(result.ok && result.networkDistanceM > 0) };
+// Bounds around a list of [lon, lat] coordinates.
+function boundsOf(coordinates) {
+  const bounds = new maplibregl.LngLatBounds();
+  coordinates.forEach((coordinate) => bounds.extend(coordinate));
+  return bounds;
 }
 
 function indexBuildings() {
@@ -156,7 +152,7 @@ function frameCampus(animated = true) {
   if (!extent.features.length) return;
   const bounds = calculateBounds(extent, maplibregl.LngLatBounds);
   if (bounds.isEmpty()) return;
-  map.fitBounds(bounds, { padding: window.innerWidth < 700 ? 40 : 90, ...HOME_CAMERA, duration: animated ? 1300 : 0, maxZoom: 18.5, essential: true });
+  map.fitBounds(bounds, { padding: FIT_PADDING.site(), ...HOME_CAMERA, duration: animated ? 1300 : 0, maxZoom: 18.5, essential: true });
   const rememberView = () => { homeView = { center: map.getCenter(), zoom: map.getZoom(), ...HOME_CAMERA }; };
   if (animated) map.once("moveend", rememberView); else rememberView();
 }
@@ -276,14 +272,12 @@ async function planTrip(selection, places, token) {
   // first part of the route: indoors when it starts in a room, else the way there.
   for (const part of parts) await indoor.openLevel(part.building, part.from.level, { fit: false });
   if (token !== tripToken || walkController?.isActive() || navigation?.isActive()) return;
-  const bounds = new maplibregl.LngLatBounds();
   const firstLeg = result.start?.ok ? result.start.legs.find((leg) => leg.type === "walk") : null;
-  if (firstLeg) firstLeg.coordinates.forEach((coordinate) => bounds.extend(coordinate));
-  else {
-    if (outdoor?.ok) outdoor.coordinates.forEach((coordinate) => bounds.extend(coordinate));
-    result.end.legs.filter((leg) => leg.type === "walk" && leg.level === result.end.from.level).forEach((leg) => leg.coordinates.forEach((coordinate) => bounds.extend(coordinate)));
-  }
-  if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: window.innerWidth < 700 ? { top: 170, bottom: 190, left: 40, right: 70 } : { top: 150, bottom: 110, left: 110, right: 160 }, maxZoom: 20, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 900, essential: true });
+  const bounds = boundsOf(firstLeg ? firstLeg.coordinates : [
+    ...(outdoor?.ok ? outdoor.coordinates : []),
+    ...result.end.legs.filter((leg) => leg.type === "walk" && leg.level === result.end.from.level).flatMap((leg) => leg.coordinates)
+  ]);
+  if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: FIT_PADDING.indoorRoute(), maxZoom: 20, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 900, essential: true });
 }
 
 // Shows one step of an indoor route (directions panel): its floor and its line.
@@ -292,9 +286,7 @@ async function showStep(step) {
   if (step.building) await indoor.openLevel(step.building, step.level, { fit: false });
   const coordinates = step.coordinates || (step.point ? [step.point] : []);
   if (!coordinates.length) return;
-  const bounds = new maplibregl.LngLatBounds();
-  coordinates.forEach((coordinate) => bounds.extend(coordinate));
-  map.fitBounds(bounds, { padding: window.innerWidth < 700 ? { top: 170, bottom: 190, left: 40, right: 70 } : { top: 150, bottom: 110, left: 110, right: 160 }, maxZoom: step.building ? 20.5 : 18.6, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 800, essential: true });
+  map.fitBounds(boundsOf(coordinates), { padding: FIT_PADDING.indoorRoute(), maxZoom: step.building ? 20.5 : 18.6, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 800, essential: true });
 }
 
 // Route calculation between buildings uses the original BCSIR algorithm (see
@@ -341,9 +333,8 @@ function updateRoute(selection) {
   if (!walking) return;
   if (lastRoute.ok) {
     cameraController?.setRouteCoordinates(displayRoute.coordinates, 0);
-    const bounds = new maplibregl.LngLatBounds();
-    [...displayRoute.coordinates, lastRoute.source.point, lastRoute.destination.point].forEach((coordinate) => bounds.extend(coordinate));
-    if (!walkController?.isActive() && !navigation?.isActive()) map.fitBounds(bounds, { padding: window.innerWidth < 700 ? 60 : 140, maxZoom: 18.6, pitch: map.getPitch(), bearing: map.getBearing(), duration: 900, essential: true });
+    const bounds = boundsOf([...displayRoute.coordinates, lastRoute.source.point, lastRoute.destination.point]);
+    if (!walkController?.isActive() && !navigation?.isActive()) map.fitBounds(bounds, { padding: FIT_PADDING.route(), maxZoom: 18.6, pitch: map.getPitch(), bearing: map.getBearing(), duration: 900, essential: true });
   } else {
     ui.showToast("No connected walking path in the road network");
   }

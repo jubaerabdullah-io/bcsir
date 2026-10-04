@@ -4,8 +4,9 @@
 // map draws (render features tagged with `kind`), what can be selected (rooms and
 // points with stable ids), and what routing needs (the walking grid and the cell
 // each room or point is reached from). The source files are only read.
-import { labelAnchor, wallLineToPolygon } from "../geo-utils.js";
-import { parseColor, parseNumber } from "../visual-properties.js";
+import { labelAnchor, wallLineToPolygon } from "../utils/geo-utils.js";
+import { geometryLines, geometryPolygons } from "../utils/local-frame.js";
+import { parseColor, parseNumber } from "../data/visual-properties.js";
 import { createNavGrid } from "./nav-grid.js";
 import { classLabel, featureKeys, featureName, firstProperty, isConnectorClass, placeUid, poiClass, unitClass } from "./levels.js";
 
@@ -45,16 +46,9 @@ export const UNIT_COLORS = {
 };
 const DEFAULT_UNIT_COLOR = "#e3e8ef";
 
-const polygonsOf = (geometry) => (geometry?.type === "Polygon" ? [geometry.coordinates] : geometry?.type === "MultiPolygon" ? geometry.coordinates : []);
-const linesOf = (geometry) => (geometry?.type === "LineString" ? [geometry.coordinates] : geometry?.type === "MultiLineString" ? geometry.coordinates : []);
 const featuresOf = (collection) => (collection?.type === "FeatureCollection" && Array.isArray(collection.features) ? collection.features : []);
 const validRing = (ring) => Array.isArray(ring) && ring.length >= 4 && ring.every((point) => Array.isArray(point) && Number.isFinite(point[0]) && Number.isFinite(point[1]));
-const cleanPolygons = (geometry) => polygonsOf(geometry).filter((rings) => validRing(rings?.[0])).map((rings) => rings.filter(validRing).map((ring) => ring.map((point) => [point[0], point[1]])));
-
-const metres = (a, b) => {
-  const k = Math.cos((a[1] + b[1]) / 2 * Math.PI / 180);
-  return Math.hypot((b[0] - a[0]) * 111320 * k, (b[1] - a[1]) * 110574);
-};
+const cleanPolygons = (geometry) => geometryPolygons(geometry).filter((rings) => validRing(rings?.[0])).map((rings) => rings.filter(validRing).map((ring) => ring.map((point) => [point[0], point[1]])));
 
 // Distance in metres from a point to the outline of a polygon (all rings).
 function distanceToOutline(point, rings) {
@@ -121,7 +115,7 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
     const height = parseNumber(properties.height_m) > 0 ? parseNumber(properties.height_m) : INDOOR_STYLE.wallHeightM;
     const color = parseColor(properties.color) || INDOOR_STYLE.wall;
     const strips = [
-      ...linesOf(feature.geometry).map((path) => wallLineToPolygon(path, thickness, "center")).filter(Boolean).map((polygon) => polygon.coordinates),
+      ...geometryLines(feature.geometry).map((path) => wallLineToPolygon(path, thickness, "center")).filter(Boolean).map((polygon) => polygon.coordinates),
       ...cleanPolygons(feature.geometry)
     ];
     strips.forEach((rings, part) => render.push({ type: "Feature", properties: { kind: "wall", uid: `${buildingKey}/${level.id}/wall/${index + 1}.${part}`, height, color, ...where }, geometry: { type: "Polygon", coordinates: rings } }));
@@ -150,7 +144,7 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
     if (geometry?.type === "Point") return [geometry.coordinates.slice(0, 2)];
     if (geometry?.type === "MultiPoint") return geometry.coordinates.map((point) => point.slice(0, 2));
     // A door drawn as a line across the opening: its middle.
-    return linesOf(geometry).filter((line) => line.length >= 2).map((line) => [(line[0][0] + line.at(-1)[0]) / 2, (line[0][1] + line.at(-1)[1]) / 2]);
+    return geometryLines(geometry).filter((line) => line.length >= 2).map((line) => [(line[0][0] + line.at(-1)[0]) / 2, (line[0][1] + line.at(-1)[1]) / 2]);
   });
 
   // ---- Walking grid (made when a route first needs it) -------------------------------
@@ -213,5 +207,3 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
     problems
   };
 }
-
-export { metres as distanceMetres };

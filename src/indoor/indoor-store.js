@@ -5,7 +5,8 @@
 // buildings and floors, `places` every named room and point. Floor geometry is
 // only read when a floor is opened or routed through; `loadFiles` does the reading
 // (fetch in the browser, the file system in tests), so this module has no DOM.
-import { buildLevelModel, distanceMetres } from "./indoor-model.js";
+import { planarDistanceMeters } from "../utils/geo-utils.js";
+import { buildLevelModel } from "./indoor-model.js";
 import { createBuildingRouter, groupShafts } from "./indoor-router.js";
 import { defaultLevel, sortLevels } from "./levels.js";
 
@@ -61,7 +62,7 @@ export function createIndoorStore({ org, loadFiles, footprintOf = () => null }) 
   async function entranceAnchor(key, near = null) {
     const building = byKey.get(key);
     if (!building) return null;
-    const entrances = [...building.entrances].sort((a, b) => (near ? distanceMetres(a.point, near) - distanceMetres(b.point, near) : (building.levelById.get(a.level)?.ordinal ?? 0) - (building.levelById.get(b.level)?.ordinal ?? 0)));
+    const entrances = [...building.entrances].sort((a, b) => (near ? planarDistanceMeters(a.point, near) - planarDistanceMeters(b.point, near) : (building.levelById.get(a.level)?.ordinal ?? 0) - (building.levelById.get(b.level)?.ordinal ?? 0)));
     for (const entrance of entrances) {
       const anchor = (await level(key, entrance.level)).anchorFor(entrance.uid);
       if (anchor) return { ...anchor, entrance: true };

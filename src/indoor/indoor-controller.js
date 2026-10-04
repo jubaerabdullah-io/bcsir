@@ -9,9 +9,12 @@
 // plan at ground level. Several buildings can be open at once (a route from one
 // building to another shows both); the floor selector controls one of them.
 import * as maplibregl from "maplibre-gl";
-import { pointInRings } from "../geo-utils.js";
-import { orgDataPath } from "../org.js";
-import { publicAssetUrl } from "../paths.js";
+import { planarDistanceMeters } from "../utils/geo-utils.js";
+import { geometryPolygons, insideRings } from "../utils/local-frame.js";
+import { orgDataPath } from "../core/org.js";
+import { fetchPublicJSON } from "../core/paths.js";
+import { FIT_PADDING } from "../map/fit-padding.js";
+import { ROUTE_LAYERS } from "../map/layer-ids.js";
 import { createFloorControl } from "./floor-control.js";
 import { addIndoorLayers, INDOOR_HIT_LAYERS, INDOOR_SOURCE, setIndoorData, setIndoorRoute } from "./indoor-layers.js";
 import { createIndoorStore } from "./indoor-store.js";
@@ -22,18 +25,11 @@ const FOCUS_ZOOM = 17.2; // from this zoom the building at the centre of the vie
 const FOCUS_REACH_M = 30; // ... also when the centre is this near its footprint centre
 const AUTO_OPEN_ZOOM = 19.2; // zooming in this far opens the building at the centre (org.json "floors.auto_open_zoom")
 const FLOOR_LAYERS = ["indoor-floor", "indoor-corridor", "indoor-walls"];
-const polygonsOf = (geometry) => (geometry?.type === "Polygon" ? [geometry.coordinates] : geometry?.type === "MultiPolygon" ? geometry.coordinates : []);
-const metres = (a, b) => Math.hypot((b[0] - a[0]) * 111320 * Math.cos(a[1] * Math.PI / 180), (b[1] - a[1]) * 110574);
 
 // The floor's files, fetched from the organisation's data folder (revalidated, so
 // a floor saved again from QGIS is read fresh).
 async function fetchLevelFiles(building, level) {
-  const read = async (file) => {
-    const published = orgDataPath(`${building.entry.folder}/${level.id}/${file}`);
-    const response = await fetch(publicAssetUrl(published), { cache: "no-cache" });
-    if (!response.ok) throw new Error(`${published}: ${response.status} ${response.statusText}`);
-    return response.json();
-  };
+  const read = (file) => fetchPublicJSON(orgDataPath(`${building.entry.folder}/${level.id}/${file}`));
   const { files } = level;
   const [outline, corridor, walls, doors, pois, units] = await Promise.all([
     files.level ? read(files.level) : null,
@@ -69,7 +65,7 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   let endpoints = { source: null, destination: null };
   let legs = []; // indoor legs of the current route
 
-  if (hasFloors) addIndoorLayers(map, { beforeId: map.getLayer("route-casing") ? "route-casing" : undefined });
+  if (hasFloors) addIndoorLayers(map, { beforeId: map.getLayer(ROUTE_LAYERS.casing) ? ROUTE_LAYERS.casing : undefined });
 
   const floorControl = createFloorControl({
     onSelect: (levelId) => focus && openLevel(focus, levelId),
@@ -91,9 +87,9 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     let nearest = null;
     for (const building of store.buildings) {
       const feature = featureOf(building);
-      if (feature ? polygonsOf(feature.geometry).some((rings) => pointInRings(lngLat, rings)) : inBox(lngLat, building.entry.bbox)) return building;
+      if (feature ? geometryPolygons(feature.geometry).some((rings) => insideRings(lngLat, rings)) : inBox(lngLat, building.entry.bbox)) return building;
       const centre = building.entry.center;
-      const d = centre ? metres(lngLat, centre) : Infinity;
+      const d = centre ? planarDistanceMeters(lngLat, centre, lngLat[1]) : Infinity;
       if (d <= FOCUS_REACH_M && (!nearest || d < nearest.d)) nearest = { building, d };
     }
     return nearest?.building || null;
@@ -202,8 +198,7 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     if (!box) return;
     const centre = map.getCenter().toArray();
     if (map.getZoom() >= 18.2 && inBox(centre, box)) return;
-    const phone = window.innerWidth < 700;
-    map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: phone ? { top: 150, bottom: 150, left: 30, right: 80 } : { top: 140, bottom: 90, left: 80, right: 150 }, maxZoom: 20, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 900, essential: true });
+    map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: FIT_PADDING.building(), maxZoom: 20, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 900, essential: true });
   }
 
   // Shows a floor of a building (and hides the building's shell).
@@ -292,13 +287,14 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
 
   // ---- Building card: one chip per floor ------------------------------------------------
   const floorChips = document.querySelector("#building-floor-chips");
+  const floorsBox = document.querySelector("#building-floors");
   let cardBuilding = null;
   function renderBuildingFloors(feature) {
     showFloorChips(feature ? store.forBuildingId(feature.properties?.id) : null);
   }
   function showFloorChips(building = cardBuilding) {
     cardBuilding = building;
-    document.querySelector("#building-floors").hidden = !building;
+    floorsBox.hidden = !building;
     if (!building) return;
     floorChips.innerHTML = building.levels.map((level) => `<button class="floor-chip" type="button" data-level="${level.id}" aria-pressed="${open.get(building.key) === level.id}" title="Show ${level.name}">${level.short}</button>`).join("");
   }

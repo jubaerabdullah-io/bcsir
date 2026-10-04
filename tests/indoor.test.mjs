@@ -7,15 +7,15 @@ import { fileURLToPath } from "node:url";
 import { buildCatalog, buildOrgIndex, listOrganisations } from "../scripts/lib/catalog.mjs";
 import { readLevelFiles } from "../scripts/lib/indoor-files.mjs";
 import { sampleFloors } from "../scripts/lib/sample-floors.mjs";
-import { orgAssetKey, orgAssetPath } from "../src/asset-paths.js";
-import { pointInRings } from "../src/geo-utils.js";
+import { orgAssetKey, orgAssetPath } from "../src/core/asset-paths.js";
+import { pointInRings } from "../src/utils/geo-utils.js";
 import { buildLevelModel } from "../src/indoor/indoor-model.js";
 import { connectorSeconds, createBuildingRouter, groupShafts } from "../src/indoor/indoor-router.js";
 import { createIndoorStore } from "../src/indoor/indoor-store.js";
 import { defaultLevel, featureKeys, folderKey, levelFileKind, parseLevelFolder, poiClass, sortLevels, unitClass } from "../src/indoor/levels.js";
 import { createNavGrid } from "../src/indoor/nav-grid.js";
 import { describeTrip, planIndoorTrip } from "../src/indoor/trip.js";
-import { initials, statLabels } from "../src/org-picker.js";
+import { initials, statLabels } from "../src/ui/org-picker.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const storeOf = (orgId) => {

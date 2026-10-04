@@ -10,20 +10,15 @@
 // 3. That organisation's index (data/<org>/index.json: its dataset files, photos,
 //    buildings with floors and rooms) becomes the active organisation, and only
 //    then is the map (app.js) loaded, so every module reads its folders from it.
-import "./style.css";
-import "./indoor.css";
-import { setActiveOrg } from "./org.js";
-import { hideOrgPicker, showOrgPicker } from "./org-picker.js";
-import { publicAssetUrl } from "./paths.js";
-import { opensMap, viewMode } from "./view-mode.js";
+import "./styles/style.css";
+import "./styles/indoor.css";
+import { setActiveOrg } from "./core/org.js";
+import { hideOrgPicker, showOrgPicker } from "./ui/org-picker.js";
+import { fetchPublicJSON, publicAssetUrl } from "./core/paths.js";
+import { PREFERENCE_KEYS, readPreference } from "./core/preferences.js";
+import { opensMap, viewMode } from "./core/view-mode.js";
 
 const $ = (selector) => document.querySelector(selector);
-
-async function fetchJSON(file) {
-  const response = await fetch(publicAssetUrl(file), { cache: "no-cache" });
-  if (!response.ok) throw new Error(`${file}: ${response.status} ${response.statusText}`);
-  return response.json();
-}
 
 function fail(message, error) {
   console.error(message, error);
@@ -56,11 +51,11 @@ async function boot() {
   }
   const mode = viewMode();
   // The saved map theme also styles the picker.
-  try { if (localStorage.getItem("bcsir-map-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch (_) { /* preference is optional */ }
+  if (readPreference(PREFERENCE_KEYS.theme) === "dark") document.documentElement.dataset.theme = "dark";
   $("#status-chip").hidden = true;
 
   let organisations;
-  try { ({ organisations } = await fetchJSON("data/catalog.json")); }
+  try { ({ organisations } = await fetchPublicJSON("data/catalog.json")); }
   catch (error) { fail("The list of maps could not be loaded", error); return; }
 
   const params = new URLSearchParams(window.location.search);
@@ -84,7 +79,7 @@ async function boot() {
 
   $("#status-chip").hidden = false;
   let org;
-  try { org = await fetchJSON(`data/${id}/index.json`); }
+  try { org = await fetchPublicJSON(`data/${id}/index.json`); }
   catch (error) { hideOrgPicker(); fail("This map could not be loaded", error); return; }
   if (org.problems?.length) console.warn(`${org.id}: check the data folder:\n  ${org.problems.join("\n  ")}`);
   setActiveOrg(org);

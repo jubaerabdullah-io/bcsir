@@ -2,7 +2,7 @@
 // Usage: npm run models:character
 //
 // Builds public/models/shared/characters/male.glb, the walker shown in Walk Mode's
-// third-person view (src/walk-character.js): a lightweight low-poly man (about
+// third-person view (src/walk/walk-character.js): a lightweight low-poly man (about
 // 600 triangles, 1.75 m tall, feet at the origin, facing +Z, Y up, metres) on a
 // 17-bone skeleton, with three looping animations and a jump pose:
 //   Idle  breathing, arms at rest              (3 s)
@@ -11,7 +11,7 @@
 //   Jump  knees drawn up, arms raised           (held while in the air)
 // Every body part is a rigid, tapered box (or a rounded head) bound to one bone.
 // Materials are named Skin, Hair, Shirt, Trousers and Shoes, so the map recolours
-// them for each character (WALK_CHARACTERS in src/config.js). Any other GLB with
+// them for each character (WALK_CHARACTERS in src/core/config.js). Any other GLB with
 // animations named Idle, Walk and Run (and optionally those materials) can replace it.
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";

@@ -4,7 +4,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { opensMap, viewMode } from "../src/view-mode.js";
+import { opensMap, viewMode } from "../src/core/view-mode.js";
 import * as content from "../src/landing/content.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));

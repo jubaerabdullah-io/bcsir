@@ -13,7 +13,7 @@
 // clearance. The node path (`path`) and the endpoints stay exactly as the
 // original algorithm returned them. A leg may enter its own endpoint building
 // (the destination is that building). Pure module, tested with node --test.
-import { closestOnSegment, createLocalFrame, distance, geometryPolygons, insideRings, polylineLength, ringsBounds, segmentIntersection } from "./local-frame.js";
+import { closestOnSegment, createLocalFrame, distance, geometryPolygons, insideRings, polylineLength, ringsBounds, segmentIntersection } from "../utils/local-frame.js";
 
 const MIN_CROSSING_M = 0.25; // shorter overlaps are digitising noise at a wall
 const CLEARANCE_M = 1.2;

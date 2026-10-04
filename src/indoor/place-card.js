@@ -1,7 +1,7 @@
 // Details of a room or point chosen on a floor plan: its name and kind, where it
 // is (floor and building), any contact details recorded for it, and the two route
 // buttons of the building card ("Start here", "Directions to here").
-import { escapeHTML } from "../html.js";
+import { escapeHTML } from "../utils/html.js";
 import { firstProperty } from "./levels.js";
 
 const $ = (selector) => document.querySelector(selector);

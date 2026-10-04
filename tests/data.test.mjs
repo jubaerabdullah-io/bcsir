@@ -8,11 +8,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { DATASETS, MODEL_FILES, PUBLIC_DATASETS, ROUTING_NETWORK, rawGeometries, VISUAL_KEYS } from "../scripts/lib/public-data.mjs";
 import { readShapefile } from "../scripts/lib/shapefile-reader.mjs";
-import { buildingLabelPoints, normalizeBuildings, prepareDataset } from "../src/bcsir-data.js";
-import { distanceMeters, lineStrips } from "../src/geo-utils.js";
-import { LAYER_DEFAULTS } from "../src/config.js";
-import { parseColor, resolveVisual } from "../src/visual-properties.js";
-import { collectModelPlacements } from "../src/model-placements.js";
+import { buildingLabelPoints, normalizeBuildings, prepareDataset } from "../src/data/bcsir-data.js";
+import { distanceMeters, lineStrips } from "../src/utils/geo-utils.js";
+import { LAYER_DEFAULTS } from "../src/core/config.js";
+import { parseColor, resolveVisual } from "../src/data/visual-properties.js";
+import { collectModelPlacements } from "../src/three/model-placements.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (file) => readFileSync(path.join(root, file), "utf8");

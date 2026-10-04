@@ -5,13 +5,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { normalizeBuildings, prepareDataset } from "../src/bcsir-data.js";
-import { lineStrips } from "../src/geo-utils.js";
-import { createLocalFrame, distance } from "../src/navigation/local-frame.js";
+import { normalizeBuildings, prepareDataset } from "../src/data/bcsir-data.js";
+import { lineStrips } from "../src/utils/geo-utils.js";
+import { createLocalFrame, distance } from "../src/utils/local-frame.js";
 import { compassWord, createRouteModel, formatGuidanceDistance, guidance, locate, maneuverText } from "../src/navigation/route-progress.js";
 import { blocksWalking, collisionBlockers, createCollisionWorld } from "../src/navigation/collision.js";
 import { correctRouteResult, detourPath, insideLength, prepareObstacles } from "../src/navigation/route-detour.js";
-import { encodeAssetPath, findListedFile } from "../src/asset-paths.js";
+import { encodeAssetPath, findListedFile } from "../src/core/asset-paths.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));

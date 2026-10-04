@@ -5,7 +5,7 @@
 //
 // Keyboard: Tab reaches the shown floor, the arrow keys move between floors, Enter
 // or Space shows one. With more floors than fit, the list scrolls (arrow buttons).
-import { escapeHTML } from "../html.js";
+import { escapeHTML } from "../utils/html.js";
 
 // onSelect(levelId) shows a floor; onExterior() shows the building from outside.
 export function createFloorControl({ onSelect, onExterior }) {

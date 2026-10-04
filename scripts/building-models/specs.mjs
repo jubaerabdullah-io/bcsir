@@ -13,10 +13,10 @@
 //   sign.width              signboard width in metres (screen style)
 //   courtyard               { width, length } in metres (screen style)
 //   floorHeight, groundHeight, bay   storey height, ground-floor height and bay width target (grid style)
-//   module                  no footprint: one bay of one floor, sized by src/config.js
+//   module                  no footprint: one bay of one floor, sized by src/core/config.js
 //                           (BUILDING_MODELS.modules), which the map tiles over every
 //                           building whose building_model names the file
-import { RESIDENTIAL_MODULE } from "../../src/config.js";
+import { RESIDENTIAL_MODULE } from "../../src/core/config.js";
 
 export const BUILDING_SPECS = [
   {

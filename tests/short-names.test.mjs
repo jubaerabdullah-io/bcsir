@@ -1,8 +1,8 @@
-// Short, friendly building names for the walk-mode minimap (src/short-names.js).
+// Short, friendly building names for the walk-mode minimap (src/buildings/short-names.js).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { shortBuildingName, wrapName } from "../src/short-names.js";
+import { shortBuildingName, wrapName } from "../src/buildings/short-names.js";
 
 const buildings = JSON.parse(readFileSync(new URL("../public/data/bcsir/BuildingBoundary.geojson", import.meta.url), "utf8"));
 const byId = (id) => buildings.features.find((feature) => feature.properties.id === id).properties;

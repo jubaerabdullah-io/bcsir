@@ -551,7 +551,7 @@ How each layer uses them:
 | `Garden.geojson` | Garden surface at `top_m`: covered with the top view of `surface_model` (all gardens use `grass.glb`), otherwise from `base_m` to `top_m` in `color` |
 | `TreeLine.geojson` | 3D trees along each line: tree tops at `top_m`, crown `color`, one tree every `spacing_m` (not drawn while `TreeLineModels.geojson` places GLB trees) |
 
-Missing or invalid values fall back to defaults (`src/config.js`, `LAYER_DEFAULTS`) and
+Missing or invalid values fall back to defaults (`src/core/config.js`, `LAYER_DEFAULTS`) and
 the browser console lists every feature that needs fixing. `npm test` checks all files in
 `public/data/bcsir/` for valid values.
 
@@ -606,7 +606,7 @@ per repeat so the pattern does not show. The polygon geometry is unchanged. Remo
 a surface the same way.
 
 The scanned lawn is much darker than the pastel map. `SURFACE_APPEARANCE` in
-`src/config.js` recolours `grass.glb`'s surface only: its light and dark blades are kept
+`src/core/config.js` recolours `grass.glb`'s surface only: its light and dark blades are kept
 around a pastel green (`tint`, `tintAmount`), slightly lightened, and drawn at 88 %
 opacity over the campus ground. Other models and surfaces are not affected; delete the
 entry for the original look.
@@ -649,7 +649,7 @@ level (not one per tree). Each model gets the level that matches its height on s
 | under 1.5 px, beyond 3 km, outside the view, or map zoom under 14 | not drawn |
 
 The coarsest level of each model loads first, so trees appear quickly; finer levels
-download only when a model is shown large enough. The limits are in `src/config.js`
+download only when a model is shown large enough. The limits are in `src/core/config.js`
 (`MODEL_VISIBILITY`) and the level sizes in `scripts/optimize-models.mjs` (`LADDER`).
 Every level was compared with renders of the original model at the largest size it is
 used for (same silhouette area within a few percent, mean colour difference 1–8 of 255;
@@ -671,15 +671,15 @@ Loading and drawing costs kept low (2026-09-25; same pictures, checked pixel by 
 
 - **Character:** one cartoon walker, `models/shared/characters/male.glb` (`npm run
   models:character`, scripts/build-character.mjs: low-poly, Idle, Walk, Run and Jump),
-  set in `WALK_CHARACTERS` in `src/config.js`. With one character the picker only asks
+  set in `WALK_CHARACTERS` in `src/core/config.js`. With one character the picker only asks
   for the view; more entries would bring back the choice of character.
 - **Game feel:** moving at 4.5 m/s plays the Run clip (from 2.6 m/s); Space (or the
   phone pad's Jump) jumps about 0.85 m with the Jump pose and the camera follows;
   holding Space jumps once.
-- **Sky:** while walking, `src/walk-sky.js` draws a sky dome (gradient, sun, soft
+- **Sky:** while walking, `src/walk/walk-sky.js` draws a sky dome (gradient, sun, soft
   clouds) above the horizon and behind everything, and sets the map's horizon and fog
   colours to match; the map's previous sky comes back on exit.
-- **Minimap names:** `src/short-names.js` gives each building a short, friendly name
+- **Minimap names:** `src/buildings/short-names.js` gives each building a short, friendly name
   (`name_en_short` first, e.g. INARS; otherwise "Residential Quarter 07" -> "Quarter 07",
   "Genomic Research Laboratories" -> "Genomic Lab", long institutes -> initials such as
   IBSPS), drawn upright inside its footprint, nearest buildings first, never overlapping.
@@ -791,8 +791,8 @@ that GLB instead of its extrusion; every other building is unchanged.
   jali lattice beside a green-framed window on the front, a wider window and a bathroom
   vent on the back, a slab with a green edge round every floor, a parapet on the front and
   back of the dark roof (style `residential`). It is not stretched to the footprint's
-  rectangle: `BUILDING_MODELS.modules` in `src/config.js` marks it as a module, and the
-  map tiles it over the footprint (`tiledModelParts` in `src/building-footprint.js`): the
+  rectangle: `BUILDING_MODELS.modules` in `src/core/config.js` marks it as a module, and the
+  map tiles it over the footprint (`tiledModelParts` in `src/buildings/building-footprint.js`): the
   footprint is cut across its long axis where its outline steps, each strip is filled
   with bays of about 3.3 m and storeys are stacked up to `top_m` (15 m: 4 storeys, 18 m: 5,
   9 m: 2), so the stepped plans are followed. The veranda side faces the long side
@@ -806,7 +806,7 @@ that GLB instead of its extrusion; every other building is unchanged.
   corners and see-through copies are filtered out); an invisible extrusion keeps it
   clickable. If a GLB cannot be loaded, that building keeps its extrusion and the console
   says `[Building 3D] Failed to load … ; using standard extrusion.`
-  `BUILDING_MODELS.enabled = false` in `src/config.js` draws every building as an
+  `BUILDING_MODELS.enabled = false` in `src/core/config.js` draws every building as an
   extrusion again.
 - **Debug:** open the map with `?buildingDebug` (or run `bcsirBuildings.debug(true)` in the
   console) to outline each footprint (yellow), its rectangle and front direction (cyan),
@@ -857,46 +857,50 @@ reaches the map directly.
 │   ├── models/<org>/            GLB/GLTF files (optimized); lod/ = detail levels, grass tile, manifest
 │   ├── models/shared/           models any organisation may use (the Walk Mode character)
 │   └── image/<org>/             building photos and the logo
-├── src/
-│   ├── main.js                  start-up: which organisation to open (picker or ?org=)
-│   ├── org.js, org-picker.js    the open organisation and its folders; the first screen
+├── src/                         one folder per part of the app; lower folders do not import higher ones:
+│   │                            core, utils -> data -> three, buildings, map -> routing, navigation,
+│   │                            indoor, walk -> search, ui -> app.js, main.js
+│   ├── main.js                  start-up: the landing page, or which organisation to open (picker or ?org=)
 │   ├── app.js                   the map: wiring of everything below
+│   ├── core/                    config.js (dataset keys, fallback defaults, colours), org.js (the open
+│   │                            organisation and its folders), paths.js and asset-paths.js (addresses of
+│   │                            files in public/), preferences.js (saved choices), view-mode.js (?view=2d, ?embed)
+│   ├── utils/                   geo-utils.js (render geometry, label anchors), local-frame.js (metric frame,
+│   │                            angles, GeoJSON helpers), wall-strip.js, html.js
+│   ├── data/                    bcsir-data.js (loads datasets, builds render copies and label points),
+│   │                            visual-properties.js (reads base_m, top_m, thickness_m, color, …),
+│   │                            directory-data.js (loads the laboratory and test lists)
+│   ├── map/                     map.js and basemaps.js (MapLibre map, street and satellite), bcsir-layers.js
+│   │                            (layers, layer groups), layer-ids.js (layer ids several modules name),
+│   │                            layer-manager.js and basemap-control.js (layers panel), camera-controls.js
+│   │                            (camera presets), fit-padding.js, interactions.js (hover, select, route
+│   │                            endpoints, choose on map), vector-tiles.js
+│   ├── buildings/               building-footprint.js and building-models.js (buildings drawn from GLB
+│   │                            models), building-images.js and building-labels.js (photos, round label
+│   │                            badges), short-names.js
+│   ├── three/                   models3d.js (the GLB renderer) with model-features.js, model-manifest.js,
+│   │                            model-parts.js and model-impostors.js; model-placements.js (models placed by
+│   │                            GeoJSON), tree-layer.js, surface-layer.js (grass), three-shared.js (renderer,
+│   │                            loader and frame matrix shared by every 3D layer)
+│   ├── routing/                 route-service.js (route calculation with the original functions),
+│   │                            route-summary.js (walking time, notes), route-markers.js (blue / red pins),
+│   │                            route-walker.js (walking figure), route-occlusion.js (see-through buildings
+│   │                            in front of the route)
+│   ├── navigation/              live navigation (live-navigation.js), compass, turn guidance
+│   │                            (route-progress.js), walk collision, route geometry around buildings,
+│   │                            walk minimap
 │   ├── indoor/                  floor plans: levels.js (floor folders and files), indoor-model.js
 │   │                            (a floor from its files), nav-grid.js (walking grid),
 │   │                            indoor-router.js (lifts and stairs), indoor-store.js, trip.js
 │   │                            (room-to-room trips and their steps), indoor-layers.js,
 │   │                            floor-control.js, place-card.js, indoor-controller.js
-│   ├── map.js, basemaps.js      MapLibre map; street and satellite basemaps
-│   ├── config.js                dataset keys and fallback defaults
-│   ├── visual-properties.js     reads and validates base_m, top_m, thickness_m, color, …
-│   ├── bcsir-data.js            loads datasets, builds render copies and label points
-│   ├── bcsir-layers.js          MapLibre layers (buildings, labels, route), layer groups
-│   ├── building-labels.js       round photo badges for the labels
-│   ├── building-images.js       building photo lookup (labels and card)
-│   ├── directory.js             search index, lab/test → building mapping
-│   ├── directory-data.js        loads public/data/bcsir/directory/
-│   ├── combobox.js              accessible autocomplete list
-│   ├── search-ui.js             main search bar
-│   ├── directions-ui.js         From / To panel and WALK toggle
-│   ├── route-summary.js         walking time and endpoint notes
-│   ├── route-walker.js          walking figure animated along the route
-│   ├── route-markers.js         blue / red route pins
-│   ├── basemap-control.js       Street / Satellite choice
-│   ├── layer-manager.js         layers panel and visibility list
-│   ├── ui.js                    building card, toast, status, theme
-│   ├── interactions.js          hover/select/route endpoints/choose on map
-│   ├── camera-controls.js       camera presets
-│   ├── geo-utils.js             geometry helpers, label anchors
-│   ├── model-placements.js, models3d.js, tree-layer.js, three-shared.js
-│   ├── building-models.js, building-footprint.js  buildings drawn from GLB models
-│   ├── surface-layer.js         grass (surface_model) on the Garden polygons
-│   ├── route-occlusion.js       see-through buildings in front of the route
-│   ├── walkMode.js, wall-strip.js, paths.js, asset-paths.js, html.js
-│   ├── navigation/              live navigation (live-navigation.js), compass, turn
-│   │                            guidance (route-progress.js), walk collision,
-│   │                            route geometry around buildings, walk minimap
-│   ├── routing/route-service.js route calculation with the original functions
-│   └── style.css, indoor.css
+│   ├── walk/                    walk-mode.js (Walk Mode), walk-character.js, walk-sky.js
+│   ├── search/                  directory.js (search index, lab/test → building mapping), combobox.js
+│   │                            (accessible autocomplete list), search-ui.js (main search bar)
+│   ├── ui/                      ui.js (building card, toast, status, theme), directions-ui.js (From / To
+│   │                            panel and WALK toggle), org-picker.js (the first screen of ?maps)
+│   ├── landing/                 the IndoorWay landing page (content.js holds its text)
+│   └── styles/                  style.css, indoor.css
 ├── scripts/
 │   ├── make-sample-floors.mjs     npm run floors:sample (template floors for a building)
 │   ├── import-inars-services.mjs  npm run data:services

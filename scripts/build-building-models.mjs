@@ -6,7 +6,7 @@
 // exports; same rules: origin at the footprint centre on the ground, 1 unit = 1 m,
 // transforms applied, outward normals, one mesh, one material, textures packed).
 // Each model is built on its building's footprint from BuildingBoundary.geojson
-// (src/building-footprint.js, the code the map places it with): the front
+// (src/buildings/building-footprint.js, the code the map places it with): the front
 // (entrance side, or the side chosen by model_rotation) faces +Z and is the
 // footprint's width, the depth follows, the height is top_m - base_m. Thousands
 // of small details (screen openings, window panes) are texture, not geometry: one
@@ -16,8 +16,8 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { orgAssetPath } from "../src/asset-paths.js";
-import { buildingModelPlacement } from "../src/building-footprint.js";
+import { orgAssetPath } from "../src/core/asset-paths.js";
+import { buildingModelPlacement } from "../src/buildings/building-footprint.js";
 import { createAtlas } from "./building-models/atlas.mjs";
 import { createMesh } from "./building-models/mesh.mjs";
 import { BUILDING_SPECS } from "./building-models/specs.mjs";

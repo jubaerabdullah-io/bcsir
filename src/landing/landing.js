@@ -5,8 +5,8 @@
 // under every page.
 // All wording and links are in content.js.
 import "./landing.css";
-import { escapeHTML } from "../html.js";
-import { publicAssetUrl } from "../paths.js";
+import { escapeHTML } from "../utils/html.js";
+import { publicAssetUrl } from "../core/paths.js";
 import { BRAND, DEMO, FEATURES, FOOTER, FOOTNOTES, HERO, INDUSTRIES, NAV, SHOWCASE, SOCIAL, SOLUTIONS } from "./content.js";
 import { icon } from "./icons.js";
 import { PICTURE_KINDS, pictureFile } from "./pictures.js";

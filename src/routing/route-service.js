@@ -16,7 +16,7 @@
 //    r2.json vertex they came from, and a metric length is computed for display.
 
 import { buildGraph, dijkstra, findConnectedComponents, isGraphConnected } from "virtual:bcsir-routing";
-import { distanceMeters, polygonCentroid } from "../geo-utils.js";
+import { distanceMeters, polygonCentroid } from "../utils/geo-utils.js";
 
 const keyToCoordinates = (key) => key.split(",").map(Number);
 
@@ -143,4 +143,18 @@ export function routeToGeoJSON(result) {
     }
   }
   return { type: "FeatureCollection", features };
+}
+
+// The walked line of a route result: start pin -> network path -> destination pin.
+// Access legs corrected around buildings (navigation/route-detour.js) are used
+// when present.
+export function routePathCoordinates(result) {
+  if (!result?.ok || !result.source?.point || !result.destination?.point) return null;
+  const points = [];
+  const start = result.source.accessPath?.length ? result.source.accessPath : [result.source.point];
+  const end = result.destination.accessPath?.length ? [...result.destination.accessPath].reverse() : [result.destination.point];
+  [...start, ...result.coordinates, ...end].forEach((point) => {
+    if (!points.length || distanceMeters(points[points.length - 1], point) > 0.01) points.push(point);
+  });
+  return points.length > 1 ? points : null;
 }

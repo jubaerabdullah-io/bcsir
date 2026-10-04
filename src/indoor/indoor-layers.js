@@ -7,19 +7,18 @@
 // part of a route is a line above them. One source holds every open floor; each
 // feature carries `kind`, `building` and `level` (indoor-model.js).
 import { INDOOR_STYLE } from "./indoor-model.js";
-import { STYLE } from "../config.js";
+import { STYLE } from "../core/config.js";
+import { INDOOR_LAYERS } from "../map/layer-ids.js";
 
 const EMPTY = { type: "FeatureCollection", features: [] };
 export const INDOOR_SOURCE = "indoor";
 export const INDOOR_LABEL_SOURCE = "indoor-labels";
 export const INDOOR_ROUTE_SOURCE = "indoor-route";
-export const INDOOR_UNIT_LAYER = "indoor-units";
-export const INDOOR_POI_LAYER = "indoor-pois";
-export const INDOOR_LABEL_LAYER = "indoor-unit-labels";
+// The ids other modules also name are in map/layer-ids.js (the line and symbol
+// layers stay above the 3D models: OVERLAY_LAYERS there).
+const { units: INDOOR_UNIT_LAYER, pois: INDOOR_POI_LAYER, labels: INDOOR_LABEL_LAYER } = INDOOR_LAYERS;
 // Layers a click or the pointer can pick a room or point from.
 export const INDOOR_HIT_LAYERS = [INDOOR_POI_LAYER, INDOOR_LABEL_LAYER, INDOOR_UNIT_LAYER];
-// Line and symbol layers, which stay above the 3D models (models3d.js keepMapOverlaysOnTop).
-export const INDOOR_OVERLAY_LAYERS = ["indoor-route-other", "indoor-route-casing", "indoor-route-line", INDOOR_LABEL_LAYER, INDOOR_POI_LAYER];
 
 const kind = (name) => ["==", ["get", "kind"], name];
 const state = (name) => ["boolean", ["feature-state", name], false];
@@ -103,9 +102,9 @@ export function addIndoorLayers(map, { beforeId } = {}) {
   // Indoor part of the route: the legs on the shown floors, and (dashed) the legs
   // on the other floors of an open building.
   const shown = ["==", ["get", "shown"], true];
-  map.addLayer({ id: "indoor-route-other", type: "line", source: INDOOR_ROUTE_SOURCE, filter: ["!", shown], layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": STYLE.route, "line-width": 2.5, "line-opacity": 0.35, "line-dasharray": [1.2, 1.8] } });
-  map.addLayer({ id: "indoor-route-casing", type: "line", source: INDOOR_ROUTE_SOURCE, filter: shown, layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": STYLE.routeCasing, "line-width": ["interpolate", ["linear"], ["zoom"], 16, 5, 19, 9, 22, 14], "line-opacity": 0.95 } });
-  map.addLayer({ id: "indoor-route-line", type: "line", source: INDOOR_ROUTE_SOURCE, filter: shown, layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": STYLE.route, "line-width": ["interpolate", ["linear"], ["zoom"], 16, 3, 19, 5, 22, 9] } });
+  map.addLayer({ id: INDOOR_LAYERS.routeOther, type: "line", source: INDOOR_ROUTE_SOURCE, filter: ["!", shown], layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": STYLE.route, "line-width": 2.5, "line-opacity": 0.35, "line-dasharray": [1.2, 1.8] } });
+  map.addLayer({ id: INDOOR_LAYERS.routeCasing, type: "line", source: INDOOR_ROUTE_SOURCE, filter: shown, layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": STYLE.routeCasing, "line-width": ["interpolate", ["linear"], ["zoom"], 16, 5, 19, 9, 22, 14], "line-opacity": 0.95 } });
+  map.addLayer({ id: INDOOR_LAYERS.routeLine, type: "line", source: INDOOR_ROUTE_SOURCE, filter: shown, layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": STYLE.route, "line-width": ["interpolate", ["linear"], ["zoom"], 16, 3, 19, 5, 22, 9] } });
 
   map.addLayer({
     id: INDOOR_LABEL_LAYER, type: "symbol", source: INDOOR_LABEL_SOURCE, filter: kind("unit-label"), minzoom: 17.5,
