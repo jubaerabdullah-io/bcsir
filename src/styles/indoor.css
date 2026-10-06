@@ -303,6 +303,11 @@ html[data-theme="dark"] .app-sample { background: rgba(251, 191, 36, 0.18); colo
 .place-where strong { color: var(--floor-active); font-weight: 650; }
 .place-facts { margin: 0 16px 12px; }
 .place-description dd { white-space: normal; }
+<<<<<<< HEAD
+=======
+.place-sample { margin: 0 16px 12px; padding: 7px 10px; border-radius: 9px; background: #fef3c7; color: #92400e; font-size: 11.5px; line-height: 1.4; }
+html[data-theme="dark"] .place-sample { background: rgba(251, 191, 36, 0.14); color: #fcd34d; }
+>>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
 
 /* ---- Search results and route steps --------------------------------------------------- */
 .result-icon-place { color: #2563eb; background: #e4edfd; }

@@ -20,8 +20,12 @@ const writeSaved = (value) => writeJSONPreference(PREFERENCE_KEYS.layers, value)
 // `suppressed` groups are drawn hidden whatever their switch says (the satellite
 // basemap uses this); the switches and the saved choices are kept, so the groups
 // come back as they were when the suppression ends.
+<<<<<<< HEAD
 // onOpen() is called when the panel opens (app.js closes the View menu).
 export function createLayerManager({ map, custom = {}, onVisibilityChange, onOpen, datasetCounts = {}, suppressed: initialSuppressed = [] }) {
+=======
+export function createLayerManager({ map, custom = {}, onVisibilityChange, datasetCounts = {}, suppressed: initialSuppressed = [] }) {
+>>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
   const button = document.querySelector("#layers-button");
   const panel = document.querySelector("#layers-panel");
   const list = document.querySelector("#layer-list");
@@ -75,7 +79,10 @@ export function createLayerManager({ map, custom = {}, onVisibilityChange, onOpe
     panel.hidden = !open;
     button.setAttribute("aria-expanded", String(open));
     fit();
+<<<<<<< HEAD
     if (open) onOpen?.();
+=======
+>>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
   }
   setOpen(false);
   window.addEventListener("resize", fit);

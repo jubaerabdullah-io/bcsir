@@ -30,7 +30,11 @@ export function createPlaceCard({ onClose, onSetSource, onSetDestination }) {
     destination.querySelector(".route-label").textContent = role === "destination" ? "Destination" : "Directions to here";
   }
 
+<<<<<<< HEAD
   // place: a room or point of indoor-model.js; where: { building, level }
+=======
+  // place: a room or point of indoor-model.js; where: { building, level, sample }
+>>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
   // (names of its building and floor).
   function show(place, where) {
     shown = place;
@@ -50,6 +54,10 @@ export function createPlaceCard({ onClose, onSetSource, onSetDestination }) {
     const list = $("#place-facts");
     list.innerHTML = facts.map(([label, value]) => `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value)}</dd></div>`).join("") + (description !== undefined ? `<div class="place-description"><dt>About</dt><dd>${escapeHTML(description)}</dd></div>` : "");
     list.hidden = !list.innerHTML;
+<<<<<<< HEAD
+=======
+    $("#place-sample").hidden = !where.sample;
+>>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
     refreshActions();
     card.hidden = false;
     card.scrollTop = 0;

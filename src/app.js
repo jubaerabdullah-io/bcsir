@@ -391,6 +391,7 @@ async function reloadDataset(file) {
 // Deep links: ?buildingid=127 selects a building, ?place=<id> a room of a floor plan.
 function selectFromUrl() {
   const params = new URLSearchParams(window.location.search);
+<<<<<<< HEAD
   const id = params.get("buildingid");
   if (id) {
     const feature = data.render.buildings.features.find((item) => String(item.properties.id) === id);
@@ -400,6 +401,15 @@ function selectFromUrl() {
   // After the building: selecting a building closes the floors of the others.
   const place = params.get("place");
   if (place) indoor.selectPlace(place).then((found) => { if (!found) ui.showToast("That place was not found"); });
+=======
+  const place = params.get("place");
+  if (place) indoor.selectPlace(place).then((found) => { if (!found) ui.showToast("That place was not found"); });
+  const id = params.get("buildingid");
+  if (!id) return;
+  const feature = data.render.buildings.features.find((item) => String(item.properties.id) === id);
+  if (feature) interactionController.selectFeature(feature);
+  else ui.showToast(`Building ${id} was not found`);
+>>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
 }
 
 async function start() {
@@ -494,8 +504,12 @@ async function start() {
     onMessage: ui.showToast
   });
 
+<<<<<<< HEAD
   // The View menu and the layers panel are never open together: opening one closes the other.
   cameraController = createCameraController(map, { onReset: resetView, onMessage: ui.showToast, onMenuOpen: () => layerManager?.setOpen(false) });
+=======
+  cameraController = createCameraController(map, { onReset: resetView, onMessage: ui.showToast });
+>>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
   window.bcsirCamera = Object.freeze({
     setRouteCoordinates: (coordinates, currentSegmentIndex = 0) => cameraController?.setRouteCoordinates(coordinates, currentSegmentIndex),
     routeUp: () => cameraController?.routeUp(),
@@ -605,7 +619,10 @@ async function start() {
       basemap: (visible) => basemap.setEnabled(visible)
     },
     onVisibilityChange: (groupId, visible) => { modelGroups.setVisible(groupId, visible).catch((error) => console.error(`3D models of "${groupId}" could not be loaded:`, error)); },
+<<<<<<< HEAD
     onOpen: () => cameraController?.closeMenu(),
+=======
+>>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
     datasetCounts: {
       buildings: data.render.buildings.features.length,
       roads: data.render.roads.features.length,
