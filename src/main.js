@@ -1,12 +1,10 @@
-// Start-up: the landing page, or which organisation's map to open.
+// Start-up: which organisation's map to open.
 //
-// 0. An address that names no map (no ?org=, ?buildingid=, ?place= or ?maps) shows
-//    the IndoorWay landing page (src/landing/). Its showcase opens the maps below
-//    in frames; ?maps shows the organisation picker.
-// 1. data/catalog.json lists the organisations (BCSIR, Taqwa Fabrics, ...).
-// 2. The address may name one (?org=bcsir). Addresses made before organisations
-//    existed (?buildingid=101, the printed QR codes) open the default organisation.
-//    Otherwise the visitor chooses on the organisation picker.
+// 1. data/catalog.json lists the organisations. This site has one, BCSIR, so its
+//    map opens at once at every address.
+// 2. With more than one, the address may name one (?org=bcsir). Addresses made
+//    before organisations existed (?buildingid=101, the printed QR codes) open the
+//    default organisation. Otherwise the visitor chooses on the organisation picker.
 // 3. That organisation's index (data/<org>/index.json: its dataset files, photos,
 //    buildings with floors and rooms) becomes the active organisation, and only
 //    then is the map (app.js) loaded, so every module reads its folders from it.
@@ -16,7 +14,7 @@ import { setActiveOrg } from "./core/org.js";
 import { hideOrgPicker, showOrgPicker } from "./ui/org-picker.js";
 import { fetchPublicJSON, publicAssetUrl } from "./core/paths.js";
 import { PREFERENCE_KEYS, readPreference } from "./core/preferences.js";
-import { opensMap, viewMode } from "./core/view-mode.js";
+import { viewMode } from "./core/view-mode.js";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -43,12 +41,6 @@ function applyBranding(org) {
 }
 
 async function boot() {
-  if (!opensMap()) {
-    document.documentElement.dataset.stage = "landing";
-    const { showLanding } = await import("./landing/landing.js");
-    showLanding();
-    return;
-  }
   const mode = viewMode();
   // The saved map theme also styles the picker.
   if (readPreference(PREFERENCE_KEYS.theme) === "dark") document.documentElement.dataset.theme = "dark";

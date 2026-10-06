@@ -16,10 +16,6 @@
 //    sha256 recorded in original-files.sha256.
 // 5. Warns when a GLB in public/models/<org>/ is new or was replaced since
 //    `npm run models:optimize` last ran (public/models/<org>/lod/manifest.json).
-// 6. In a build, writes the names of the landing page's own script and stylesheet
-//    into index.html (in place of the mark "landing files"), so the page asks for
-//    them at once instead of after the start-up script and the map's stylesheet
-//    have arrived. Map addresses do not ask for them.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -31,13 +27,10 @@ const RESOLVED_ROUTING_ID = `\0${VIRTUAL_ROUTING_ID}`;
 const CHECKSUMS = "original-files.sha256";
 const CATALOG_URL = /\/data\/catalog\.json$/;
 const INDEX_URL = /\/data\/([^/]+)\/index\.json$/;
-const LANDING_MARK = "<!-- landing files -->";
-const LANDING_MODULE = /[\\/]src[\\/]landing[\\/]landing\.js$/;
 
 export function bcsirPlugin() {
   let root = process.cwd();
   let logger = console;
-  let base = "./";
   const sourcePath = (relative) => path.join(root, relative);
 
   // The routing networks recorded in original-files.sha256 must stay the originals.
@@ -95,7 +88,6 @@ export function bcsirPlugin() {
     configResolved(config) {
       root = config.root;
       logger = config.logger;
-      base = config.base || "./";
     },
 
     buildStart() {
@@ -146,25 +138,6 @@ export function bcsirPlugin() {
 
     configurePreviewServer(server) {
       server.middlewares.use(catalogMiddleware);
-    },
-
-    transformIndexHtml: {
-      order: "post",
-      handler(html, { bundle }) {
-        if (!bundle || !html.includes(LANDING_MARK)) return html; // `npm run dev`: the mark stays a comment
-        const chunks = Object.values(bundle).filter((item) => item.type === "chunk");
-        const landing = chunks.find((chunk) => LANDING_MODULE.test(chunk.facadeModuleId || ""));
-        if (!landing) return html;
-        // The modules it imports that the page has not asked for already.
-        const entries = new Set(chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName));
-        const scripts = [landing.fileName, ...landing.imports.filter((file) => !entries.has(file))];
-        const styles = [...(landing.viteMetadata?.importedCss || [])];
-        const links = [
-          ...scripts.map((file) => `<link rel="modulepreload" crossorigin href="${base}${file}">`),
-          ...styles.map((file) => `<link rel="preload" as="style" crossorigin href="${base}${file}">`)
-        ];
-        return html.replace(LANDING_MARK, links.join(""));
-      }
     },
 
     generateBundle() {

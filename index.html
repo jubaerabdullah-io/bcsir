@@ -4,22 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f4f7f8" />
-    <meta name="description" content="IndoorWay by SrcDrive: accurate, interactive, turn by turn indoor navigation with 3D and 2D maps for hospitals, campuses, factories and other large venues." />
-    <link rel="icon" type="image/svg+xml" href="./indoorway-logo.svg" />
-    <title>IndoorWay | Indoor Navigation by SrcDrive</title>
-    <!-- An address that names no map opens the landing page (src/landing/): the map interface is kept off the screen from the first paint. -->
-    <!-- Its font and first picture are asked for here, so they arrive while the page's script is still on the way;
-         a build puts the page's own script and stylesheet in place of the "landing files" mark (scripts/vite-plugin-bcsir.mjs). -->
-    <script>if (!/[?&](org|buildingid|place|maps)(=|&|$)/.test(location.search)) {
-      document.documentElement.dataset.stage = "landing";
-      document.head.insertAdjacentHTML("beforeend", '<link rel="preload" as="font" type="font/woff2" crossorigin href="./fonts/manrope-latin.woff2"><link rel="preload" as="image" type="image/webp" imagesrcset="./landing/ui/a-720.webp 720w, ./landing/ui/a-1200.webp 1200w, ./landing/ui/a-1600.webp 1600w" imagesizes="(min-width: 964px) 900px, calc(100vw - 32px)"><!-- landing files -->');
-    }</script>
-    <style>html[data-stage="landing"] #app { display: none; } html[data-stage="landing"] body { background: #FAF4EC; }</style>
+    <meta name="description" content="Interactive 3D campus map of the Bangladesh Council of Scientific and Industrial Research (BCSIR), Dhaka: buildings, floor plans, laboratories, testing services and walking directions." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>Bangladesh Council of Scientific and Industrial Research</title>
     <script type="module" src="./src/main.js"></script>
   </head>
   <body>
-    <!-- IndoorWay landing page (src/landing/landing.js), the first screen when the address names no map -->
-    <div id="landing" hidden></div>
     <!-- Organisation picker (org-picker.js): shown first, unless the address names one (?org=bcsir) -->
     <section id="org-picker" class="org-picker" aria-labelledby="org-picker-title" hidden>
       <div class="org-picker-inner">

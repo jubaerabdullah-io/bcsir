@@ -1,15 +1,13 @@
-# 3D campus and indoor maps (BCSIR, Taqwa Fabrics, ...)
+# BCSIR 3D campus and indoor map
 
-Interactive 3D maps of several organisations in one app, built with **MapLibre GL JS** and
-**Three.js**. The first screen asks which place to open. Each organisation has its own
-folder of GeoJSON files (`public/data/<organisation>/`), which control everything on its
-map: building heights and colours, road and wall thickness, tree lines, building photos,
-GLB models, and the **floor plans** of its buildings. A building with floor plans gets a
+Interactive 3D map of the BCSIR campus in Dhaka, built with **MapLibre GL JS** and
+**Three.js**. The GeoJSON files in `public/data/bcsir/` control everything on the map:
+building heights and colours, road and wall thickness, tree lines, building photos, GLB
+models, and the **floor plans** of its buildings. A building with floor plans gets a
 floor selector, its rooms are searchable, and directions go **from room to room across
 floors and buildings** by the lifts and stairs.
 
-The first organisation is the BCSIR campus in Dhaka (`public/data/bcsir/`). Its routes
-between buildings are calculated with the **original BCSIR routing code**
+Routes between buildings are calculated with the **original BCSIR routing code**
 (`connection_check.js`) on the original road network.
 
 The search finds buildings, laboratories, research divisions and laboratory testing
@@ -33,8 +31,6 @@ npm run preview       # serve dist/ at http://localhost:4173
 npm test              # data, search, routing, labels, basemaps (node --test)
 npm run verify        # originals unchanged + routing equivalence + npm test
 npm run data:prepare  # create missing BCSIR files in public/data/bcsir (see below)
-npm run data:pull-2d  # refresh public/data/bcsir-2d from the QGIS repository (Basic 2D map)
-npm run landing:images  # remake the landing page pictures from public/image/ui/*.svg
 npm run floors:sample -- bcsir 127   # template floor plans for a building (see Organisations and floor plans)
 npm run data:services # re-import the official INARS testing-service list
 ```
@@ -58,79 +54,17 @@ the organisation logo (`public/image/bcsir/logo.png`) out of the repository: the
 (404, broken images) on a site built from the repository. `.gitignore` now ends with
 `!public/**`, and `npm test` checks it.
 
-## Landing page (IndoorWay)
+## Addresses
 
-The first screen is the IndoorWay landing page. Its first page has the hero (headline, text
-and the "Talk to us" row), a picture of the map on a laptop and a phone, a headline and one
-card that shows the features one at a time (text on the left, picture on the right; on a
-phone the picture is on top). Solutions, Showcase, Industries and the demo request form are pages
-of their own, opened from the header menus (`/#solutions`, `/#showcase`, `/#industries`,
-`/#demo`). The footer under every page has the logo and office address, then the lists of
-solutions, industries and showcase maps.
+The map opens at every address of the site. These switches may be added:
 
 | Address | Opens |
 | --- | --- |
-| `/` | the landing page |
-| `/?org=bcsir` | that organisation's map, as before |
-| `/?buildingid=101` | the default organisation's map (the printed QR codes) |
-| `/?maps` | the organisation picker |
-| `/?org=bcsir&view=2d` | the same map kept flat: camera straight above, north up, no tilt or Walk buttons |
-| `/?org=bcsir&embed=1` | the map inside a frame: no "choose another place" button, directions panel closed |
-
-- **Wording, links and lists:** `src/landing/content.js` (hero text, menus, solutions,
-  industries, the Premium / Standard / Basic lists, demo form texts, social links).
-  `npm test` checks that the wording has no hyphens or dashes.
-- **Layout and behaviour:** `src/landing/landing.js`, `landing.css`, `icons.js`.
-- **Feature card:** the arrows, the dots, a swipe or the left and right keys change the
-  feature. Until a visitor does that the card moves on by itself every `FEATURES.seconds`
-  (the ring around the current dot fills meanwhile); it waits while the pointer or the
-  keyboard is on the card or the card is off the screen, and never moves by itself when
-  the visitor's system asks for reduced motion. `seconds: 0` switches that off.
-- **First page pictures and feature texts:** the text of the features is `FEATURES` in
-  `content.js`. The artwork is `public/image/ui/<file>.svg`. Those files are 2 to 9 MB
-  each (photos and screenshots are stored inside the SVG), so the page never loads them:
-  `npm run landing:images` draws each one and saves light WebP copies in
-  `public/landing/ui/` (about 25 to 125 KB), in the widths listed in
-  `src/landing/pictures.js`, and the browser takes the one that fits the screen. Run the
-  command after changing an SVG or adding a feature, then commit `public/landing/ui/`.
-- **Loading:** the Manrope font is served with the site (`public/fonts/`, SIL Open Font
-  License), so nothing is fetched from another server. `index.html` asks for the font and
-  the first picture at once, and a build adds the landing page's own script and
-  stylesheet to that list (`scripts/vite-plugin-bcsir.mjs`), so they all arrive together
-  and the page is drawn once, in its own font. If the widths or `sizes` of the first
-  picture change in `pictures.js`, change them in `index.html` too (`npm test` checks).
-- **Showcase:** each entry of `SHOWCASE.items` names an organisation folder (`org`) and
-  optional address switches (`query`). The map is loaded in a frame only when the
-  visitor clicks it, so the page stays light. "Full screen" uses the browser's full
-  screen, or stretches the frame over the page where that is not available (iPhone).
-
-  | Tier | Map | Shown as |
-  | --- | --- | --- |
-  | Premium | Taqwa Fabrics (`taqwafabrics`) | locked: a blurred picture with a lock, the map is not loaded |
-  | Standard | BCSIR (`bcsir`) | the full 3D map |
-  | Basic | BCSIR 2D (`bcsir-2d`) | the flat map made from the QGIS repository |
-
-  `"locked": true` on an entry locks it in the showcase only. This is a static site, so
-  the map itself still opens for anyone who types its address (`/?org=taqwafabrics`)
-  or finds it in the picker (`/?maps`).
-- **Basic 2D map:** `public/data/bcsir-2d/` holds the original flat QGIS layers of
-  https://github.com/mohammadrhoque/bcsir-qgis-map (buildings, roads, pathways,
-  boundaries, the routing network, garden and tree line), without the heights, models
-  and floor plans added to `public/data/bcsir/`. That repository is private, so the
-  site cannot read it directly: `npm run data:pull-2d` clones it with your git login
-  and copies the files in (`source.json` records the commit). Run it again after the
-  repository changes, then commit the folder. Two `org.json` options make it work:
-  `"view_mode": "2d"` keeps the organisation's map flat at every address, and
-  `"image_folder": "bcsir"` takes the photos and logo from `public/image/bcsir/`
-  instead of a second copy.
-- **Footnotes:** a feature ending in `*` or `**` points to the note with the same mark
-  in `FOOTNOTES`. A note left empty is not printed.
-- **Demo requests:** the form opens the visitor's email app with the request written out,
-  addressed to `BRAND.email`. To collect requests with a form service instead, put its
-  address in `DEMO.endpoint`.
-- **Pictures:** `public/landing/` holds one preview picture per showcase map
-  (screenshots of the maps themselves); `public/indoorway-logo.svg` is the logo.
-  Retake the previews when a map changes a lot.
+| `/` | the BCSIR map |
+| `/?buildingid=101` | the map with building 101 selected (the printed QR codes) |
+| `/?place=secretariat/L06/shops/L06-01` | that room, on its floor |
+| `/?view=2d` | the same map kept flat: camera straight above, north up, no tilt or Walk buttons |
+| `/?embed=1` | the map inside a frame: directions panel closed |
 
 ## Organisations and floor plans
 
@@ -152,19 +86,17 @@ public/
 │   │       │   ├── walls.geojson       walls (LineString or Polygon)
 │   │       │   └── pois.geojson        points: lift, stairs, entrance, toilet, ...
 │   │       └── L02/ ...
-│   └── taqwafabrics/                   the next organisation, same layout
+│   └── <id>/                           another organisation would have the same layout
 ├── models/
 │   ├── bcsir/                          that organisation's GLB files (lod/ = detail levels)
-│   ├── taqwafabrics/
 │   └── shared/                         models any organisation may use ("shared/tree.glb")
 └── image/
-    ├── bcsir/                          that organisation's photos and logo
-    └── taqwafabrics/
+    └── bcsir/                          that organisation's photos and logo
 ```
 
 A browser cannot list folders, so the app reads a **catalog** generated from these
-folders (`scripts/lib/catalog.mjs`): `data/catalog.json` (the organisations, for the first
-screen) and `data/<organisation>/index.json` (its files, photos, floors and the search list
+folders (`scripts/lib/catalog.mjs`): `data/catalog.json` (the list of
+organisations) and `data/<organisation>/index.json` (its files, photos, floors and the search list
 of rooms). `npm run dev` builds them on every request and `npm run build` writes them into
 `dist/`; nothing is stored in `public/`. Adding a building is therefore: create the folder,
 save the GeoJSON files. `npm run dev` and `npm run build` print what they found and what
@@ -172,23 +104,27 @@ looks wrong (a floor without an outline, a building folder that matches no footp
 
 ### Adding an organisation
 
+This site has one organisation, BCSIR, so its map opens at once. With a second folder
+in `public/data/` the first screen becomes a picker of organisations (`?org=<id>` opens
+one directly).
+
 1. Create `public/data/<id>/` (lower-case letters, digits, `-`, `_`) with an `org.json`:
 
    ```json
    {
-     "name": "Taqwa Fabrics Ltd",
-     "short_name": "Taqwa Fabrics",
-     "tagline": "Factory complex, Sreepur, Gazipur",
+     "name": "Example Campus",
+     "short_name": "Example",
+     "tagline": "City, district",
      "logo": "logo.png",
      "accent": "#b45309",
      "order": 2,
-     "view": { "center": [90.4032, 24.2215], "zoom": 16.9, "pitch": 56, "bearing": -12 }
+     "view": { "center": [90.4, 23.8], "zoom": 16.9, "pitch": 56, "bearing": -12 }
    }
    ```
 
    `logo` is a file in `public/image/<id>/`; without one the card shows the initials.
    `"default": true` marks the organisation that old links without `?org=` open.
-   `"sample": true` labels placeholder data on the first screen and in the header.
+   `"sample": true` labels placeholder data on the picker and in the header.
 2. Save the site layers into the folder. Only the files an organisation has are loaded:
 
    | Dataset | File names looked for (or name yours in `org.json` `"datasets"`) |
@@ -265,17 +201,12 @@ invented**. `building.json` marks such a building `"sample": true` and the map s
 then remove `"sample"`. The script replaces only folders it generated itself.
 
 **What is sample data in this repository:** the six floors of the BCSIR Secretariat
-(`public/data/bcsir/secretariat/`) and the whole `taqwafabrics` organisation: its building
-names and storey counts follow the Taqwa Fabrics drawing set, but its footprints, roads and
-floor plans are placeholders at an invented location until the drawings are georeferenced.
-Only its `boundary.geojson` (the surveyed wall line) and `area.geojson` (the ground inside
-that line) are at the real site.
+(`public/data/bcsir/secretariat/`).
 
 ### On the map
 
 | Action | How |
 |---|---|
-| Choose a place | The first screen lists the organisations. The grid button beside the name returns to it. `?org=bcsir` in the address opens one directly. |
 | See a floor | Select a building that has floor plans and choose a floor: in the **floor selector** (left edge; highest floor at the top) or on the building card. The building's shell is hidden and the floor is drawn at ground level. The house button shows the building from outside again. Zooming far in on such a building opens its first floor. |
 | Find a room | The search bar lists rooms and points (lifts, toilets, ...) with their floor and building; choosing one opens that floor and selects the room. Clicking a room on an open floor does the same. |
 | Directions between rooms | **Start here** / **Directions to here** on a room's card, or type room names in the Directions panel. |
@@ -320,7 +251,7 @@ entrance → the outdoor road network → the other building's entrance → its 
 | First-person walk (game mode) | **Walk** (bottom left), choose the view, then click a location on the map: the camera goes down there. W/A/S/D or arrows to move fast (4.5 m/s, the cartoon walker runs), hold Shift for 9 m/s, **Space to jump**, mouse to look (looking up shows a blue sky with clouds), V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), **Jump** in their middle, drag the view to look. Walls and buildings cannot be walked through; a circular minimap (bottom left) shows the surroundings with short building names, the route and the destination. |
 | Live navigation | With a route drawn, **Start** under the route summary: follows the phone's GPS along the route, turns the map with its compass, shows the next turn and the remaining distance and time. See [Live navigation](#live-navigation-and-3d-mode). |
 | 3D mode | **3D mode** under the route summary: walk the route in first-person view with the same guidance. |
-| Deep link | `?buildingid=101` opens building 101 of the default organisation (the format of the printed BCSIR QR codes). `?org=bcsir&buildingid=101` names the organisation; `?org=bcsir&place=secretariat/L06/shops/L06-01` opens a room on its floor. |
+| Deep link | `?buildingid=101` opens building 101 (the format of the printed BCSIR QR codes); `?place=secretariat/L06/shops/L06-01` opens a room on its floor. `?org=bcsir` may be added to either. |
 
 ## Building labels
 
@@ -545,8 +476,8 @@ How each layer uses them:
 | `ConnectedRoad.geojson` | Road surface, `thickness_m` wide, from `base_m` to `top_m` |
 | `ConnectedRoadsDrawingVersion.geojson` | The wider grey road edge underneath (the QGIS "drawing version" style) |
 | `Pathway.geojson` | Pathways, like roads |
-| `BCSIRBoundary.geojson` | Wall along the boundary (`thickness_m`, `base_m`, `top_m`, `color`) and ground colour `fill_color`. A boundary drawn as a LineString (Taqwa `boundary.geojson`) gets the wall only. |
-| `area.geojson` | Ground of the site in `fill_color` (or `color`), without a wall: used with a LineString boundary (Taqwa) |
+| `BCSIRBoundary.geojson` | Wall along the boundary (`thickness_m`, `base_m`, `top_m`, `color`) and ground colour `fill_color`. A boundary drawn as a LineString gets the wall only. |
+| `area.geojson` | Ground of the site in `fill_color` (or `color`), without a wall: used with a LineString boundary |
 | `InternalBoundary.geojson` | Walls along the internal boundary lines |
 | `Garden.geojson` | Garden surface at `top_m`: covered with the top view of `surface_model` (all gardens use `grass.glb`), otherwise from `base_m` to `top_m` in `color` |
 | `TreeLine.geojson` | 3D trees along each line: tree tops at `top_m`, crown `color`, one tree every `spacing_m` (not drawn while `TreeLineModels.geojson` places GLB trees) |
@@ -860,7 +791,7 @@ reaches the map directly.
 ├── src/                         one folder per part of the app; lower folders do not import higher ones:
 │   │                            core, utils -> data -> three, buildings, map -> routing, navigation,
 │   │                            indoor, walk -> search, ui -> app.js, main.js
-│   ├── main.js                  start-up: the landing page, or which organisation to open (picker or ?org=)
+│   ├── main.js                  start-up: opens the organisation's map (a picker or ?org= only when there are several)
 │   ├── app.js                   the map: wiring of everything below
 │   ├── core/                    config.js (dataset keys, fallback defaults, colours), org.js (the open
 │   │                            organisation and its folders), paths.js and asset-paths.js (addresses of
@@ -898,8 +829,7 @@ reaches the map directly.
 │   ├── search/                  directory.js (search index, lab/test → building mapping), combobox.js
 │   │                            (accessible autocomplete list), search-ui.js (main search bar)
 │   ├── ui/                      ui.js (building card, toast, status, theme), directions-ui.js (From / To
-│   │                            panel and WALK toggle), org-picker.js (the first screen of ?maps)
-│   ├── landing/                 the IndoorWay landing page (content.js holds its text)
+│   │                            panel and WALK toggle), org-picker.js (shown only when there are several organisations)
 │   └── styles/                  style.css, indoor.css
 ├── scripts/
 │   ├── make-sample-floors.mjs     npm run floors:sample (template floors for a building)

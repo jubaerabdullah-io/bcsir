@@ -1,4 +1,4 @@
-// Label anchors, basemaps and the walking-route summary.
+// Label anchors, basemaps, the walking-route summary and the address switches.
 import "../scripts/lib/node-routing-hooks.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -9,6 +9,7 @@ import { buildingLabelPoints, normalizeBuildings } from "../src/data/bcsir-data.
 import { labelAnchor, pointInRings, polygonCentroid } from "../src/utils/geo-utils.js";
 import { BASEMAP_SOURCES, BASEMAPS, basemapLayers, basemapVisibility, thumbnailUrl } from "../src/map/basemaps.js";
 import { describeEndpoint, describeRoute, formatDistance, walkingMinutes } from "../src/routing/route-summary.js";
+import { viewMode } from "../src/core/view-mode.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
@@ -93,4 +94,13 @@ test("route summary: a missing entrance and a missing connection are stated, not
   const disconnected = describeRoute(service.route(find(101), find(305)));
   assert.equal(disconnected.status, "error");
   assert.equal(disconnected.headline, "No walking route");
+});
+
+test("the flat map and the frame switch are off unless the address asks for them", () => {
+  assert.deepEqual(viewMode("?org=bcsir"), { flat: false, embed: false });
+  assert.deepEqual(viewMode("?org=bcsir&view=2d&embed=1"), { flat: true, embed: true });
+  assert.deepEqual(viewMode("?org=bcsir&view=3d"), { flat: false, embed: false });
+  // An organisation can be flat by its own org.json, whatever the address says.
+  assert.equal(viewMode("?org=bcsir", { view_mode: "2d" }).flat, true);
+  assert.equal(viewMode("?org=bcsir", { view_mode: "3d" }).flat, false);
 });
