@@ -1,0 +1,39 @@
+{
+  "name": "bcsir-3d-map",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive 3D campus and indoor map of BCSIR, Dhaka: buildings, floor plans, rooms, laboratories and walking directions across floors, built with MapLibre GL JS and Three.js.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "data:prepare": "node scripts/prepare-public-data.mjs",
+    "data:services": "node scripts/import-inars-services.mjs",
+    "floors:sample": "node scripts/make-sample-floors.mjs",
+    "models:optimize": "node scripts/optimize-models.mjs",
+    "models:buildings": "node scripts/build-building-models.mjs",
+    "models:character": "node scripts/build-character.mjs",
+    "build:tiles": "node scripts/build-tiles.mjs",
+    "verify:originals": "node scripts/verify-originals.mjs",
+    "verify:routing": "node scripts/verify-routing.mjs",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "verify": "npm run verify:originals && npm run verify:routing && npm test"
+  },
+  "dependencies": {
+    "maplibre-gl": "6.9.0",
+    "pmtiles": "^4.5.0",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "4.3.0",
+    "@gltf-transform/extensions": "4.3.0",
+    "@gltf-transform/functions": "4.3.0",
+    "meshoptimizer": "1.2.0",
+    "sharp": "0.35.4",
+    "vite": "8.3.0"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  }
+}

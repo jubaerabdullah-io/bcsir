@@ -1,0 +1,84 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # --- Install tippecanoe (vector tile generator) ---
+      - name: Install tippecanoe
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsqlite3-dev zlib1g-dev
+          git clone --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe
+          cd /tmp/tippecanoe && make -j$(nproc) && sudo make install
+
+      # --- Vite build first (creates dist/) ---
+      - run: npm run build -- --base=/bcsir/
+
+      # --- Vector tiles: pre-process GeoJSON and generate .pmtiles into dist/ ---
+      - name: Pre-process GeoJSON for tiling
+        run: node scripts/build-tiles.mjs --out /tmp/tiles-staging
+
+      - name: Generate PMTiles per organisation
+        run: |
+          for org_dir in /tmp/tiles-staging/*/; do
+            org=$(basename "$org_dir")
+            mkdir -p "dist/data/$org"
+            layers=""
+            for f in "$org_dir"*.geojson.nl; do
+              [ -f "$f" ] || continue
+              name=$(basename "$f" .geojson.nl)
+              count=$(wc -l < "$f")
+              if [ "$count" -gt 0 ]; then
+                layers="$layers -L $name:$f"
+              fi
+            done
+            if [ -n "$layers" ]; then
+              echo "tippecanoe: $org ($layers)"
+              tippecanoe -o "dist/data/$org/tiles.pmtiles" \
+                --force -z20 -Z12 -r1 \
+                --no-feature-limit --no-tile-size-limit \
+                --no-simplification-of-shared-nodes \
+                $layers
+              echo "  → $(du -h "dist/data/$org/tiles.pmtiles" | cut -f1)"
+            fi
+          done
+
+      - name: List dist contents
+        run: find dist/data -name 'tiles.pmtiles' -ls || echo "No PMTiles found"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
