@@ -34,7 +34,7 @@ jobs:
           cd /tmp/tippecanoe && make -j$(nproc) && sudo make install
 
       # --- Vite build first (creates dist/) ---
-      - run: npm run build -- --base=/overviewi/
+      - run: npm run build -- --base=/bcsir/
 
       # --- Vector tiles: pre-process GeoJSON and generate .pmtiles into dist/ ---
       - name: Pre-process GeoJSON for tiling
