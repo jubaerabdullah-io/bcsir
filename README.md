@@ -197,11 +197,7 @@ corridor, rooms on both sides, a lift lobby with a lift and stairs, a second sta
 entrance on the first floor), in the five files above. It is a start for drawing the real
 floors in QGIS: correctly placed and with the right attributes, but **the rooms are
 invented**. `building.json` marks such a building `"sample": true` and the map says
-<<<<<<< HEAD
 "sample" on its floor selector and its routes. Draw the real plan over it,
-=======
-"sample" on its floor selector, its room cards and its routes. Draw the real plan over it,
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
 then remove `"sample"`. The script replaces only folders it generated itself.
 
 **What is sample data in this repository:** the six floors of the BCSIR Secretariat
@@ -211,11 +207,7 @@ then remove `"sample"`. The script replaces only folders it generated itself.
 
 | Action | How |
 |---|---|
-<<<<<<< HEAD
 | See a floor | Select a building that has floor plans and choose a floor: in the **floor selector** (left edge; highest floor at the top) or on the building card. The building's shell is hidden and the floor is drawn at ground level. The house button shows the building from outside again. Zooming far in on such a building opens its first floor. Selecting a building without floor plans hides the floor selector and shows the open building from outside again (floors a route runs through stay open). |
-=======
-| See a floor | Select a building that has floor plans and choose a floor: in the **floor selector** (left edge; highest floor at the top) or on the building card. The building's shell is hidden and the floor is drawn at ground level. The house button shows the building from outside again. Zooming far in on such a building opens its first floor. |
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
 | Find a room | The search bar lists rooms and points (lifts, toilets, ...) with their floor and building; choosing one opens that floor and selects the room. Clicking a room on an open floor does the same. |
 | Directions between rooms | **Start here** / **Directions to here** on a room's card, or type room names in the Directions panel. |
 

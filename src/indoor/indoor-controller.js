@@ -8,11 +8,8 @@
 // floor hides the building's shell (extrusion or GLB model) and draws that floor's
 // plan at ground level. Several buildings can be open at once (a route from one
 // building to another shows both); the floor selector controls one of them.
-<<<<<<< HEAD
 // Selecting another building takes the selector away from a building with floors
 // and shows that building from outside again, unless the route runs through it.
-=======
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
 import * as maplibregl from "maplibre-gl";
 import { planarDistanceMeters } from "../utils/geo-utils.js";
 import { geometryPolygons, insideRings } from "../utils/local-frame.js";
@@ -64,10 +61,7 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   let generation = 0;
   let pinned = null; // building the floor selector stays on (selected or opened last)
   let selectedBuilding = null; // key of the building selected on the map, when it has floors
-<<<<<<< HEAD
   let otherSelected = false; // the building selected on the map has no floor plans
-=======
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
   let focus = null;
   let selected = null; // uid of the selected room or point
   let hovered = null;
@@ -116,14 +110,10 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
 
   function updateFocus() {
     if (!hasFloors) return;
-<<<<<<< HEAD
     // While a building without floor plans is selected, the selector is not offered for
     // a building that is only in view: it stays on one whose floor is open (a route's).
     if (otherSelected && pinned && !open.has(pinned)) pinned = null;
     const under = !otherSelected && map.getZoom() >= FOCUS_ZOOM ? buildingNear(map.getCenter().toArray()) : null;
-=======
-    const under = map.getZoom() >= FOCUS_ZOOM ? buildingNear(map.getCenter().toArray()) : null;
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
     let key = under?.key || null;
     // The selector stays on a building that is open or selected; one that was closed
     // keeps it only while it is still in view at a close zoom.
@@ -259,11 +249,7 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     if (!place) return false;
     selected = uid;
     applyStates();
-<<<<<<< HEAD
     placeCard.show(place, { building: building.name, level: building.levelById.get(levelId).name });
-=======
-    placeCard.show(place, { building: building.name, level: building.levelById.get(levelId).name, sample: building.sample });
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
     onPlaceShown?.(place);
     if (fly) map.flyTo({ center: place.point, zoom: Math.max(map.getZoom(), 19.4), pitch: Math.min(Math.max(map.getPitch(), 40), 55), bearing: map.getBearing(), speed: 0.8, curve: 1.2, essential: true });
     return true;
@@ -327,12 +313,8 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     map.on("moveend", () => {
       const zoom = map.getZoom();
       if (autoOpenZoom && zoom < autoOpenZoom - 0.8) dismissed.clear();
-<<<<<<< HEAD
       // Not while another building is selected: its neighbour would open instead of it.
       const under = autoOpenZoom && zoom >= autoOpenZoom && !otherSelected && !isBusy() ? buildingNear(map.getCenter().toArray()) : null;
-=======
-      const under = autoOpenZoom && zoom >= autoOpenZoom && !isBusy() ? buildingNear(map.getCenter().toArray()) : null;
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
       if (under && !open.has(under.key) && !dismissed.has(under.key) && under.defaultLevel) openLevel(under.key, under.defaultLevel.id, { fit: false });
       else updateFocus();
     });
@@ -355,17 +337,12 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     openLevels: () => Object.fromEntries(open),
     selectedPlace: () => selected,
     focusedBuilding: () => focus,
-<<<<<<< HEAD
     // A building was selected on the map: the floor selector follows it, and floor
     // plans open in other buildings close (those the route runs through stay).
-=======
-    // A building was selected on the map: the floor selector follows it.
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
     buildingSelected(feature) {
       renderBuildingFloors(feature);
       const building = feature ? store.forBuildingId(feature.properties?.id) : null;
       selectedBuilding = building?.key || null;
-<<<<<<< HEAD
       otherSelected = Boolean(feature) && !building;
       if (feature) {
         pinned = selectedBuilding;
@@ -373,9 +350,6 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
         left.forEach((key) => open.delete(key));
         if (left.length) refresh();
       }
-=======
-      if (building) pinned = building.key;
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
       updateFocus();
     },
     // Indoor legs of the current route (trip.js results), or [] to clear.

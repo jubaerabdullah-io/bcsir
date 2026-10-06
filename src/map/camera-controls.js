@@ -155,12 +155,8 @@ function headingFromEvent(event) {
 
 export function createCameraController(map, {
   onReset,
-<<<<<<< HEAD
   onMessage,
   onMenuOpen
-=======
-  onMessage
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
 } = {}) {
   const toggle = document.querySelector("#view-toggle");
   const menu = document.querySelector("#view-menu");
@@ -181,10 +177,7 @@ export function createCameraController(map, {
     if (!menu || !toggle) return;
     menu.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
-<<<<<<< HEAD
     if (open) onMenuOpen?.();
-=======
->>>>>>> 32c4e1c74086e1c638ad1f6979f6642f69334f81
   }
   function markMode(mode) {
     activeMode = mode;
