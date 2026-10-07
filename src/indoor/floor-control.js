@@ -1,7 +1,7 @@
 // Floor selector: the floors of the building in view, highest at the top, as on
 // indoor maps (one button per floor, the shown floor highlighted). The button at
-// the bottom shows the building from outside again. A caption beside the control
-// names the building and the shown floor; floors a route passes carry a dot.
+// the top shows the building from outside again; its tooltip names the building.
+// Floors a route passes carry a dot.
 //
 // Keyboard: Tab reaches the shown floor, the arrow keys move between floors, Enter
 // or Space shows one. With more floors than fit, the list scrolls (arrow buttons).
@@ -10,7 +10,6 @@ import { escapeHTML } from "../utils/html.js";
 // onSelect(levelId) shows a floor; onExterior() shows the building from outside.
 export function createFloorControl({ onSelect, onExterior }) {
   const control = document.querySelector("#floor-control");
-  const caption = document.querySelector("#floor-building");
   const list = document.querySelector("#floor-list");
   const up = document.querySelector("#floor-up");
   const down = document.querySelector("#floor-down");
@@ -41,11 +40,13 @@ export function createFloorControl({ onSelect, onExterior }) {
     if (next) { event.preventDefault(); next.focus(); }
   });
   exterior.addEventListener("click", () => onExterior?.());
-  caption.addEventListener("click", () => onExterior?.());
 
   // building: { key, name, shortName, sample }; levels: lowest first ({ id, short, name });
   // active: the shown floor's id, or null for the outside view; routeLevels: ids with a route dot.
   function show({ building, levels, active = null, routeLevels = new Set() }) {
+    // Nothing changed (walk mode asks on every frame): the control is left as it is.
+    const signature = `${building.key}|${active}|${[...routeLevels].join(",")}`;
+    if (shown && shown.levels === levels && shown.signature === signature) return;
     const rebuilt = !shown || shown.key !== building.key || shown.levels !== levels;
     if (rebuilt) {
       list.innerHTML = [...levels].reverse().map((level) => `<button class="floor-button" type="button" role="radio" data-level="${escapeHTML(level.id)}" title="${escapeHTML(level.name)}" aria-label="${escapeHTML(level.name)}">${escapeHTML(level.short)}<span class="floor-dot" aria-hidden="true"></span></button>`).join("");
@@ -58,12 +59,12 @@ export function createFloorControl({ onSelect, onExterior }) {
       button.classList.toggle("on-route", routeLevels.has(button.dataset.level));
     });
     exterior.setAttribute("aria-pressed", String(!activeLevel));
-    caption.innerHTML = `<strong>${escapeHTML(building.shortName || building.name)}</strong><span>${escapeHTML(activeLevel ? activeLevel.name : "Outside view")}${building.sample ? " · sample" : ""}</span>`;
-    caption.title = activeLevel ? `${building.name}: showing ${activeLevel.name}. Click for the outside view.` : `${building.name}: choose a floor`;
+    const named = `${building.name}${building.sample ? " (sample floor plans)" : ""}`;
+    exterior.title = activeLevel ? `${named}: showing ${activeLevel.name}. Click for the outside view.` : `${named}: choose a floor`;
+    control.setAttribute("aria-label", `Floors of ${building.name}`);
     control.hidden = false;
-    control.dataset.open = String(Boolean(activeLevel));
     if (rebuilt || shown.active !== active) list.querySelector('[aria-checked="true"]')?.scrollIntoView({ block: "nearest" });
-    shown = { key: building.key, levels, active };
+    shown = { key: building.key, levels, active, signature };
     updateScrollButtons();
   }
 

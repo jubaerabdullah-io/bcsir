@@ -12,7 +12,7 @@ import "./styles/style.css";
 import "./styles/indoor.css";
 import { setActiveOrg } from "./core/org.js";
 import { hideOrgPicker, showOrgPicker } from "./ui/org-picker.js";
-import { fetchPublicJSON, publicAssetUrl } from "./core/paths.js";
+import { fetchPublicJSON } from "./core/paths.js";
 import { PREFERENCE_KEYS, readPreference } from "./core/preferences.js";
 import { viewMode } from "./core/view-mode.js";
 
@@ -25,12 +25,12 @@ function fail(message, error) {
   $(".status-dot")?.classList.add("error");
 }
 
-// Name, logo and colour of the open organisation in the page header.
+// The open organisation on the page: its name (the tab title and the page heading,
+// which is not drawn over the map), its colour and the words in its search box.
 function applyBranding(org) {
   document.title = org.name;
   $("#app-name").textContent = org.name;
   $("#app-sample").hidden = org.sample !== true;
-  if (org.logo) $("#app-logo").src = publicAssetUrl(`image/${org.image_folder || org.id}/${org.logo}`);
   if (org.accent) document.documentElement.style.setProperty("--org-accent", org.accent);
   $("#map").setAttribute("aria-label", `Interactive 3D map of ${org.short_name || org.name}`);
   const hasRooms = org.places?.some((place) => place.kind === "unit");

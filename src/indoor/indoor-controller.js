@@ -3,8 +3,8 @@
 //
 // A building with floors (a folder in the organisation's data, see levels.js) is
 // drawn from outside until a floor is chosen: with the floor selector (it appears
-// for the building at the centre of the view, or the selected one), from the
-// building card, by a search result, by a route, or by zooming far in. Opening a
+// for the building at the centre of the view, or the selected one), by a search
+// result, by a route, or by zooming far in. Opening a
 // floor hides the building's shell (extrusion or GLB model) and draws that floor's
 // plan at ground level. Several buildings can be open at once (a route from one
 // building to another shows both); the floor selector controls one of them.
@@ -15,10 +15,10 @@ import { planarDistanceMeters } from "../utils/geo-utils.js";
 import { geometryPolygons, insideRings } from "../utils/local-frame.js";
 import { orgDataPath } from "../core/org.js";
 import { fetchPublicJSON } from "../core/paths.js";
-import { FIT_PADDING } from "../map/fit-padding.js";
+import { FIT_PADDING, flyOffset } from "../map/fit-padding.js";
 import { ROUTE_LAYERS } from "../map/layer-ids.js";
 import { createFloorControl } from "./floor-control.js";
-import { addIndoorLayers, INDOOR_HIT_LAYERS, INDOOR_SOURCE, setIndoorData, setIndoorRoute } from "./indoor-layers.js";
+import { addIndoorLayers, INDOOR_HIT_LAYERS, INDOOR_SOURCE, setIndoorData, setIndoorRoute, setIndoorWalkView } from "./indoor-layers.js";
 import { createIndoorStore } from "./indoor-store.js";
 import { CONNECTOR_CLASSES } from "./levels.js";
 import { createPlaceCard } from "./place-card.js";
@@ -48,9 +48,13 @@ async function fetchLevelFiles(building, level) {
 // setHiddenShells(ids)     hides the shells of those buildings (render ids); [] shows all
 // isBusy()                 true while floors must not open by themselves (walk mode, navigation)
 // onPlaceShown(place)      a room or point was selected (the building card should close)
-// onRoutePlace(kind, uid)  "Start here" / "Directions to here" on the place card
+// onPlaceHidden()          the card of the selected room or point went
+// onRoutePlace(kind, uid)  "Directions" / "Start here" on the place card
 // onChange()               the open floors changed
-export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, isBusy = () => false, onPlaceShown, onRoutePlace, onChange, onMessage }) {
+// onFloorPick(key, level)  a floor was chosen on the floor selector: true when it is
+//                          handled elsewhere (walk mode takes the walker to that floor)
+// onExteriorPick(key)      the same for the outside-view button of the selector
+export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, isBusy = () => false, onPlaceShown, onPlaceHidden, onRoutePlace, onChange, onMessage, onFloorPick, onExteriorPick }) {
   const store = createIndoorStore({ org, loadFiles: fetchLevelFiles, footprintOf: (building) => getBuildingFeature(building.buildingId)?.geometry || null });
   const hasFloors = store.buildings.length > 0;
   const open = new Map(); // building key -> shown floor id
@@ -71,11 +75,12 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   if (hasFloors) addIndoorLayers(map, { beforeId: map.getLayer(ROUTE_LAYERS.casing) ? ROUTE_LAYERS.casing : undefined });
 
   const floorControl = createFloorControl({
-    onSelect: (levelId) => focus && openLevel(focus, levelId),
-    onExterior: () => focus && closeBuilding(focus)
+    onSelect: (levelId) => focus && !onFloorPick?.(focus, levelId) && openLevel(focus, levelId),
+    onExterior: () => focus && !onExteriorPick?.(focus) && closeBuilding(focus)
   });
   const placeCard = createPlaceCard({
     onClose: () => clearSelection(),
+    onHide: () => onPlaceHidden?.(),
     onSetSource: (place) => onRoutePlace?.("source", place.uid),
     onSetDestination: (place) => onRoutePlace?.("destination", place.uid)
   });
@@ -193,7 +198,6 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     applyStates();
     drawRoute();
     updateFocus();
-    showFloorChips();
     onChange?.();
   }
 
@@ -251,7 +255,7 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     applyStates();
     placeCard.show(place, { building: building.name, level: building.levelById.get(levelId).name });
     onPlaceShown?.(place);
-    if (fly) map.flyTo({ center: place.point, zoom: Math.max(map.getZoom(), 19.4), pitch: Math.min(Math.max(map.getPitch(), 40), 55), bearing: map.getBearing(), speed: 0.8, curve: 1.2, essential: true });
+    if (fly) map.flyTo({ center: place.point, offset: flyOffset(), zoom: Math.max(map.getZoom(), 19.4), pitch: Math.min(Math.max(map.getPitch(), 40), 55), bearing: map.getBearing(), speed: 0.8, curve: 1.2, essential: true });
     return true;
   }
 
@@ -291,24 +295,6 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     return Boolean(uid) || onOpenFloor(event.point);
   }
 
-  // ---- Building card: one chip per floor ------------------------------------------------
-  const floorChips = document.querySelector("#building-floor-chips");
-  const floorsBox = document.querySelector("#building-floors");
-  let cardBuilding = null;
-  function renderBuildingFloors(feature) {
-    showFloorChips(feature ? store.forBuildingId(feature.properties?.id) : null);
-  }
-  function showFloorChips(building = cardBuilding) {
-    cardBuilding = building;
-    floorsBox.hidden = !building;
-    if (!building) return;
-    floorChips.innerHTML = building.levels.map((level) => `<button class="floor-chip" type="button" data-level="${level.id}" aria-pressed="${open.get(building.key) === level.id}" title="Show ${level.name}">${level.short}</button>`).join("");
-  }
-  floorChips?.addEventListener("click", (event) => {
-    const chip = event.target.closest("[data-level]");
-    if (chip && cardBuilding) openLevel(cardBuilding.key, chip.dataset.level);
-  });
-
   if (hasFloors) {
     map.on("moveend", () => {
       const zoom = map.getZoom();
@@ -337,10 +323,11 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     openLevels: () => Object.fromEntries(open),
     selectedPlace: () => selected,
     focusedBuilding: () => focus,
+    // Walk mode sees the open floors from inside (indoor-layers.js).
+    setWalkView(on) { if (hasFloors) setIndoorWalkView(map, on); },
     // A building was selected on the map: the floor selector follows it, and floor
     // plans open in other buildings close (those the route runs through stay).
     buildingSelected(feature) {
-      renderBuildingFloors(feature);
       const building = feature ? store.forBuildingId(feature.properties?.id) : null;
       selectedBuilding = building?.key || null;
       otherSelected = Boolean(feature) && !building;

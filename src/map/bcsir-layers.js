@@ -42,8 +42,7 @@ const state = (name) => ["boolean", ["feature-state", name], false];
 // Layer groups used by the layer manager. `layers` are MapLibre layer ids;
 // `custom` names are toggled through their own APIs; `models` lists the datasets
 // whose Point/MultiPoint features (or model_points) place GLB models. `dataset` is
-// the dataset a group draws: the layer list names its file and leaves out the
-// groups whose dataset the organisation does not have.
+// the dataset a group draws.
 // Layer ids that other modules also name are in layer-ids.js.
 export const LAYER_GROUPS = [
   { id: "buildings", label: "Buildings (3D)", dataset: "buildings", layers: [...Object.values(BUILDING_LAYERS), ROUTE_FADED_LAYERS.body, ROUTE_FADED_LAYERS.roof, MODEL_HIT_LAYER], models: ["buildings"] },

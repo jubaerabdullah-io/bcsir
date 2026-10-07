@@ -6,7 +6,7 @@
 // only read when a floor is opened or routed through; `loadFiles` does the reading
 // (fetch in the browser, the file system in tests), so this module has no DOM.
 import { planarDistanceMeters } from "../utils/geo-utils.js";
-import { buildLevelModel } from "./indoor-model.js";
+import { buildLevelModel, floorColor } from "./indoor-model.js";
 import { createBuildingRouter, groupShafts } from "./indoor-router.js";
 import { defaultLevel, sortLevels } from "./levels.js";
 
@@ -19,7 +19,8 @@ export function createIndoorStore({ org, loadFiles, footprintOf = () => null }) 
   const placeByUid = new Map(places.map((place) => [place.uid, place]));
   const buildings = (org?.indoor || []).map((entry) => {
     const own = places.filter((place) => place.building === entry.key);
-    const levels = sortLevels(entry.levels);
+    // Every floor has a colour of its own, by its place in the building (indoor-model.js).
+    const levels = sortLevels(entry.levels).map((level, index) => ({ ...level, color: floorColor(index) }));
     return {
       key: entry.key,
       entry,

@@ -53,7 +53,11 @@ export function formatDuration(service) {
 }
 
 // context: a field that can add to a match but cannot make one on its own.
-const field = (text, weight, context = false) => ({ text: normalizeText(text), weight, context });
+// words: the text split once here, not again for every key typed.
+const field = (text, weight, context = false) => {
+  const normalized = normalizeText(text);
+  return { text: normalized, words: normalized.split(" "), weight, context };
+};
 
 // places: [{ uid, kind, name, class, building, level, ... }] and indoor: the
 // buildings with floors ([{ key, building_id, name, levels }]) from the index.
@@ -188,9 +192,8 @@ export function createDirectory({ buildings, laboratories = [], services = [], s
     let own = false;
     for (const token of tokens) {
       let best = 0;
-      for (const { text, weight, context } of entry.fields) {
+      for (const { text, words, weight, context } of entry.fields) {
         if (!text) continue;
-        const words = text.split(" ");
         let match = 0;
         if (words.includes(token)) match = 3;
         else if (words.some((word) => word.startsWith(token))) match = 2;

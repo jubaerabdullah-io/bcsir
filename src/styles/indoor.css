@@ -1,12 +1,12 @@
 /* =========================================================================
    Organisations and floor plans
-   The organisation picker (first screen), the organisation in the header, the
-   floor selector, rooms and points, and the steps of an indoor route. Uses the
+   The organisation picker (first screen), the floor selector, rooms and
+   points, and the steps of an indoor route. Uses the
    colour tokens of style.css, so the dark map theme applies here too.
    ========================================================================= */
 
-:root { --org-accent: var(--primary); --floor-active: #2563eb; }
-html[data-theme="dark"] { --floor-active: #3b82f6; }
+:root { --org-accent: var(--primary); --floor-active: #2563eb; --floor-selected: #d0d4da; }
+html[data-theme="dark"] { --floor-active: #3b82f6; --floor-selected: #4b5560; }
 
 /* Until an organisation is chosen, only the picker is on the page. */
 html[data-stage="picker"] #app > :not(#map) { visibility: hidden; }
@@ -125,86 +125,23 @@ html[data-theme="dark"] .org-card-badge { background: rgba(251, 191, 36, 0.18); 
 @keyframes org-card-in { from { opacity: 0; transform: translateY(10px); } }
 @media (prefers-reduced-motion: reduce) { .org-card, .org-picker { animation: none; transition: none; } }
 
-/* ---- The organisation in the header ------------------------------------------ */
-/* Room for the "choose another place" button beside a long organisation name. */
-@media (min-width: 1100px) {
-  .app-top { grid-template-columns: minmax(200px, 340px) minmax(0, 1fr) 360px; }
-  .app-title { max-width: 340px; }
-}
-.app-title-text { flex: 1; min-width: 0; display: grid; gap: 3px; }
-.app-sample { justify-self: start; padding: 1px 7px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 10px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; }
-html[data-theme="dark"] .app-sample { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
-.org-switch {
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  margin-right: -4px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-muted);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
-}
-.org-switch:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
-.org-switch svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
-
 /* ---- Floor selector ------------------------------------------------------------ */
-/* Phones: beside the map controls (bottom right), the building's name above it.
-   Wider screens (below): at the left edge, where the directions panel and its
-   step list never reach. */
+/* A narrow column in the right-hand corner, above the map controls (it is the
+   first item of .map-rail): the outside view at its top, then the floors of the
+   building, highest first. The one shown is grey. */
 .floor-control {
-  position: absolute;
-  right: calc(100% + 10px);
-  bottom: 0;
   display: flex;
   flex-direction: column;
-  width: 48px;
+  width: 36px;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow);
   animation: floor-in 220ms ease;
 }
 @keyframes floor-in { from { opacity: 0; } }
-@media (min-width: 701px) {
-  /* Centred on the left edge; beside the building / room card while one is open. */
-  .floor-control {
-    position: fixed;
-    left: max(var(--gutter), env(safe-area-inset-left));
-    right: auto;
-    top: 0;
-    bottom: 0;
-    height: max-content;
-    margin: auto 0;
-    transition: left 220ms ease;
-  }
-  #app:has(.info-card:not([hidden])) .floor-control { left: calc(max(var(--gutter), env(safe-area-inset-left)) + min(340px, 100vw - 2 * var(--gutter)) + 12px); }
-  .floor-control .floor-building { left: calc(100% + 10px); right: auto; top: 0; bottom: auto; max-width: 260px; text-align: left; }
-}
-.floor-building {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
-  display: grid;
-  gap: 1px;
-  max-width: min(46vw, 220px);
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  text-align: right;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.floor-building strong { overflow: hidden; text-overflow: ellipsis; color: var(--text); font-size: 12.5px; font-weight: 650; }
-.floor-building span { color: var(--text-muted); font-size: 11.5px; }
-.floor-control[data-open="true"] .floor-building span { color: var(--floor-active); font-weight: 600; }
-.floor-list { display: flex; flex-direction: column; max-height: 292px; overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain; }
+.floor-list { display: flex; flex-direction: column; max-height: 272px; overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain; }
 .floor-list::-webkit-scrollbar { display: none; }
 .floor-button,
 .floor-exterior,
@@ -212,32 +149,52 @@ html[data-theme="dark"] .app-sample { background: rgba(251, 191, 36, 0.18); colo
   position: relative;
   flex: 0 0 auto;
   width: 100%;
-  height: 44px;
+  height: 34px;
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--text);
-  font-size: 13.5px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease;
 }
-.floor-button { margin: 2px 4px; width: calc(100% - 8px); height: 40px; border-radius: 10px; }
-.floor-list .floor-button:first-child { margin-top: 4px; }
 .floor-button:hover,
 .floor-exterior:hover { background: var(--surface-hover); }
-.floor-button[aria-checked="true"] { background: var(--floor-active); color: #ffffff; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35); }
-.floor-dot { display: none; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: #e53935; box-shadow: 0 0 0 1.5px var(--surface); }
+.floor-button[aria-checked="true"],
+.floor-exterior[aria-pressed="true"] { background: var(--floor-selected); }
+/* Inside the column, which cuts off anything drawn beyond it. */
+.floor-control button:focus-visible { outline-offset: -2px; }
+.floor-dot { display: none; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #e53935; box-shadow: 0 0 0 1.5px var(--surface); }
 .floor-button.on-route .floor-dot { display: block; }
-.floor-button[aria-checked="true"] .floor-dot { box-shadow: 0 0 0 1.5px var(--floor-active); background: #ffffff; }
-.floor-scroll { height: 22px; color: var(--text-faint); }
+.floor-button[aria-checked="true"] .floor-dot { box-shadow: 0 0 0 1.5px var(--floor-selected); }
+.floor-scroll { height: 18px; color: var(--text-faint); }
 .floor-scroll:disabled { opacity: 0.3; cursor: default; }
-.floor-scroll svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.floor-exterior { margin-top: 2px; border-top: 1px solid var(--border); border-radius: 0 0 13px 13px; color: var(--text-muted); }
-.floor-exterior svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
-.floor-exterior[aria-pressed="true"] { color: var(--floor-active); background: var(--primary-soft); }
+.floor-scroll svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.floor-exterior svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+/* Touch screens: finger-sized buttons. */
+@media (pointer: coarse) {
+  .floor-control { width: 42px; }
+  .floor-button,
+  .floor-exterior { height: 40px; }
+}
+/* Phones: beside the map controls instead of above them, clear of the search box
+   or the directions panel at the top. */
+@media (max-width: 700px) {
+  .floor-control { position: absolute; right: calc(100% + 10px); bottom: 0; }
+}
+/* Walk mode: the walk panel uses the bottom, so the floor selector stands at the
+   right edge, below the top bar. There it takes the walker to a floor from a
+   lift or the stairs; its outside-view button is not used. */
+html.walk-mode-active .floor-control {
+  position: fixed;
+  right: max(var(--gutter), env(safe-area-inset-right));
+  top: calc(max(12px, env(safe-area-inset-top)) + 84px);
+  bottom: auto;
+}
+html.walk-mode-active .floor-exterior { display: none; }
 
 /* Lift / stairs buttons on the route: show the floor the route continues on. */
 .floor-change {
@@ -260,25 +217,6 @@ html[data-theme="dark"] .app-sample { background: rgba(251, 191, 36, 0.18); colo
 .floor-change:hover { filter: brightness(1.08); }
 @keyframes floor-change-pulse { 50% { box-shadow: 0 3px 10px rgba(15, 23, 42, 0.3), 0 0 0 7px rgba(229, 57, 53, 0.22); } }
 @media (prefers-reduced-motion: reduce) { .floor-change { animation: none; } }
-
-/* ---- Building card: floors -------------------------------------------------------- */
-.building-floors { display: flex; align-items: center; gap: 10px; padding: 2px 16px 12px; }
-.building-floors-label { flex: 0 0 auto; color: var(--text-muted); font-size: 12px; font-weight: 600; }
-.building-floor-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.floor-chip {
-  min-width: 36px;
-  height: 30px;
-  padding: 0 9px;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 650;
-  cursor: pointer;
-}
-.floor-chip:hover { border-color: var(--floor-active); color: var(--floor-active); }
-.floor-chip[aria-pressed="true"] { border-color: var(--floor-active); background: var(--floor-active); color: #ffffff; }
 
 /* ---- Room / point card --------------------------------------------------------------- */
 .place-card { padding-top: 4px; }
@@ -310,8 +248,8 @@ html[data-theme="dark"] .result-icon-place { color: #93c5fd; background: rgba(96
 
 .route-option { display: flex; align-items: center; gap: 7px; margin-top: 6px; color: var(--text-muted); font-size: 12px; cursor: pointer; }
 .route-option input { width: 15px; height: 15px; margin: 0; accent-color: var(--floor-active); }
-/* The list scrolls, so the panel ends above the map controls below it. */
-.route-steps { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; max-height: max(96px, min(260px, 100dvh - 730px)); overflow-y: auto; overscroll-behavior: contain; }
+/* The steps scroll with the lower part of the directions panel. */
+.route-steps { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
 .route-step {
   width: 100%;
   display: flex;
@@ -352,11 +290,9 @@ html[data-theme="dark"] .result-icon-place { color: #93c5fd; background: rgba(96
   .org-card { min-height: 92px; padding: 15px 38px 15px 16px; }
   .org-card-logo { flex-basis: 52px; width: 52px; height: 52px; border-radius: 14px; }
   .org-card-logo img { width: 40px; height: 40px; }
-  .floor-list { max-height: 180px; }
-  .floor-building { max-width: 56vw; padding: 6px 10px; }
-  .route-steps { max-height: 26vh; }
+  .floor-list { max-height: 240px; }
 }
-@media (max-height: 620px) { .floor-list { max-height: 136px; } }
+@media (max-height: 620px) { .floor-list { max-height: 160px; } }
 
 /* ---- Flat map (?view=2d) -----------------------------------------------------
    The camera stays straight above the site (map.js), so the controls that tilt

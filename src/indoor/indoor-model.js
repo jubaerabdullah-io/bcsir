@@ -19,13 +19,18 @@ export const INDOOR_STYLE = {
   wallHeightM: 1.5,
   wallThicknessM: 0.18,
   unitHeightM: 0.35,
+  // Walk mode sees a floor from inside: rooms flat like the corridor, to walk on
+  // (the walker stands at walkFloorM), and walls at least room height.
+  walkFloorM: 0.15,
+  walkWallHeightM: 2.4,
   selected: "#fbbf24",
   hover: "#fde68a",
   routeSource: "#7fb2f0",
   routeDestination: "#f28b82"
 };
 
-// Fill colour of a room by its class; a room's own "color" property replaces it.
+// Fill colour of a room by its class (tinted with its floor's colour, below); a
+// room's own "color" property replaces it.
 export const UNIT_COLORS = {
   room: "#e3e8ef",
   office: "#d6e4f5",
@@ -45,6 +50,20 @@ export const UNIT_COLORS = {
   hall: "#e6dff2"
 };
 const DEFAULT_UNIT_COLOR = "#e3e8ef";
+
+// A floor's own colour, by its place in the building (lowest floor first), so the
+// floors of a building are told apart at a glance. The rooms, the corridors and
+// the slab of a floor are tinted with it (level.color, set by indoor-store.js).
+export const FLOOR_COLORS = ["#6ea8f0", "#63c58a", "#f0b44c", "#b08ae6", "#ee8f8a", "#52c2c0", "#e58fc3", "#a9bb55"];
+export const floorColor = (index) => FLOOR_COLORS[((index % FLOOR_COLORS.length) + FLOOR_COLORS.length) % FLOOR_COLORS.length];
+const FLOOR_TINT = { unit: 0.5, corridor: 0.1, floor: 0.28 }; // share of the floor's colour in each part
+
+// "#rrggbb" of two colours mixed: `share` of `tint`, the rest of `color`.
+export function mixColors(color, tint, share) {
+  const channels = (hex) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+  const a = channels(color), b = channels(tint);
+  return `#${a.map((value, index) => Math.round(value + (b[index] - value) * share).toString(16).padStart(2, "0")).join("")}`;
+}
 
 const featuresOf = (collection) => (collection?.type === "FeatureCollection" && Array.isArray(collection.features) ? collection.features : []);
 const validRing = (ring) => Array.isArray(ring) && ring.length >= 4 && ring.every((point) => Array.isArray(point) && Number.isFinite(point[0]) && Number.isFinite(point[1]));
@@ -75,16 +94,19 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
   const render = [];
   const labels = [];
   const where = { building: buildingKey, level: level.id };
+  // The floor's colour: only "#rrggbb" is mixed, anything else leaves the plain look.
+  const tint = /^#[0-9a-f]{6}$/i.test(level.color || "") ? level.color : null;
+  const tinted = (color, part) => (tint ? mixColors(color, tint, FLOOR_TINT[part]) : color);
 
   // ---- Floor outline ---------------------------------------------------------------
   const outlineFeatures = featuresOf(files.level);
   let floor = outlineFeatures.flatMap((feature) => cleanPolygons(feature.geometry));
   if (!floor.length && footprint) floor = cleanPolygons(footprint);
-  floor.forEach((rings, index) => render.push({ type: "Feature", properties: { kind: "floor", uid: `${buildingKey}/${level.id}/floor/${index + 1}`, ...where }, geometry: { type: "Polygon", coordinates: rings } }));
+  floor.forEach((rings, index) => render.push({ type: "Feature", properties: { kind: "floor", uid: `${buildingKey}/${level.id}/floor/${index + 1}`, color: tinted(INDOOR_STYLE.floor, "floor"), ...where }, geometry: { type: "Polygon", coordinates: rings } }));
 
   // ---- Corridors (walkable) --------------------------------------------------------
   const corridors = (files.corridor || []).flatMap((collection) => featuresOf(collection)).flatMap((feature) => cleanPolygons(feature.geometry));
-  corridors.forEach((rings, index) => render.push({ type: "Feature", properties: { kind: "corridor", uid: `${buildingKey}/${level.id}/corridor/${index + 1}`, ...where }, geometry: { type: "Polygon", coordinates: rings } }));
+  corridors.forEach((rings, index) => render.push({ type: "Feature", properties: { kind: "corridor", uid: `${buildingKey}/${level.id}/corridor/${index + 1}`, color: tinted(INDOOR_STYLE.corridor, "corridor"), ...where }, geometry: { type: "Polygon", coordinates: rings } }));
 
   // ---- Rooms ------------------------------------------------------------------------
   const units = [];
@@ -98,7 +120,8 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
       const uid = placeUid(buildingKey, level.id, file, keys[index]);
       const type = unitClass(properties, fileClass);
       const name = featureName(properties);
-      const color = parseColor(properties.color) || UNIT_COLORS[type] || DEFAULT_UNIT_COLOR;
+      // A room's own colour is drawn as it is; the colour of its class is tinted with the floor's.
+      const color = parseColor(properties.color) || tinted(UNIT_COLORS[type] || DEFAULT_UNIT_COLOR, "unit");
       const point = labelAnchor({ geometry: { type: "Polygon", coordinates: polygons.reduce((best, rings) => (rings[0].length > best[0].length ? rings : best), polygons[0]) } });
       const height = parseNumber(properties.height_m);
       const unit = { uid, kind: "unit", name, class: type, classLabel: classLabel(type), color, point, polygons, properties, ...where };

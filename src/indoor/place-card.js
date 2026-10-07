@@ -1,6 +1,6 @@
 // Details of a room or point chosen on a floor plan: its name and kind, where it
 // is (floor and building), any contact details recorded for it, and the two route
-// buttons of the building card ("Start here", "Directions to here").
+// buttons of the building card ("Directions", "Start here").
 import { escapeHTML } from "../utils/html.js";
 import { firstProperty } from "./levels.js";
 
@@ -16,7 +16,8 @@ const FACTS = [
 ];
 
 // onSetSource(place) / onSetDestination(place) receive the shown place.
-export function createPlaceCard({ onClose, onSetSource, onSetDestination }) {
+// onClose() is the card's own close button; onHide() follows whenever a shown card goes.
+export function createPlaceCard({ onClose, onHide, onSetSource, onSetDestination }) {
   const card = $("#place-card");
   let shown = null;
   let route = { source: null, destination: null }; // place uids
@@ -27,7 +28,7 @@ export function createPlaceCard({ onClose, onSetSource, onSetDestination }) {
     source.classList.toggle("active-route-action", role === "source");
     destination.classList.toggle("active-route-action", role === "destination");
     source.querySelector(".route-label").textContent = role === "source" ? "Starting point" : "Start here";
-    destination.querySelector(".route-label").textContent = role === "destination" ? "Destination" : "Directions to here";
+    destination.querySelector(".route-label").textContent = role === "destination" ? "Destination" : "Directions";
   }
 
   // place: a room or point of indoor-model.js; where: { building, level }
@@ -55,7 +56,12 @@ export function createPlaceCard({ onClose, onSetSource, onSetDestination }) {
     card.scrollTop = 0;
   }
 
-  function hide() { shown = null; card.hidden = true; }
+  function hide() {
+    const wasShown = Boolean(shown);
+    shown = null;
+    card.hidden = true;
+    if (wasShown) onHide?.();
+  }
 
   $("#place-card-close").addEventListener("click", () => onClose?.());
   $("#place-set-source").addEventListener("click", () => shown && onSetSource?.(shown));

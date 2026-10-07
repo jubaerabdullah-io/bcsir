@@ -18,7 +18,9 @@ const featureId = (feature) => feature?.properties?.render_id ?? feature?.id ?? 
 // interceptClick(event, pick) and interceptMove(event) let the floor plans take a
 // click or the pointer first (app.js): a true result means it was theirs. `pick` is
 // set while a place is being chosen on the map: pick(feature, entry) hands it over.
-export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHover, onHoverLeave, onRouteChange, isEnabled = () => true, interceptClick, interceptMove, buildingSource = null }) {
+// flyOffset() is where a selected building is brought to, in pixels from the centre
+// of the map (fit-padding.js): the middle of what the panels leave free.
+export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHover, onHoverLeave, onRouteChange, isEnabled = () => true, interceptClick, interceptMove, flyOffset = () => [0, 0], buildingSource = null }) {
   let hoveredId = null, selectedId = null, sourceFeature = null, destinationFeature = null, pickHandler = null;
   const stateRef = buildingSource || { source: "buildings" };
 
@@ -41,11 +43,12 @@ export function setupInteractions(map, { resolveFeature, onSelect, onClear, onHo
     if (selectedId !== null && String(selectedId) !== String(id)) setState(selectedId, { selected: false });
     selectedId = String(id);
     setState(selectedId, { selected: true });
+    // The card first: the camera then brings the building beside it, not under it.
+    onSelect?.(feature);
     if (fly) {
       const center = polygonCentroid(feature);
-      if (center) map.flyTo({ center, zoom: Math.max(map.getZoom(), 18), pitch: Math.max(map.getPitch(), 55), bearing: map.getBearing(), speed: .75, curve: 1.25, essential: true });
+      if (center) map.flyTo({ center, offset: flyOffset(), zoom: Math.max(map.getZoom(), 18), pitch: Math.max(map.getPitch(), 55), bearing: map.getBearing(), speed: .75, curve: 1.25, essential: true });
     }
-    onSelect?.(feature);
   }
   function clearSelection() { if (selectedId !== null) setState(selectedId, { selected: false }); selectedId = null; onClear?.(); }
   function setEndpoint(previous, next, flag) {

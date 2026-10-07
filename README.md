@@ -64,7 +64,7 @@ The map opens at every address of the site. These switches may be added:
 | `/?buildingid=101` | the map with building 101 selected (the printed QR codes) |
 | `/?place=secretariat/L06/shops/L06-01` | that room, on its floor |
 | `/?view=2d` | the same map kept flat: camera straight above, north up, no tilt or Walk buttons |
-| `/?embed=1` | the map inside a frame: directions panel closed |
+| `/?embed=1` | the map inside a frame: no button to choose another place |
 
 ## Organisations and floor plans
 
@@ -124,7 +124,7 @@ one directly).
 
    `logo` is a file in `public/image/<id>/`; without one the card shows the initials.
    `"default": true` marks the organisation that old links without `?org=` open.
-   `"sample": true` labels placeholder data on the picker and in the header.
+   `"sample": true` labels placeholder data on the picker and in the search box.
 2. Save the site layers into the folder. Only the files an organisation has are loaded:
 
    | Dataset | File names looked for (or name yours in `org.json` `"datasets"`) |
@@ -182,6 +182,11 @@ Create a folder for the building inside the organisation's folder (any name, e.g
   `connector_id`.
 - **Entrance**: an `entrance` point on the floor people enter by. Without one, routes enter
   at the walkable place nearest the building's `entrance_coords`.
+- **For walking inside** (Walk mode): the walker stays on the floor outline and cannot pass
+  the walls, so a room needs a way in: a gap in its wall where the door is (0.8 m or
+  wider), or a point in `doors.geojson` on a wall drawn without a gap. The building is
+  walked into at its `entrance` points; without one, where its outline is nearest
+  `entrance_coords`. A floor without walls is open from side to side.
 
 Save a file while `npm run dev` runs and the open floor is redrawn; a new floor or building
 folder reloads the page.
@@ -197,7 +202,7 @@ corridor, rooms on both sides, a lift lobby with a lift and stairs, a second sta
 entrance on the first floor), in the five files above. It is a start for drawing the real
 floors in QGIS: correctly placed and with the right attributes, but **the rooms are
 invented**. `building.json` marks such a building `"sample": true` and the map says
-"sample" on its floor selector and its routes. Draw the real plan over it,
+"sample" in the tooltip of its floor selector. Draw the real plan over it,
 then remove `"sample"`. The script replaces only folders it generated itself.
 
 **What is sample data in this repository:** the six floors of the BCSIR Secretariat
@@ -207,9 +212,10 @@ then remove `"sample"`. The script replaces only folders it generated itself.
 
 | Action | How |
 |---|---|
-| See a floor | Select a building that has floor plans and choose a floor: in the **floor selector** (left edge; highest floor at the top) or on the building card. The building's shell is hidden and the floor is drawn at ground level. The house button shows the building from outside again. Zooming far in on such a building opens its first floor. Selecting a building without floor plans hides the floor selector and shows the open building from outside again (floors a route runs through stay open). |
-| Find a room | The search bar lists rooms and points (lifts, toilets, ...) with their floor and building; choosing one opens that floor and selects the room. Clicking a room on an open floor does the same. |
-| Directions between rooms | **Start here** / **Directions to here** on a room's card, or type room names in the Directions panel. |
+| See a floor | Select a building that has floor plans and choose a floor in the **floor selector**: a narrow column in the right-hand corner, above the map controls (on phones beside them), with the highest floor at the top and the shown floor in grey. It appears only for a building that has floor plans. The building's shell is hidden and the floor is drawn at ground level, **each floor in a colour of its own** (blue, green, amber, violet, ... from the lowest floor up: `FLOOR_COLORS` in `src/indoor/indoor-model.js`; a room with its own `color` keeps it). The button at the top of the selector shows the building from outside again. Zooming far in on such a building opens its first floor. Selecting a building without floor plans hides the floor selector and shows the open building from outside again (floors a route runs through stay open). |
+| Find a room | The search box lists rooms and points (lifts, toilets, ...) with their floor and building; choosing one opens that floor and selects the room. Clicking a room on an open floor does the same. |
+| Directions between rooms | **Directions** / **Start here** on a room's card, or type room names in the directions panel. |
+| Walk inside | In **Walk** mode, walk up to the building's entrance: the building opens on that floor (an "entrance" badge marks the door) and you walk in. Inside you walk between the walls and through the doors, at an easier pace; the room you enter is named. At a lift or the stairs, choose a floor in the floor selector (right edge while walking) or press **Page Up** / **Page Down**. Walk out through the entrance; the building closes again behind you. Clicking on an open floor plan to start the walk starts it there, on that floor. |
 
 ### Routes across floors
 
@@ -237,18 +243,18 @@ entrance → the outdoor road network → the other building's entrance → its 
 
 | Action | How |
 |---|---|
-| Find a building, laboratory or test | Search bar at the top (for example `Pilot Plant`, `Analytical`, `Calcium`). Arrow keys and Enter work in the list. |
-| Building information | Click a building or its round label. The card shows the photo, names, height, entrance and website. |
+| Find a building, laboratory or test | The search box (top left) is all that is over the map at first. Click it for the places used last, or type (for example `Pilot Plant`, `Analytical`, `Calcium`); arrow keys and Enter work in the list. Choosing a place flies the map to it and opens its card; the box then shows its name, and its **Close** button (the cross) closes the place and leaves the empty box again. |
+| Building information | Click a building or its round label. The card (below the search box; on phones it rises from the bottom) shows the photo, the names and the website. |
 | Test or laboratory information | Choose it in the search. The map flies to the laboratory's building, highlights it and the card shows the test (sample type, method, fee, time, laboratory, source). |
-| Walking directions | **Directions** panel (top right): choose a starting point and a destination by typing, or with the target button and a click on a building. The To field also accepts tests. Swap, clear each field or **Clear route**. |
-| WALK | The WALK tile turns the walking route on or off. It is on by default. |
-| Directions from the card | **Start here** / **Directions to here** in the building card. |
-| Return to the whole campus | **View on Map**: the folded-map button in the right-hand controls. |
-| Street or satellite map | Layers button (right). Satellite shows the imagery with the building labels and the route only; the drawn buildings, roads, gardens, trees, walls and 3D models come back with Street. The same panel has the dark map switch and **Map details**, the layer visibility list. |
+| Walking directions | **Directions** on a card, or the blue Directions button in the search box: the directions panel takes the place of the search box. Choose a starting point and a destination by typing (the places used last are listed first), or click a building on the map: while a field is empty, a click fills it. The To field also accepts tests. Swap or clear each field; the panel's cross clears the route and brings the search box back. The panel shows the walking time and distance (and the steps of a route through floor plans); the notes of a route, such as a building without a recorded entrance, are not shown. |
+| Walk | The Walk chip at the top of the panel turns the walking route on or off. It is on by default. |
+| Directions from the card | **Directions** (to this place) / **Start here** in the building card. |
+| Return to the whole campus | **View** menu → **Reset View**. |
+| Street or satellite map | Layers button (right). Satellite shows the imagery with the building labels and the route only; the drawn buildings, roads, gardens, trees, walls and 3D models come back with Street. The same panel has the dark map switch. |
 | Pan, rotate, tilt | Drag. Right-drag (or Ctrl + drag) rotates and tilts. Scroll zooms. |
 | Zoom, rotate, tilt buttons | Right-hand controls. Rotate and tilt buttons are hidden on phones and short windows. |
 | Camera presets | **View** menu: Top-down, Isometric, 3D Corner, Front, Free, Follow Direction, Route Up, North Up, Reset. Compass: north up. |
-| First-person walk (game mode) | **Walk** (bottom left), choose the view, then click a location on the map: the camera goes down there. W/A/S/D or arrows to move fast (4.5 m/s, the cartoon walker runs), hold Shift for 9 m/s, **Space to jump**, mouse to look (looking up shows a blue sky with clouds), V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), **Jump** in their middle, drag the view to look. Walls and buildings cannot be walked through; a circular minimap (bottom left) shows the surroundings with short building names, the route and the destination. |
+| First-person walk (game mode) | **Walk** (bottom right, below the map controls), choose the view, then click a location on the map: the camera goes down there. W/A/S/D or arrows to move fast (4.5 m/s, the cartoon walker runs), hold Shift for 9 m/s, **Space to jump**, mouse to look (looking up shows a blue sky with clouds), V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), **Jump** in their middle, drag the view to look. Walls and buildings cannot be walked through, except that a building with floor plans is walked into through its entrance (see [Floor plans](#on-the-map)); a circular minimap (bottom left) shows the surroundings with short building names, the route and the destination. |
 | Live navigation | With a route drawn, **Start** under the route summary: follows the phone's GPS along the route, turns the map with its compass, shows the next turn and the remaining distance and time. See [Live navigation](#live-navigation-and-3d-mode). |
 | 3D mode | **3D mode** under the route summary: walk the route in first-person view with the same guidance. |
 | Deep link | `?buildingid=101` opens building 101 (the format of the printed BCSIR QR codes); `?place=secretariat/L06/shops/L06-01` opens a room on its floor. `?org=bcsir` may be added to either. |
@@ -342,8 +348,8 @@ The browser runs the original functions `buildGraph()`, `dijkstra()`,
 `isGraphConnected()` and `findConnectedComponents()`, extracted verbatim from the
 unmodified `connection_check.js` at build time (`scripts/lib/original-routing.mjs`).
 The network is `public/data/bcsir/ConnectedRoads/v0/r2.json`, the original file, checked by
-sha256. Visual road properties never reach the router. The directions panel, the WALK
-tile and the building card only choose the endpoints; the route itself is unchanged.
+sha256. Visual road properties never reach the router. The directions panel, its Walk
+chip and the building card only choose the endpoints; the route itself is unchanged.
 
 - **Endpoints.** A building is routed from or to its recorded `entrance_coords`, snapped
   to the nearest network node. 47 of 86 buildings have no recorded entrance; for those the
@@ -410,13 +416,14 @@ compass move the walker instead; touching the controls hands it back. Exit (or E
 returns to the map view; × in the banner or **End** ends navigation and restores the
 previous view.
 
-**Indoors:** no building has indoor map data (floor plans, walkable areas, entrances per
-level), and GPS cannot tell floors or rooms, so guidance ends at the building and says
-so. Buildings cannot be entered in walk mode. `navigation/collision.js` already accepts
-indoor areas (`{ buildingId, level, walkable, entrances }`): a building with them can be
-entered only through an entrance, and movement then stays on the walkable areas of the
-selected level. Using them needs that data, a level selector, and an indoor positioning
-source (for example Wi-Fi RTT or BLE beacons) for live guidance inside.
+**Indoors:** GPS cannot tell floors or rooms, so live guidance ends at the building and
+says so when the building has no floor plans. During a navigation session every building
+is solid. Outside one, walk mode goes into a building that has floor plans
+(`src/walk/walk-indoor.js`): `navigation/collision.js` holds one entry per floor
+(`{ buildingId, level, walkable, walls, doors, entrances }`), the building is entered only
+through an entrance, and the walker then stays on his floor, between its walls, until a
+lift or the stairs take him to another. Live guidance inside would need an indoor
+positioning source (for example Wi-Fi RTT or BLE beacons).
 
 ## Basemaps
 
@@ -428,7 +435,7 @@ source (for example Wi-Fi RTT or BLE beacons) for live guidance inside.
 Both raster sources are in the same MapLibre style. Switching changes which raster layer
 is visible. Satellite shows the imagery alone: the drawn campus layers (buildings, roads,
 pathways, boundary and internal walls, garden, trees and GLB models) are hidden while it
-is active, and their switches in **Map details** are greyed out. Building labels, the
+is active. Building labels, the
 route and its pins stay. Switching back to Street restores every layer as it was. MapLibre shows the attribution of the visible basemap only. The choice is
 remembered in the browser. Use of Esri World Imagery is subject to Esri's terms of use.
 
@@ -824,12 +831,15 @@ reaches the map directly.
 │   │                            (a floor from its files), nav-grid.js (walking grid),
 │   │                            indoor-router.js (lifts and stairs), indoor-store.js, trip.js
 │   │                            (room-to-room trips and their steps), indoor-layers.js,
-│   │                            floor-control.js, place-card.js, indoor-controller.js
-│   ├── walk/                    walk-mode.js (Walk Mode), walk-character.js, walk-sky.js
+│   │                            floor-control.js, place-card.js, indoor-controller.js,
+│   │                            walk-space.js (a floor for the walker)
+│   ├── walk/                    walk-mode.js (Walk Mode), walk-indoor.js (walking inside buildings
+│   │                            with floor plans), walk-character.js, walk-sky.js
 │   ├── search/                  directory.js (search index, lab/test → building mapping), combobox.js
-│   │                            (accessible autocomplete list), search-ui.js (main search bar)
+│   │                            (accessible autocomplete list), search-ui.js (the search box),
+│   │                            recents.js (the places used last)
 │   ├── ui/                      ui.js (building card, toast, status, theme), directions-ui.js (From / To
-│   │                            panel and WALK toggle), org-picker.js (shown only when there are several organisations)
+│   │                            panel and Walk toggle), org-picker.js (shown only when there are several organisations)
 │   └── styles/                  style.css, indoor.css
 ├── scripts/
 │   ├── make-sample-floors.mjs     npm run floors:sample (template floors for a building)
@@ -885,9 +895,12 @@ reaches the map directly.
 - Detail levels and impostors are close to, not identical with, the full models: small
   trees can look very slightly fuller or lighter. Raise the sizes in `LADDER` /
   `MODEL_VISIBILITY.impostorPixels` to trade speed for exactness.
-- **Indoor navigation needs data that does not exist yet:** floor plans with walkable
-  areas and entrances per level, and an indoor positioning source. Until then every
-  building is solid in walk mode and guidance ends at the building.
+- **Live guidance stops at the door:** there is no indoor positioning source, so **Start**
+  guides the outdoor part of a route only. A building without floor plans is solid in walk
+  mode; one with floor plans is walked into (the Secretariat's floors are a sample).
+- Inside a building the open floor is drawn at ground level whatever its number, without a
+  ceiling, and the walls are drawn 2.4 m high while walking. Lifts and stairs move the
+  walker to the same place on the other floor at once.
 - Walk-mode collision covers building footprints (0.5 m or taller) and the boundary and
   internal walls. Flat areas drawn 0.3 m high (research field, Spirulina Pond, play
   ground) stay walkable, as do trees and GLB models.

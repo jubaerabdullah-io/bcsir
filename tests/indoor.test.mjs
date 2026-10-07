@@ -9,7 +9,7 @@ import { readLevelFiles } from "../scripts/lib/indoor-files.mjs";
 import { sampleFloors } from "../scripts/lib/sample-floors.mjs";
 import { orgAssetKey, orgAssetPath } from "../src/core/asset-paths.js";
 import { pointInRings } from "../src/utils/geo-utils.js";
-import { buildLevelModel } from "../src/indoor/indoor-model.js";
+import { buildLevelModel, FLOOR_COLORS, floorColor, INDOOR_STYLE, mixColors, UNIT_COLORS } from "../src/indoor/indoor-model.js";
 import { connectorSeconds, createBuildingRouter, groupShafts } from "../src/indoor/indoor-router.js";
 import { createIndoorStore } from "../src/indoor/indoor-store.js";
 import { defaultLevel, featureKeys, folderKey, levelFileKind, parseLevelFolder, poiClass, sortLevels, unitClass } from "../src/indoor/levels.js";
@@ -217,6 +217,42 @@ test("template floors: the five files per floor, inside the footprint, routable"
   for (const unit of model.units) assert.ok(model.anchorFor(unit.uid), `${unit.name} is reached from the corridor`);
   for (const poi of model.pois) assert.ok(model.anchorFor(poi.uid), `${poi.name} is on the walkable area`);
   assert.ok(model.render.features.some((feature) => feature.properties.kind === "wall"));
+});
+
+test("floor colours: every floor of a building is drawn in a colour of its own", () => {
+  assert.equal(mixColors("#000000", "#ffffff", 0.5), "#808080");
+  assert.equal(mixColors("#102030", "#ff0000", 0), "#102030");
+  assert.equal(mixColors("#102030", "#ff0000", 1), "#ff0000");
+  assert.equal(new Set(FLOOR_COLORS).size, FLOOR_COLORS.length);
+  assert.equal(floorColor(FLOOR_COLORS.length), FLOOR_COLORS[0]); // more floors than colours: the palette starts again
+
+  const room = (properties) => ({ type: "Feature", properties, geometry: { type: "Polygon", coordinates: square(0, 0, 4, 4) } });
+  const files = {
+    level: { type: "FeatureCollection", features: [room({})] },
+    corridor: [{ type: "FeatureCollection", features: [room({})] }],
+    units: [{ file: "offices.geojson", class: "office", data: { type: "FeatureCollection", features: [room({ id: 1, name: "Office" }), room({ id: 2, name: "Painted", color: "#123456" })] } }],
+    walls: [], pois: [], doors: []
+  };
+  const coloursOf = (level) => {
+    const features = buildLevelModel({ buildingKey: "b", level, files }).render.features;
+    const of = (kind) => features.filter((feature) => feature.properties.kind === kind).map((feature) => feature.properties.color);
+    return { floor: of("floor"), corridor: of("corridor"), unit: of("unit") };
+  };
+  // Without a floor colour the plan keeps the plain look.
+  assert.deepEqual(coloursOf({ id: "L01", ordinal: 1 }), { floor: [INDOOR_STYLE.floor], corridor: [INDOOR_STYLE.corridor], unit: [UNIT_COLORS.office, "#123456"] });
+  // With one, the slab, the corridors and the rooms are tinted; a room's own colour is kept.
+  const first = coloursOf({ id: "L01", ordinal: 1, color: floorColor(0) });
+  const second = coloursOf({ id: "L02", ordinal: 2, color: floorColor(1) });
+  for (const kind of ["floor", "corridor"]) assert.notEqual(first[kind][0], second[kind][0], kind);
+  assert.notEqual(first.unit[0], UNIT_COLORS.office);
+  assert.notEqual(first.unit[0], second.unit[0]);
+  assert.equal(first.unit[1], "#123456");
+  assert.equal(second.unit[1], "#123456");
+
+  // The floors of the Secretariat each get a different colour, lowest floor first.
+  const levels = storeOf("bcsir").store.forBuildingId(127).levels;
+  assert.deepEqual(levels.map((level) => level.color), levels.map((level, index) => FLOOR_COLORS[index]));
+  assert.equal(new Set(levels.map((level) => level.color)).size, levels.length);
 });
 
 test("BCSIR Secretariat: a room on the first floor to a room on the sixth goes by the lift", async () => {

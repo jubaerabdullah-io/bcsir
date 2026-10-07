@@ -85,8 +85,9 @@ export function addIndoorLayers(map, { beforeId } = {}) {
   map.addSource(INDOOR_ROUTE_SOURCE, { type: "geojson", data: EMPTY });
 
   const extrusion = (id, filter, paint) => map.addLayer({ id, type: "fill-extrusion", source: INDOOR_SOURCE, filter, paint: { "fill-extrusion-base": 0, "fill-extrusion-opacity": 1, "fill-extrusion-vertical-gradient": false, ...paint } }, beforeId);
-  extrusion("indoor-floor", kind("floor"), { "fill-extrusion-color": INDOOR_STYLE.floor, "fill-extrusion-height": 0.1 });
-  extrusion("indoor-corridor", kind("corridor"), { "fill-extrusion-color": INDOOR_STYLE.corridor, "fill-extrusion-height": 0.14 });
+  // The slab and the corridors carry the colour of their floor (indoor-model.js).
+  extrusion("indoor-floor", kind("floor"), { "fill-extrusion-color": ["coalesce", ["get", "color"], INDOOR_STYLE.floor], "fill-extrusion-height": 0.1 });
+  extrusion("indoor-corridor", kind("corridor"), { "fill-extrusion-color": ["coalesce", ["get", "color"], INDOOR_STYLE.corridor], "fill-extrusion-height": 0.14 });
   // Route endpoints take precedence, then the selected and the hovered room.
   extrusion(INDOOR_UNIT_LAYER, kind("unit"), {
     "fill-extrusion-color": ["case",
@@ -148,4 +149,12 @@ export function setIndoorData(map, render, labels) {
 
 export function setIndoorRoute(map, collection) {
   map.getSource(INDOOR_ROUTE_SOURCE)?.setData(collection || EMPTY);
+}
+
+// Walk mode sees an open floor from inside: its rooms flat like the corridor, to
+// walk on, and its walls at room height. Off: the plan as it is drawn on the map.
+export function setIndoorWalkView(map, on) {
+  if (!map.getLayer(INDOOR_UNIT_LAYER)) return;
+  map.setPaintProperty(INDOOR_UNIT_LAYER, "fill-extrusion-height", on ? INDOOR_STYLE.walkFloorM : ["get", "height"]);
+  map.setPaintProperty("indoor-walls", "fill-extrusion-height", on ? ["max", ["get", "height"], INDOOR_STYLE.walkWallHeightM] : ["get", "height"]);
 }

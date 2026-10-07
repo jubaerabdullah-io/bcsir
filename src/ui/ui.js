@@ -1,13 +1,13 @@
 // Building information card, toast, loading status, theme and zoom buttons.
 // Adapted from the reference project's src/ui.js; shop fields are replaced by
-// the BuildingBoundary.geojson attributes (name_en, name_bn, name_en_short,
-// name_en_alias, image_url, site_url, entrance_coords, area, color, id) and
-// the visualization properties (base_m, top_m, image).
+// the BuildingBoundary.geojson attributes the card shows: the photo, the names
+// (name_en, name_bn, name_en_short, name_en_alias), the category and site_url.
 //
 // The card can also show why a building was opened: a laboratory / research
-// division or a testing service chosen in the search. The search bar and the
-// directions panel live in search-ui.js and directions-ui.js. The hover preview
-// card was removed (hovering only highlights the building).
+// division or a testing service chosen in the search. The search box and the
+// directions panel live in search-ui.js and directions-ui.js; on a wide screen
+// the card hangs below whichever of them is shown. The hover preview card was
+// removed (hovering only highlights the building).
 import { setMapTheme, zoomBy } from "../map/map.js";
 import { publicAssetUrl } from "../core/paths.js";
 import { PREFERENCE_KEYS, readPreference, writePreference } from "../core/preferences.js";
@@ -32,13 +32,12 @@ function setImage(element, candidates, fallback) {
   else { element.onerror = null; element.src = fallback; }
 }
 
-export function createUI({ map, onClearSelection, onReset, onSetSource, onSetDestination }) {
+export function createUI({ map, onClearSelection, onSetSource, onSetDestination }) {
   const card = $("#building-card"); const context = $("#card-context"); const toast = $("#toast"); const themeToggle = $("#theme-toggle");
   // Elements of the card and of the status chip: looked up once, written on every selection.
   const fields = {
     image: $("#building-image"), located: $("#building-located"), name: $("#building-name"), nameBn: $("#building-name-bn"),
-    category: $("#building-category"), id: $("#building-id"), alias: $("#building-alias"), height: $("#building-height"),
-    entrance: $("#building-entrance"), site: $("#building-site")
+    category: $("#building-category"), alias: $("#building-alias"), site: $("#building-site")
   };
   const sourceButton = $("#set-source"), destinationButton = $("#set-destination");
   const sourceLabel = sourceButton.querySelector(".route-label"), destinationLabel = destinationButton.querySelector(".route-label");
@@ -55,7 +54,17 @@ export function createUI({ map, onClearSelection, onReset, onSetSource, onSetDes
   }
   applyTheme(readPreference(PREFERENCE_KEYS.theme) || "light");
   themeToggle.addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
-  $("#zoom-in").addEventListener("click", () => zoomBy(map, .8)); $("#zoom-out").addEventListener("click", () => zoomBy(map, -.8)); $("#reset-view").addEventListener("click", onReset);
+  $("#zoom-in").addEventListener("click", () => zoomBy(map, .8)); $("#zoom-out").addEventListener("click", () => zoomBy(map, -.8));
+
+  // The cards start where the search box or the directions panel ends
+  // (--top-area-bottom in style.css). Not while that area is off the page (navigation).
+  const topArea = $(".app-top");
+  if (topArea && window.ResizeObserver) {
+    new ResizeObserver(() => {
+      const bottom = topArea.getBoundingClientRect().bottom;
+      if (bottom > 0) $("#app").style.setProperty("--top-area-bottom", `${Math.round(bottom)}px`);
+    }).observe(topArea);
+  }
 
   function currentRouteKind(feature) { const id = feature?.properties?.render_id; if (routeSelection.source?.properties?.render_id === id) return "source"; if (routeSelection.destination?.properties?.render_id === id) return "destination"; return ""; }
   function refreshActions() {
@@ -65,7 +74,7 @@ export function createUI({ map, onClearSelection, onReset, onSetSource, onSetDes
     sourceButton.setAttribute("aria-pressed", String(kind === "source"));
     destinationButton.setAttribute("aria-pressed", String(kind === "destination"));
     sourceLabel.textContent = kind === "source" ? "Starting point" : "Start here";
-    destinationLabel.textContent = kind === "destination" ? "Destination" : "Directions to here";
+    destinationLabel.textContent = kind === "destination" ? "Destination" : "Directions";
   }
 
   // Laboratory / test that led to this building (from the search).
@@ -116,13 +125,9 @@ export function createUI({ map, onClearSelection, onReset, onSetSource, onSetDes
     fields.nameBn.textContent = p.name_bn || "";
     fields.nameBn.hidden = !p.name_bn;
     fields.category.textContent = p.render_category_label || "Building";
-    fields.id.textContent = p.id ?? "—";
     const aliases = [p.name_en_short, p.name_en_alias].filter(Boolean);
     fields.alias.textContent = aliases.join(" · ");
     fields.alias.hidden = !aliases.length;
-    const heightText = `${p.render_height_m.toFixed(1)} m${p.render_base_m ? ` from ${p.render_base_m} m` : ""}`;
-    fields.height.textContent = p.render_height_source === "default" ? `${heightText} (default)` : heightText;
-    fields.entrance.textContent = Number.isFinite(p.entrance_lon) ? "Recorded" : "Not recorded";
     fields.site.hidden = !p.site_url;
     if (p.site_url) { fields.site.href = p.site_url; fields.site.textContent = p.site_url.replace(/^https?:\/\//, "").replace(/\/$/, ""); }
     setImage(fields.image, buildingImageCandidates(p), FALLBACK_BUILDING_IMAGE);
@@ -149,5 +154,5 @@ export function createUI({ map, onClearSelection, onReset, onSetSource, onSetDes
   }
   function hideStatus() { statusChip.hidden = true; }
 
-  return { showBuilding, hideBuilding, showToast, setStatus, hideStatus, setPendingContext, updateRouteSelection, activeBuilding: () => activeFeature };
+  return { showBuilding, hideBuilding, showToast, setStatus, hideStatus, setPendingContext, updateRouteSelection, activeBuilding: () => activeFeature, activeContext: () => activeContext };
 }

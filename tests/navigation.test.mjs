@@ -12,6 +12,10 @@ import { compassWord, createRouteModel, formatGuidanceDistance, guidance, locate
 import { blocksWalking, collisionBlockers, createCollisionWorld } from "../src/navigation/collision.js";
 import { correctRouteResult, detourPath, insideLength, prepareObstacles } from "../src/navigation/route-detour.js";
 import { encodeAssetPath, findListedFile } from "../src/core/asset-paths.js";
+import { buildOrgIndex } from "../scripts/lib/catalog.mjs";
+import { readLevelFiles } from "../scripts/lib/indoor-files.mjs";
+import { createIndoorStore } from "../src/indoor/indoor-store.js";
+import { levelWalkSpace, shaftLevels, shaftNear, unitAt, walkEntrances } from "../src/indoor/walk-space.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
@@ -108,6 +112,55 @@ test("collision: indoor areas are entered only through an entrance and stay on t
   const other = {};
   assert.equal(world.resolveMove(at(8, 0), at(14, 0), other).blocked, true);
   assert.equal(other.indoor ?? null, null);
+});
+
+test("collision: inside a building the walker keeps to his floor, its walls and its doors", () => {
+  const rect = (x0, y0, x1, y1) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]].map(frame.toLngLat)];
+  // Ground floor: a wall across the middle with a gap one metre wide; the entrance is on it.
+  const ground = { buildingId: "b", level: "G", walkable: [square(10, -10, 20)], walls: [rect(19.9, -10, 20.1, -0.5), rect(19.9, 0.5, 20.1, 10)], entrances: [at(10, 0)] };
+  const world = createCollisionWorld({ blockers: [{ id: "b", name: "Block", polygons: [square(10, -10, 20)] }], indoor: [ground], frame });
+  // First floor (added later, as when its files are loaded): the same wall without a gap, and a door point in it.
+  assert.equal(world.hasFloor("b", "L1"), false);
+  assert.equal(world.nearestIndoor(at(15, 0), "b", "L1"), null, "a floor that is not loaded");
+  world.setIndoor({ buildingId: "b", level: "L1", walkable: [square(10, -10, 20)], walls: [rect(19.9, -10, 20.1, 10)], doors: [at(20, 5)] });
+  assert.equal(world.hasFloor("b", "L1"), true);
+
+  // From outside, away from the entrance: solid, and the blocker says it has floor plans.
+  const bump = world.resolveMove(at(0, 6), at(14, 6), {});
+  assert.equal(bump.blocked, true);
+  assert.equal(bump.blocker.indoor, true);
+  // With entering switched off (live navigation) the entrance is a wall too.
+  const kept = {};
+  assert.equal(world.resolveMove(at(8, 0), at(14, 0), kept, { enter: false }).blocked, true);
+  assert.equal(kept.indoor ?? null, null);
+
+  const state = {};
+  world.resolveMove(at(8, 0), at(14, 0), state);
+  assert.deepEqual(state.indoor, { buildingId: "b", level: "G" }, "in by the entrance, on its floor");
+  // Through the gap in the wall; stopped by the wall beside it, sliding along it.
+  assert.ok(local(world.resolveMove(at(14, 0), at(26, 0), state).position)[0] > 25.9, "through the gap");
+  const stopped = local(world.resolveMove(at(14, 6), at(26, 6), state).position);
+  assert.ok(Math.abs(stopped[0] - (19.9 - world.indoorRadiusM)) < 0.02, `stopped at ${stopped[0]}`);
+  const slid = local(world.resolveMove(at(19, 6), at(21, 3), state).position);
+  assert.ok(slid[0] < 19.9 && slid[1] < 3.2, `slid to ${slid}`);
+  // The follow camera: the wall of his floor is in the way, which it is not from outside.
+  assert.ok(Math.abs(world.firstHit(at(14, 6), at(26, 6), state).t - 5.9 / 12) < 1e-6);
+  assert.equal(world.firstHit(at(14, 6), at(26, 6)), null);
+  // A place to stand nearest a point in the wall is clear of it.
+  const spot = local(world.nearestIndoor(at(20, 3), "b", "G"));
+  assert.ok(Math.abs(spot[0] - 20) >= 0.1 + world.indoorRadiusM - 1e-6 && distance(spot, [20, 3]) < 0.6, `stands at ${spot}`);
+
+  // Up to the first floor: its wall has no gap, its door point lets him through.
+  state.indoor = { buildingId: "b", level: "L1" };
+  assert.ok(local(world.resolveMove(at(14, 0), at(26, 0), state).position)[0] < 19.9, "no gap on this floor");
+  assert.ok(local(world.resolveMove(at(14, 5), at(26, 5), state).position)[0] > 25.9, "through the door");
+  // The entrance is on the ground floor: there is no way out up here.
+  const upstairs = world.resolveMove(at(14, 0), at(6, 0), state);
+  assert.ok(local(upstairs.position)[0] >= 10 && state.indoor?.level === "L1", "stays inside");
+  // Back down and out.
+  state.indoor = { buildingId: "b", level: "G" };
+  assert.ok(local(world.resolveMove(at(14, 0), at(6, 0), state).position)[0] < 10);
+  assert.equal(state.indoor, null);
 });
 
 const walls = [
@@ -222,3 +275,98 @@ test("every image the web app references from public/ is committed to git", () =
   const html = readFileSync(path.join(root, "index.html"), "utf8");
   for (const [, file] of html.matchAll(/src="\.\/([^"]+\.(?:png|jpe?g|webp|svg))"/g)) assert.ok(readFileSync(path.join(root, "public", file)).length > 0, file);
 });
+
+// The floor plans of an organisation, read from disk as the browser fetches them.
+const indoorStore = (orgId) => createIndoorStore({
+  org: buildOrgIndex(root, orgId),
+  loadFiles: (item, level) => readLevelFiles(root, orgId, item, level),
+  footprintOf: (item) => building(Number(item.buildingId))?.geometry || null
+});
+
+// Every place the walker can get to on a floor from `start`, walking as the keys do
+// (0.3 m at a time, sliding along walls): { places: [[x, y]…], exits: [[x, y]…] } in
+// metres of the collision frame. A move that takes him out of the building is an exit.
+function explore(world, id, level, start) {
+  const cell = 0.3;
+  const key = (p) => `${Math.round(p[0] / cell)},${Math.round(p[1] / cell)}`;
+  const first = world.frame.toLocal(start);
+  const seen = new Set([key(first)]);
+  const places = [first], exits = [];
+  for (let i = 0; i < places.length; i += 1) {
+    const p = places[i];
+    for (let k = 0; k < 8; k += 1) {
+      const state = { indoor: { buildingId: id, level } };
+      const q = world.frame.toLocal(world.resolveMove(world.frame.toLngLat(p), world.frame.toLngLat([p[0] + Math.cos(k * Math.PI / 4) * cell, p[1] + Math.sin(k * Math.PI / 4) * cell]), state).position);
+      if (!state.indoor) { exits.push(q); continue; }
+      if (seen.has(key(q))) continue;
+      seen.add(key(q));
+      places.push(q);
+    }
+  }
+  return { places, exits };
+}
+
+test("walking into the Secretariat: in by the main entrance, every room of every floor, out by the entrance only", async () => {
+  const store = indoorStore("bcsir");
+  const secretariat = store.forBuildingId(127);
+  const feature = building(127);
+  const id = String(feature.properties.render_id ?? feature.properties.id);
+  const entrances = walkEntrances(secretariat, feature);
+  assert.deepEqual(entrances.map((entrance) => [entrance.level, entrance.name]), [["L01", "Main Entrance"]]);
+  // Without entrance points, the recorded entrance of the building is used, on its outline.
+  const assumed = walkEntrances({ ...secretariat, entrances: [] }, feature);
+  assert.equal(assumed.length, 1);
+  assert.equal(assumed[0].level, "L01");
+  assert.ok(distance(local(assumed[0].point), local(entrances[0].point)) < 1.5, "beside the main entrance");
+
+  const world = createCollisionWorld({ blockers: collisionBlockers({ buildings, walls }) });
+  const metres = (a, b) => distance(world.frame.toLocal(a), world.frame.toLocal(b));
+  const models = new Map();
+  for (const level of secretariat.levels) {
+    const model = await store.level(secretariat.key, level.id);
+    models.set(level.id, model);
+    const space = levelWalkSpace(model, { entrances: entrances.filter((entrance) => entrance.level === level.id).map((entrance) => entrance.point) });
+    assert.ok(space.walkable.length && space.walls.length, `${level.id}: a floor outline and walls`);
+    world.setIndoor({ buildingId: id, ...space });
+  }
+  assert.equal(world.hasIndoor(id), true);
+
+  // From the recorded entrance of the building (where a route to it ends), straight in.
+  const door = entrances[0].point;
+  const outside = world.nearestFree(feature.properties.entrance_coords);
+  const [o, d] = [world.frame.toLocal(outside), world.frame.toLocal(door)];
+  const scale = (distance(o, d) + 3) / distance(o, d);
+  const state = {};
+  const entered = world.resolveMove(outside, world.frame.toLngLat([o[0] + (d[0] - o[0]) * scale, o[1] + (d[1] - o[1]) * scale]), state);
+  assert.deepEqual(state.indoor, { buildingId: id, level: "L01" });
+  assert.ok(metres(entered.position, door) > 2, "three metres into the entrance lobby");
+  // Anywhere else its outline is a wall.
+  const ring = feature.geometry.coordinates[0][0];
+  const behind = {};
+  world.resolveMove(world.nearestFree([(ring[0][0] + ring[1][0]) / 2, (ring[0][1] + ring[1][1]) / 2]), secretariat.entry.center, behind);
+  assert.equal(behind.indoor ?? null, null, "not through the back wall");
+
+  for (const level of secretariat.levels) {
+    const model = models.get(level.id);
+    const lift = secretariat.shafts.find((shaft) => shaft.class === "lift").members.get(level.id).point;
+    const start = level.id === "L01" ? entered.position : world.nearestIndoor(lift, id, level.id);
+    assert.ok(start && (level.id === "L01" || metres(start, lift) < 1), `${level.id}: a place to stand at the lift`);
+    const { places, exits } = explore(world, id, level.id, start);
+    const reached = (point) => places.some((place) => distance(place, world.frame.toLocal(point)) < 0.6);
+    for (const unit of model.units) assert.ok(reached(unit.point), `${level.id}: ${unit.name} is walked into`);
+    for (const poi of model.pois) assert.ok(reached(poi.point), `${level.id}: ${poi.name} is walked to`);
+    for (const place of places) assert.equal(world.blockerAt(world.frame.toLngLat(place))?.id, id, `${level.id}: stays in the building`);
+    if (level.id === "L01") {
+      assert.ok(exits.length > 0, "the entrance leads out");
+      for (const exit of exits) assert.ok(distance(exit, world.frame.toLocal(door)) < 2.5, "out by the entrance only");
+    } else assert.equal(exits.length, 0, `${level.id}: no way out but the lift and the stairs`);
+    // The room he stands in, and the lift or stairs he stands at.
+    const room = model.units[0];
+    assert.equal(unitAt(model, room.point)?.uid, room.uid);
+    assert.equal(unitAt(model, lift), null, "the lift lobby is not a room");
+    assert.equal(shaftNear(secretariat, level.id, lift)?.class, "lift");
+    assert.equal(shaftNear(secretariat, level.id, room.point), null);
+  }
+  assert.deepEqual(shaftLevels(secretariat, secretariat.shafts[0]).map((level) => level.id), ["L01", "L02", "L03", "L04", "L05", "L06"]);
+});
+

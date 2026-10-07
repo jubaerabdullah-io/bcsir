@@ -21,12 +21,17 @@ const style = (basemap) => ({
   ]
 });
 
+// The map is drawn at two device pixels per CSS pixel at most. A phone screen of
+// three or more would cost over twice the drawing work of the 3D scene on every
+// frame, for a difference that is hard to see.
+const MAX_PIXEL_RATIO = 2;
+
 export function createMap(container, { basemap } = {}) {
   const view = { ...INITIAL_VIEW, ...(activeOrg()?.view || {}) };
   // ?view=2d: the camera cannot tilt, so every camera move stays straight above the site.
   const flat = viewMode().flat;
   if (flat) { view.pitch = 0; view.bearing = 0; }
-  const map = new maplibregl.Map({ container, style: style(basemap), center: view.center, zoom: view.zoom, pitch: view.pitch, bearing: view.bearing, canvasContextAttributes: { antialias: true }, attributionControl: true, maxPitch: flat ? 0 : 78, dragRotate: true, pitchWithRotate: true, touchPitch: true, hash: false });
+  const map = new maplibregl.Map({ container, style: style(basemap), center: view.center, zoom: view.zoom, pitch: view.pitch, bearing: view.bearing, canvasContextAttributes: { antialias: true }, pixelRatio: Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO), attributionControl: true, maxPitch: flat ? 0 : 78, dragRotate: true, pitchWithRotate: true, touchPitch: true, hash: false });
   map.dragRotate.enable(); map.touchZoomRotate.enableRotation(); map.keyboard.enable();
   map.on("load", () => { try { map.setLight({ anchor: "map", color: "#ffffff", intensity: .42, position: [1.15, 205, 52] }); } catch (error) { console.info("Custom light unavailable", error); } });
   map.on("error", (event) => { const message = event?.error?.message || "Unknown map error"; if (!message.includes("tile")) console.warn("MapLibre:", message); });

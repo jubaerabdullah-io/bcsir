@@ -26,11 +26,18 @@ import { createWalkSky } from "./walk-sky.js";
 //
 // BCSIR additions (all optional; without them walking works as before):
 // - resolveMove(from, to) -> { position, blocked, blocker }: collision, so walls
-//   and buildings cannot be walked through (navigation/collision.js);
+//   and buildings cannot be walked through (navigation/collision.js); a blocker's
+//   `message` is shown instead of the usual hint;
 // - resolveStart(position) -> { position, message }: a start chosen inside a
-//   building is moved outside it;
+//   building is moved outside it (or stays inside one that has floor plans);
 // - cameraClearance(from, to) -> 0..1: share of the way from the character to the
-//   follow camera that is clear of buildings and walls (1 = clear);
+//   follow camera that is clear of buildings and walls (1 = clear), or { clear,
+//   margin, min, solo }: the metres to keep between the camera and what is there,
+//   the nearest the camera may come, and the distance under which it stands in for
+//   the character, who is then hidden (in a room, with a wall behind him);
+// - getSpeedFactor() -> share of the walking speed (slower inside a building);
+// - keys: { [event.code]: handler } for other keys while walking (Page Up / Page
+//   Down change floor), and moveTo(position) to put the walker somewhere at once;
 // - onPose({ position, heading }) after every camera change (minimap, guidance);
 //   heading is the view direction;
 // - onStateChange(state): "idle" | "choosing" | "entering" | "active";
@@ -144,6 +151,8 @@ export function createWalkMode({
   resolveMove = null,
   resolveStart = null,
   cameraClearance = null,
+  getSpeedFactor = () => 1,
+  keys = {},
   onPose = null,
   onStateChange = null,
   onManualInput = null,
@@ -167,7 +176,7 @@ export function createWalkMode({
   const pickerClose = document.querySelector("#walk-picker-close");
 
   if (!map || !toggle || !panel || !lookSurface) {
-    return { isActive: () => false, isChoosing: () => false, cancelChoosing: () => {}, open: () => {}, close: () => {}, getPose: () => null, setPose: () => {} };
+    return { isActive: () => false, isChoosing: () => false, cancelChoosing: () => {}, open: () => {}, close: () => {}, getPose: () => null, setPose: () => {}, moveTo: () => {} };
   }
 
   const interactionNames = ["boxZoom", "doubleClickZoom", "dragPan", "dragRotate", "keyboard", "scrollZoom", "touchZoomRotate"];
@@ -184,6 +193,7 @@ export function createWalkMode({
   let running = false;
   const jump = { height: 0, velocity: 0, held: false }; // metres above the floor, m/s; Space still down since the take-off
   let followDistance = 0; // current horizontal distance of the follow camera
+  let solo = false; // the follow camera is too near the character to show him
   let lastSetPose = null; // { position, time } of the last setPose (GPS)
   const character = characters.length ? createWalkCharacter(map, { onError: () => onToast?.("The character could not be loaded; walking continues without it.") }) : null;
   const sky = createWalkSky(map);
@@ -270,10 +280,15 @@ export function createWalkMode({
     const reach = behind(zoomStretch(offsetFromHeading(player.position, player.heading, 0, -horizontal), offsetAltitude, to, toAltitude));
     const position = [player.position.lng, player.position.lat];
     const back = offsetFromHeading(player.position, player.heading, 0, -reach);
-    const clear = cameraClearance ? clamp(Number(cameraClearance(position, [back.lng, back.lat])) || 0, 0, 1) : 1;
-    const allowed = clear < 1 ? Math.max(FOLLOW.minDistance, clear * reach - FOLLOW.margin) : reach;
+    const clearance = cameraClearance ? cameraClearance(position, [back.lng, back.lat]) : 1;
+    const clear = clamp(Number(clearance?.clear ?? clearance) || 0, 0, 1);
+    const limit = (name, usual) => (Number.isFinite(clearance?.[name]) ? clearance[name] : usual);
+    const allowed = clear < 1 ? Math.max(limit("min", FOLLOW.minDistance), clear * reach - limit("margin", FOLLOW.margin)) : reach;
     if (!followDistance || allowed < followDistance) followDistance = allowed;
     else followDistance += (allowed - followDistance) * (1 - Math.exp(-deltaSeconds * 3));
+    // Nearer than `solo` the camera stands in for the character (he would fill the view).
+    const alone = limit("solo", 0);
+    solo = alone > 0 && followDistance < (solo ? alone + 0.3 : alone);
     const k = (followDistance + lead) / (horizontal + lead);
     return {
       from: offsetFromHeading(player.position, player.heading, 0, -followDistance),
@@ -294,7 +309,7 @@ export function createWalkMode({
 
   function updateCharacter() {
     if (!character || !player.position) return;
-    character.setVisible(blend > 0.35);
+    character.setVisible(blend > 0.35 && !solo);
     character.update({ position: [player.position.lng, player.position.lat], altitude: floorElevation() + jump.height, facing, speed, running, airborne: jump.height > 0.05 });
   }
 
@@ -311,7 +326,8 @@ export function createWalkMode({
     const id = blocker?.id ?? "wall";
     if (lastBlockedHint.id === id && now - lastBlockedHint.time < BLOCKED_HINT_INTERVAL_MS) return;
     lastBlockedHint = { id, time: now };
-    if (blocker?.kind === "building") onToast?.(`${blocker.name || "This building"} has no indoor map, so it cannot be entered.`);
+    if (blocker?.message) onToast?.(blocker.message);
+    else if (blocker?.kind === "building") onToast?.(`${blocker.name || "This building"} has no indoor map, so it cannot be entered.`);
     else onToast?.(`${blocker?.name || "A wall"} blocks the way.`);
   }
 
@@ -380,7 +396,8 @@ export function createWalkMode({
     }
 
     const magnitude = Math.hypot(right, forward) || 1;
-    const distance = WALK_SPEED_METERS_PER_SECOND * speedBoost * deltaSeconds;
+    const pace = Number(getSpeedFactor?.());
+    const distance = WALK_SPEED_METERS_PER_SECOND * speedBoost * (pace > 0 ? pace : 1) * deltaSeconds;
     const assist = forward > 0 && !turn && !draggingLook ? Number(steer?.({ ...pose(), forward, deltaSeconds })) || 0 : 0;
     const moved = movePlayer(right / magnitude * distance, forward / magnitude * distance);
     rotatePlayer(turn * TURN_SPEED_DEGREES_PER_SECOND * deltaSeconds + assist);
@@ -555,6 +572,7 @@ export function createWalkMode({
     running = false;
     Object.assign(jump, { height: 0, velocity: 0, held: false });
     followDistance = 0;
+    solo = false;
     view = "third";
     blend = 1;
     entering = true;
@@ -663,6 +681,11 @@ export function createWalkMode({
         setView(view === "third" ? "first" : "third");
         return;
       }
+      if (Object.hasOwn(keys, event.code)) {
+        event.preventDefault();
+        if (!event.repeat) keys[event.code]();
+        return;
+      }
       if (!MOVEMENT_KEYS.has(event.code)) return;
       event.preventDefault();
       if (!pressed.has(event.code) && !event.code.startsWith("Shift")) onManualInput?.();
@@ -737,8 +760,17 @@ export function createWalkMode({
     close: exit,
     getPose: pose,
     // Diagnostics: current view, look pitch, character state.
-    getView: () => ({ view, blend, pitch, facing, speed, running, jump: jump.height, sky: sky.isShown(), followDistance, character: character?.stats() ?? null, listening: Boolean(session) }),
+    getView: () => ({ view, blend, pitch, facing, speed, running, jump: jump.height, sky: sky.isShown(), followDistance, solo, character: character?.stats() ?? null, listening: Boolean(session) }),
     setView,
+    // Puts the walker somewhere else at once (a lift or stairs to another floor).
+    moveTo(position) {
+      const next = toArray(position);
+      if (!active || !next) return;
+      player.position = { lng: next[0], lat: next[1] };
+      followDistance = 0;
+      updateCamera();
+      wake(true);
+    },
     // Live navigation drives the walker from GPS and the compass.
     setPose(position, heading) {
       const next = toArray(position);

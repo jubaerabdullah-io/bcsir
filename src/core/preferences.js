@@ -1,5 +1,5 @@
 // Saved choices of the visitor (localStorage): the map theme, the basemap, the
-// layer switches and the Walk Mode character.
+// Walk Mode character and the places used last.
 //
 // Reading and writing never throw: in a private window, or with storage blocked,
 // a choice simply lasts for this page. The keys are the ones already in use, so
@@ -7,8 +7,8 @@
 export const PREFERENCE_KEYS = {
   theme: "bcsir-map-theme", // "dark" | "light"
   basemap: "bcsir-map-basemap", // basemap id (map/basemaps.js)
-  layers: "bcsir-map-layers", // { [layer group id]: false } for the switched-off groups
-  walk: "bcsir-walk-mode" // { character }
+  walk: "bcsir-walk-mode", // { character }
+  recent: "bcsir-map-recent" // { [organisation id]: [directory entry key, ...] }, newest first (search/recents.js)
 };
 
 // The saved text, or null.

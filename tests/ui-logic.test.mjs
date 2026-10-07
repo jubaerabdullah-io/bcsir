@@ -1,4 +1,4 @@
-// Label anchors, basemaps, the walking-route summary and the address switches.
+// Label anchors, basemaps, the walking-route summary, the places used last and the address switches.
 import "../scripts/lib/node-routing-hooks.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -10,6 +10,7 @@ import { labelAnchor, pointInRings, polygonCentroid } from "../src/utils/geo-uti
 import { BASEMAP_SOURCES, BASEMAPS, basemapLayers, basemapVisibility, thumbnailUrl } from "../src/map/basemaps.js";
 import { describeEndpoint, describeRoute, formatDistance, walkingMinutes } from "../src/routing/route-summary.js";
 import { viewMode } from "../src/core/view-mode.js";
+import { createRecents } from "../src/search/recents.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
@@ -62,7 +63,7 @@ test("basemaps: the street layer is unchanged, satellite has Esri attribution, o
   assert.equal(thumbnailUrl("street", [90.38612, 23.74024], 16), "https://tile.openstreetmap.org/16/49222/28316.png");
 });
 
-test("layer groups: labels, route and basemap keep a switch in the layer list", async () => {
+test("layer groups: labels, route and basemap are groups of their own", async () => {
   const { LAYER_GROUPS } = await import("../src/map/bcsir-layers.js");
   const ids = LAYER_GROUPS.map((group) => group.id);
   assert.deepEqual(ids, ["buildings", "labels", "roads", "roadsDrawing", "pathways", "area", "boundary", "internal", "garden", "trees", "route", "models", "basemap"]);
@@ -94,6 +95,34 @@ test("route summary: a missing entrance and a missing connection are stated, not
   const disconnected = describeRoute(service.route(find(101), find(305)));
   assert.equal(disconnected.status, "error");
   assert.equal(disconnected.headline, "No walking route");
+});
+
+test("places used last: newest first, once each, per organisation, and only those that still exist", () => {
+  let saved = { other: ["building:9"] };
+  const storage = { read: () => saved, write: (value) => { saved = value; } };
+  const entries = { "building:101": { key: "building:101", kind: "building" }, "test:7": { key: "test:7", kind: "test" }, "place:a/L01/1": { key: "place:a/L01/1", kind: "place" } };
+  const resolve = (key) => entries[key] || null;
+  const recents = createRecents({ scope: "bcsir", limit: 3, ...storage });
+  assert.deepEqual(recents.list(resolve), []);
+  recents.add(entries["building:101"]);
+  recents.add(entries["test:7"]);
+  recents.add(entries["building:101"]); // used again: moves to the front, not listed twice
+  recents.add({ kind: "building", title: "A place the directory does not list" }); // no key: not kept
+  assert.deepEqual(recents.list(resolve).map((entry) => entry.key), ["building:101", "test:7"]);
+  assert.deepEqual(saved, { other: ["building:9"], bcsir: ["building:101", "test:7"] });
+  // The From field takes no tests, and leaves out the place chosen in the other field.
+  assert.deepEqual(recents.list(resolve, { kinds: ["building", "place", "lab"] }).map((entry) => entry.key), ["building:101"]);
+  assert.deepEqual(recents.list(resolve, { exclude: ["building:101"] }).map((entry) => entry.key), ["test:7"]);
+  // No more than the limit are kept; a place that left the map data is not listed.
+  recents.add(entries["place:a/L01/1"]);
+  recents.add({ key: "building:gone", kind: "building" });
+  assert.deepEqual(saved.bcsir, ["building:gone", "place:a/L01/1", "building:101"]);
+  assert.deepEqual(recents.list(resolve).map((entry) => entry.key), ["place:a/L01/1", "building:101"]);
+  assert.deepEqual(recents.list(resolve, { limit: 1 }).map((entry) => entry.key), ["place:a/L01/1"]);
+  // A later visit reads what was saved; clearing forgets this organisation's places only.
+  assert.deepEqual(createRecents({ scope: "bcsir", ...storage }).list(resolve).map((entry) => entry.key), ["place:a/L01/1", "building:101"]);
+  recents.clear();
+  assert.deepEqual(saved, { other: ["building:9"], bcsir: [] });
 });
 
 test("the flat map and the frame switch are off unless the address asks for them", () => {

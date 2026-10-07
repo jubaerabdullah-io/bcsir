@@ -1,29 +1,35 @@
-// Accessible autocomplete (ARIA combobox + listbox) shared by the main search
-// bar and the From / To fields of the directions panel.
-// Keyboard: ArrowDown / ArrowUp move through the results, Enter picks the
-// highlighted (or first) result, Escape closes the list.
+// Accessible autocomplete (ARIA combobox + listbox) shared by the search box and
+// the From / To fields of the directions panel.
+// Before anything is typed the list shows suggestions (the places used last);
+// while typing, the search results.
+// Keyboard: ArrowDown / ArrowUp move through the list, Enter picks the
+// highlighted result (or the first search result), Escape closes the list.
 import { escapeHTML } from "../utils/html.js";
 
 const ICONS = {
   place: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20.5V4.5h9.5v16"/><path d="M3.5 20.5h17"/><path d="M15.5 7.5h3v13"/><path d="M12.2 12.5v.6"/></g></svg>',
   building: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.4c-3.9 0-7.1 3.1-7.1 7 0 5.3 7.1 12.2 7.1 12.2s7.1-6.9 7.1-12.2c0-3.9-3.2-7-7.1-7Zm0 9.6a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z"/></svg>',
   lab: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8.2 3.6 3.4 2-3.9 6.7-3.4-2Z"/><path d="m10.2 8.9 2.3 1.3"/><path d="M13.6 11.4a5.2 5.2 0 0 1-1.1 8.1"/><path d="M5 20.6h14"/><path d="M8 17.6h6"/></g></svg>',
-  test: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" opacity=".3" d="M7.6 14.2h8.8l2.6 4a1.5 1.5 0 0 1-1.3 2.3H6.3A1.5 1.5 0 0 1 5 18.2Z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 3.2h6M10.2 3.2v5.3l-5.3 9A2.3 2.3 0 0 0 6.9 21h10.2a2.3 2.3 0 0 0 2-3.5l-5.3-9V3.2"/></svg>'
+  test: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" opacity=".3" d="M7.6 14.2h8.8l2.6 4a1.5 1.5 0 0 1-1.3 2.3H6.3A1.5 1.5 0 0 1 5 18.2Z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 3.2h6M10.2 3.2v5.3l-5.3 9A2.3 2.3 0 0 0 6.9 21h10.2a2.3 2.3 0 0 0 2-3.5l-5.3-9V3.2"/></svg>',
+  recent: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.4V12l3 2"/></g></svg>'
 };
 
 export function kindIcon(kind) {
   return `<span class="result-icon result-icon-${kind}">${ICONS[kind] || ICONS.building}</span>`;
 }
 
-export function resultItemHTML(entry) {
-  return `${kindIcon(entry.kind)}<span class="result-text"><strong>${escapeHTML(entry.title)}</strong>${entry.subtitle ? `<small>${escapeHTML(entry.subtitle)}</small>` : ""}<em>${escapeHTML(entry.meta)}</em></span>`;
+// recent: the entry is a place used before (a clock instead of the icon of its kind).
+export function resultItemHTML(entry, { recent = false } = {}) {
+  return `${kindIcon(recent ? "recent" : entry.kind)}<span class="result-text"><strong>${escapeHTML(entry.title)}</strong>${entry.subtitle ? `<small>${escapeHTML(entry.subtitle)}</small>` : ""}<em>${escapeHTML(entry.meta)}</em></span>`;
 }
 
 let comboboxCount = 0;
 
+// suggest(): entries listed while nothing is typed (none: the list stays closed);
+// onClearSuggestions() adds a button under them that forgets them.
 // fitToScreen: the open list ends at the bottom of the visible screen, which is
 // above the on-screen keyboard on phones (--combo-room in style.css).
-export function createCombobox({ input, list, search, onSelect, onClear, emptyText = "No matches", renderItem = resultItemHTML, fitToScreen = false }) {
+export function createCombobox({ input, list, search, suggest, onClearSuggestions, onSelect, onClear, emptyText = "No matches", renderItem = resultItemHTML, fitToScreen = false }) {
   const listId = list.id || `combobox-list-${++comboboxCount}`;
   list.id = listId;
   list.setAttribute("role", "listbox");
@@ -33,6 +39,7 @@ export function createCombobox({ input, list, search, onSelect, onClear, emptyTe
   input.setAttribute("aria-expanded", "false");
   let items = [];
   let active = -1;
+  let suggesting = false; // the list shows suggestions, not search results
 
   function fit() {
     if (!fitToScreen || list.hidden) return;
@@ -44,7 +51,6 @@ export function createCombobox({ input, list, search, onSelect, onClear, emptyTe
   function setOpen(open) {
     list.hidden = !open;
     input.setAttribute("aria-expanded", String(open));
-    list.closest("[data-combobox]")?.classList.toggle("combobox-open", open);
     if (open) fit();
     else { active = -1; input.removeAttribute("aria-activedescendant"); }
   }
@@ -59,17 +65,24 @@ export function createCombobox({ input, list, search, onSelect, onClear, emptyTe
     } else input.removeAttribute("aria-activedescendant");
   }
 
+  const optionsHTML = (entries, options) => entries.map((entry, index) => `<div class="combo-option result-${entry.kind}" role="option" id="${listId}-option-${index}" data-index="${index}" aria-selected="false">${renderItem(entry, options)}</div>`).join("");
+
   function render() {
     const query = input.value.trim();
-    if (!query) { items = []; list.innerHTML = ""; setOpen(false); return; }
-    const { results, total } = search(query);
-    items = results;
-    if (!results.length) {
-      list.innerHTML = `<div class="combo-empty" role="presentation">${escapeHTML(emptyText)} for “${escapeHTML(query)}”</div>`;
+    suggesting = !query;
+    if (suggesting) {
+      items = suggest?.() || [];
+      if (!items.length) { list.innerHTML = ""; setOpen(false); return; }
+      list.innerHTML = optionsHTML(items, { recent: true })
+        + (onClearSuggestions ? '<div class="combo-footer" role="presentation"><button class="combo-clear" type="button" data-clear-suggestions>Clear recent</button></div>' : "");
     } else {
-      list.innerHTML = results.map((entry, index) => `<div class="combo-option result-${entry.kind}" role="option" id="${listId}-option-${index}" data-index="${index}" aria-selected="false">${renderItem(entry)}</div>`).join("")
-        + (total > results.length ? `<div class="combo-footer" role="presentation">Showing ${results.length} of ${total} results. Type more to narrow the list.</div>` : "");
+      const { results, total } = search(query);
+      items = results;
+      list.innerHTML = results.length
+        ? optionsHTML(results) + (total > results.length ? `<div class="combo-footer" role="presentation">Showing ${results.length} of ${total} results. Type more to narrow the list.</div>` : "")
+        : `<div class="combo-empty" role="presentation">${escapeHTML(emptyText)} for “${escapeHTML(query)}”</div>`;
     }
+    list.scrollTop = 0;
     setOpen(true);
     active = -1;
   }
@@ -83,7 +96,8 @@ export function createCombobox({ input, list, search, onSelect, onClear, emptyTe
   }
 
   input.addEventListener("input", render);
-  input.addEventListener("focus", () => { if (input.value.trim() && list.hidden) render(); });
+  // Focusing or clicking the field opens its list: suggestions, or the results of its text.
+  ["focus", "click"].forEach((type) => input.addEventListener(type, () => { if (list.hidden) render(); }));
   input.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
@@ -94,15 +108,17 @@ export function createCombobox({ input, list, search, onSelect, onClear, emptyTe
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (list.hidden) render();
-      choose(active >= 0 ? active : 0);
+      // A suggestion is taken only when it is highlighted: Enter in an empty field picks nothing.
+      choose(active >= 0 || suggesting ? active : 0);
     } else if (event.key === "Escape") {
       if (!list.hidden) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
       else if (input.value) { event.preventDefault(); input.value = ""; onClear?.(); }
     } else if (event.key === "Tab") setOpen(false);
   });
   // mousedown keeps focus in the input; click picks the option.
-  list.addEventListener("mousedown", (event) => { if (event.target.closest('[role="option"]')) event.preventDefault(); });
+  list.addEventListener("mousedown", (event) => { if (event.target.closest('[role="option"], [data-clear-suggestions]')) event.preventDefault(); });
   list.addEventListener("click", (event) => {
+    if (event.target.closest("[data-clear-suggestions]")) { onClearSuggestions?.(); render(); return; }
     const option = event.target.closest('[role="option"]');
     if (option) choose(Number(option.dataset.index));
   });
@@ -119,6 +135,8 @@ export function createCombobox({ input, list, search, onSelect, onClear, emptyTe
   return {
     // Search button: pick the highlighted or first result. Returns false if none.
     submit() { render(); return choose(active >= 0 ? active : 0); },
+    // Opens the list for the field's present text (its suggestions when it is empty).
+    show: render,
     close: () => setOpen(false),
     refresh() { if (!list.hidden) render(); },
     setText(text) { input.value = text || ""; setOpen(false); }

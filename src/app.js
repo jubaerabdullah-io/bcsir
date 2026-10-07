@@ -19,14 +19,16 @@ import { createUI } from "./ui/ui.js";
 import { createModelGroups } from "./three/model-placements.js";
 import { get3DModelStats, setFadedModelBuildings, setHiddenModelBuildings } from "./three/models3d.js";
 import { createCameraController } from "./map/camera-controls.js";
-import { FIT_PADDING } from "./map/fit-padding.js";
+import { FIT_PADDING, flyOffset } from "./map/fit-padding.js";
 import { createWalkMode } from "./walk/walk-mode.js";
+import { createWalkIndoor } from "./walk/walk-indoor.js";
 import { createLayerManager } from "./map/layer-manager.js";
 import { createRouteService, routePathCoordinates, routeToGeoJSON } from "./routing/route-service.js";
 import { createBuildingLabels } from "./buildings/building-labels.js";
 import { createDirectory } from "./search/directory.js";
 import { directoryFiles, loadDirectory } from "./data/directory-data.js";
 import { createSearch } from "./search/search-ui.js";
+import { createRecents } from "./search/recents.js";
 import { createDirections } from "./ui/directions-ui.js";
 import { createRouteMarkers } from "./routing/route-markers.js";
 import { createRouteWalker } from "./routing/route-walker.js";
@@ -43,6 +45,7 @@ import { describeTrip, planIndoorTrip } from "./indoor/trip.js";
 import { viewMode } from "./core/view-mode.js";
 
 const org = activeOrg();
+const recents = createRecents({ scope: org.id }); // the places used last, listed by the search box and the directions fields
 const map = createMap("map", { basemap: savedBasemap() });
 let data;
 let routeService;
@@ -69,7 +72,7 @@ let buildingsById = new Map();
 let displayRoute = null;
 let obstacles = null;
 let collisionWorld = null;
-let walkIndoorState = {};
+let indoorWalk; // walking inside buildings with floor plans (walk/walk-indoor.js)
 let routeOcclusion;
 let minimap;
 let navigation;
@@ -93,8 +96,9 @@ function buildNavigationGeometry() {
         { collection: lineStrips(data.render.boundary), kind: "wall", name: "The campus boundary wall" }
       ]
     })
-    // indoor: no building has indoor map data yet, so every building is solid.
   });
+  // The floors of buildings with floor plans, which the walker can go into.
+  indoorWalk?.attach();
   minimap?.setData({ buildings: data.render.buildings, garden: data.render.garden, roads: data.render.roads, pathways: data.render.pathways });
 }
 
@@ -134,6 +138,20 @@ function placeEntry(uid) {
   return { kind: "place", key: `place:${uid}`, id: uid, title: `Room on ${building.levelById.get(levelId)?.name || levelId}`, subtitle: "", meta: building.name, buildingId: building.buildingId, placeUid: uid };
 }
 
+// The places used last (search/recents.js), as entries of the directory.
+function recentEntries(options) {
+  return recents.list((key) => directory.entry(key) || (key.startsWith("place:") ? placeEntry(key.slice(6)) : null), options);
+}
+
+// The search box names the place whose card is open: the selected room or point,
+// else the selected building (or the laboratory or test that led to it).
+function showPlaceInSearch() {
+  if (!search || !ui) return;
+  const place = placeEntry(indoor?.selectedPlace());
+  const feature = ui.activeBuilding();
+  search.showPlace(place?.title || (feature ? ui.activeContext()?.title || directory.entryForBuilding(feature)?.title || String(feature.properties?.name_en || "Building").trim() : null));
+}
+
 // Sets a route endpoint: a building, or (placeUid) a room or point inside it.
 function setEndpoint(kind, feature, placeUid = null) {
   routePlaces[kind] = placeUid;
@@ -163,21 +181,6 @@ function resetView() {
   if (homeView) map.flyTo({ ...homeView, duration: 900, essential: true }); else frameCampus();
 }
 
-// "View on Map" (map button in the right-hand controls): close search lists and
-// panels, deselect the building and fit the camera to the BCSIR boundary in the
-// default 3D view. The route and its endpoints are kept.
-function viewCampus() {
-  map.getCanvas().focus({ preventScroll: true });
-  search?.close();
-  directions?.closeLists();
-  layerManager?.setOpen(false);
-  cameraController?.markDefaultView();
-  interactionController?.setPickHandler(null);
-  interactionController?.clearSelection();
-  indoor?.closeAll();
-  frameCampus(true);
-}
-
 // Building feature for a search / directions entry. Buildings are matched by
 // their render id; laboratories and tests by the building recorded for them.
 function featureForEntry(entry) {
@@ -186,16 +189,31 @@ function featureForEntry(entry) {
   return directory.building(entry.buildingId);
 }
 
+// Opens a search result on the map. False when it has no place there.
 function selectEntry(entry) {
   // A room or point: its floor is opened and the place itself is selected.
-  if (entry.kind === "place") { indoor.selectPlace(entry.placeUid); return; }
+  if (entry.kind === "place") {
+    indoor.selectPlace(entry.placeUid).then((found) => { if (!found) showPlaceInSearch(); });
+    return true;
+  }
   const feature = featureForEntry(entry);
   if (!feature) {
     ui.showToast(`The building of “${entry.title}” is not recorded in the map data`);
-    return;
+    showPlaceInSearch();
+    return false;
   }
   ui.setPendingContext(entry.kind === "building" ? null : entry);
   interactionController.selectFeature(feature);
+  return true;
+}
+
+// "Directions" / "Start here" on the building card: the building (or the laboratory
+// or test the card was opened for) becomes that end of the route, and the
+// directions panel takes the place of the card.
+function routeFromCard(kind, feature, context) {
+  const entry = context || directory.entryForBuilding(feature);
+  if (entry) directions.setEndpointEntry(kind, entry); else setEndpoint(kind, feature);
+  interactionController.clearSelection();
 }
 
 function pinFor(feature, endpoint) {
@@ -423,21 +441,36 @@ async function start() {
   buildNavigationGeometry();
 
   // Buildings with floor plans: the floor selector, rooms and indoor routes.
+  const buildingById = (id) => (id === null || id === undefined ? null : data.render.buildings.features.find((feature) => String(feature.properties.id) === String(id)) || null);
   indoor = createIndoor({
     map,
     org,
-    getBuildingFeature: (id) => (id === null || id === undefined ? null : data.render.buildings.features.find((feature) => String(feature.properties.id) === String(id)) || null),
+    getBuildingFeature: buildingById,
     setHiddenShells: (ids) => { routeOcclusion.setHiddenBuildings(ids); setShellHiddenBuildings(map, ids); setHiddenModelBuildings(map, ids); },
     isBusy: () => Boolean(walkController?.isActive() || walkController?.isChoosing() || navigation?.isActive()),
-    onPlaceShown: () => interactionController?.clearSelection(),
+    onPlaceShown: () => { interactionController?.clearSelection(); showPlaceInSearch(); },
+    onPlaceHidden: showPlaceInSearch,
+    // "Directions" / "Start here" on a room's card, as on the building card.
     onRoutePlace: (kind, uid) => {
       const entry = placeEntry(uid);
       if (!entry) return;
       directions.setEndpointEntry(kind, entry);
-      ui.showToast(`${entry.title} set as the ${kind === "source" ? "starting point" : "destination"}`);
+      indoor.clearSelection();
     },
-    onChange: () => { routeOcclusion.refresh(); showRoutePins(); },
-    onMessage: (message) => ui?.showToast(message)
+    onChange: () => { routeOcclusion.refresh(); showRoutePins(); indoorWalk?.preload(); },
+    onMessage: (message) => ui?.showToast(message),
+    // While walking, the floor selector takes the walker to the floor (by a lift or stairs).
+    onFloorPick: (key, levelId) => Boolean(indoorWalk?.pickFloor(key, levelId)),
+    onExteriorPick: () => Boolean(indoorWalk?.pickExterior())
+  });
+  indoorWalk = createWalkIndoor({
+    indoor,
+    getBuildingFeature: buildingById,
+    getWorld: () => collisionWorld,
+    getWalk: () => walkController,
+    // Live navigation follows a route between buildings: they stay solid.
+    isEnabled: () => !navigation?.isActive(),
+    onToast: (message) => ui?.showToast(message)
   });
   directoryData = await directoryLoad;
   rebuildDirectory();
@@ -463,32 +496,33 @@ async function start() {
   ui = createUI({
     map,
     onClearSelection: () => interactionController?.clearSelection(),
-    onSetSource: (feature, context) => {
-      if (context) directions.setEndpointEntry("source", context); else setEndpoint("source", feature);
-      ui.showToast(`${String(feature.properties?.name_en || "Building").trim()} set as the starting point`);
-    },
-    onSetDestination: (feature, context) => {
-      if (context) directions.setEndpointEntry("destination", context); else setEndpoint("destination", feature);
-      ui.showToast(`${String(feature.properties?.name_en || "Building").trim()} set as the destination`);
-    },
-    onReset: resetView
+    onSetSource: (feature, context) => routeFromCard("source", feature, context),
+    onSetDestination: (feature, context) => routeFromCard("destination", feature, context)
   });
 
-  search = createSearch({ getDirectory: () => directory, onSelect: selectEntry, onMessage: ui.showToast });
+  search = createSearch({
+    getDirectory: () => directory,
+    getRecent: () => recentEntries({ limit: 6 }),
+    onClearRecent: () => recents.clear(),
+    onSelect: (entry) => { if (selectEntry(entry)) recents.add(entry); },
+    // The Close button of the search box: the open place closes.
+    onClose: () => { interactionController.clearSelection(); indoor.clearSelection(); },
+    onMessage: ui.showToast
+  });
 
   directions = createDirections({
     getDirectory: () => directory,
+    getRecent: (options) => recentEntries({ ...options, limit: 6 }),
+    onUse: (entry) => recents.add(entry),
     resolveFeature: featureForEntry,
     onSetEndpoint: (kind, feature, entry) => setEndpoint(kind, feature, entry?.kind === "place" ? entry.placeUid : null),
     onClearEndpoint: (kind) => { routePlaces[kind] = null; if (kind === "source") interactionController.clearSourceFeature(); else interactionController.clearDestinationFeature(); },
     onSwap: () => { routePlaces = { source: routePlaces.destination, destination: routePlaces.source }; interactionController.swapRouteEndpoints(); },
-    onClearRoute: () => { routePlaces = { source: null, destination: null }; interactionController.clearRouteSelection(); ui.showToast("Route cleared"); },
+    onClearRoute: () => { routePlaces = { source: null, destination: null }; interactionController.clearRouteSelection(); },
     onStep: showStep,
     onStepFreeChange: () => updateRoute(interactionController.getRouteSelection()),
-    onPick: (kind, handler) => {
-      interactionController.setPickHandler(handler || null);
-      if (kind) { walkController?.cancelChoosing(); interactionController.clearSelection(); indoor.clearSelection(); ui.showToast(`Click a building or a room to set the ${kind === "source" ? "starting point" : "destination"}`); }
-    },
+    // An empty field of the open panel takes the next building or room clicked on the map.
+    onPick: (handler) => interactionController.setPickHandler(handler),
     onWalkChange: () => updateRoute(interactionController.getRouteSelection()),
     onNavigate: (view) => navigation?.start({ view }),
     onMessage: ui.showToast
@@ -520,33 +554,43 @@ async function start() {
       return true;
     },
     interceptMove: (event) => indoor.handleMove(event),
-    onSelect: (feature) => { indoor.clearSelection(); ui.showBuilding(feature); indoor.buildingSelected(feature); },
-    onClear: () => { ui.hideBuilding(); indoor.buildingSelected(null); },
+    flyOffset,
+    onSelect: (feature) => { indoor.clearSelection(); ui.showBuilding(feature); indoor.buildingSelected(feature); showPlaceInSearch(); },
+    onClear: () => { ui.hideBuilding(); indoor.buildingSelected(null); showPlaceInSearch(); },
     onRouteChange: updateRoute
   });
 
   walkController = createWalkMode({
     map,
-    getFloorElevation: () => 0,
-    getLevelLabel: () => "Ground",
-    // Walk mode is outdoors: open floor plans close, so their buildings are solid again.
-    beforeOpen: () => { interactionController?.clearSelection(); indoor.closeAll(); directions?.closeLists(); return true; },
+    // Inside a building the walker stands on its floor plan, which is drawn at ground level.
+    getFloorElevation: () => indoorWalk.floorElevation(),
+    getLevelLabel: () => indoorWalk.levelLabel(),
+    getSpeedFactor: () => indoorWalk.speedFactor(),
+    // At a lift or stairs inside a building: one floor up or down.
+    keys: { PageUp: () => indoorWalk.changeFloor(1), PageDown: () => indoorWalk.changeFloor(-1) },
+    // Open floor plans stay until the start is known: a walk started on one starts inside it.
+    beforeOpen: () => { interactionController?.clearSelection(); indoor.clearSelection(); directions?.closeLists(); indoorWalk.begin(); return true; },
     onToast: ui.showToast,
-    // Walls and buildings without an indoor map cannot be walked through.
-    resolveMove: (from, to) => collisionWorld.resolveMove(from, to, walkIndoorState),
+    // Walls and buildings cannot be walked through; a building with floor plans is
+    // walked into through its entrance (walk-indoor.js).
+    resolveMove: (from, to) => indoorWalk.resolveMove(from, to),
     // The follow camera stops in front of the first building or wall behind the character.
-    cameraClearance: (from, to) => collisionWorld.firstHit(from, to)?.t ?? 1,
+    cameraClearance: (from, to) => indoorWalk.cameraClearance(from, to),
     resolveStart: (position) => {
+      const inside = indoorWalk.resolveStart(position);
+      if (inside) return inside;
       const blocker = collisionWorld.blockerAt(position);
       if (!blocker) return null;
       return {
         position: collisionWorld.nearestFree(position),
-        message: blocker.kind === "building" ? `${blocker.name || "That building"} has no indoor map, so the walk starts outside it.` : "The walk starts beside the wall."
+        message: blocker.kind !== "building" ? "The walk starts beside the wall." : indoorWalk.startHint(blocker.id) || `${blocker.name || "That building"} has no indoor map, so the walk starts outside it.`
       };
     },
-    onPose: (pose) => { minimap?.update(pose.position, pose.heading); navigation?.onWalkPose(pose); },
+    onPose: (pose) => { minimap?.update(pose.position, pose.heading); navigation?.onWalkPose(pose); indoorWalk.track(pose); },
     onStateChange: (state) => {
-      if (state === "entering") walkIndoorState = {};
+      // The floors open before the walk are open again after it.
+      if (state === "idle") indoorWalk.end();
+      indoor.setWalkView(state === "entering" || state === "active");
       minimap?.show(state === "active");
       routeWalker.setSuppressed(state !== "idle" || Boolean(navigation?.isActive()));
       navigation?.onWalkState(state);
@@ -605,22 +649,8 @@ async function start() {
       basemap: (visible) => basemap.setEnabled(visible)
     },
     onVisibilityChange: (groupId, visible) => { modelGroups.setVisible(groupId, visible).catch((error) => console.error(`3D models of "${groupId}" could not be loaded:`, error)); },
-    onOpen: () => cameraController?.closeMenu(),
-    datasetCounts: {
-      buildings: data.render.buildings.features.length,
-      roads: data.render.roads.features.length,
-      roadsDrawing: data.render.roadsDrawing.features.length,
-      pathways: data.render.pathways.features.length,
-      area: data.render.area.features.length,
-      boundary: data.render.boundary.features.length,
-      internal: data.render.internal.features.length,
-      garden: data.render.garden.features.length,
-      trees: data.render.treeLine.features.length,
-      models: data.raw.models.features.length
-    }
+    onOpen: () => cameraController?.closeMenu()
   });
-
-  document.querySelector("#view-on-map").addEventListener("click", viewCampus);
 
   cameraController.updateTarget(campusExtent());
   frameCampus(false);
@@ -686,6 +716,9 @@ async function start() {
     walkClose: () => walkController.close(),
     walkView: () => walkController.getView(),
     walkSetView: (view) => walkController.setView(view),
+    // Walking inside buildings with floor plans: where the walker is, and a floor up or down.
+    walkIndoor: () => indoorWalk.state(),
+    walkFloor: (step) => indoorWalk.changeFloor(step),
     blockerAt: (position) => collisionWorld.blockerAt(position),
     navigation: Object.freeze({
       start: (view = "map") => navigation.start({ view }),
