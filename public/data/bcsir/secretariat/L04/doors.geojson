@@ -1,0 +1,17 @@
+{
+"type": "FeatureCollection",
+"name": "doors",
+"crs": {"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},
+"features": [
+{"type":"Feature","properties":{"id":"L04-D01","room":"L04-01","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38475413,23.74022615],[90.38474453,23.74022422]]}},
+{"type":"Feature","properties":{"id":"L04-D02","room":"L04-01","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38463007,23.74020118],[90.38462048,23.74019925]]}},
+{"type":"Feature","properties":{"id":"L04-D03","room":"L04-02","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38476046,23.7401998],[90.38475086,23.74019787]]}},
+{"type":"Feature","properties":{"id":"L04-D04","room":"L04-03","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38467908,23.74018342],[90.38466949,23.74018149]]}},
+{"type":"Feature","properties":{"id":"L04-D05","room":"L04-04","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38464039,23.74017563],[90.3846308,23.7401737]]}},
+{"type":"Feature","properties":{"id":"L04-D06","room":"L04-05","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.3846057,23.74016865],[90.3845961,23.74016672]]}},
+{"type":"Feature","properties":{"id":"L04-D07","room":"L04-05","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38448164,23.74014368],[90.38447205,23.74014175]]}},
+{"type":"Feature","properties":{"id":"L04-D08","room":"L04-06","thickness_m":0.1},"geometry":{"type":"LineString","coordinates":[[90.38456886,23.74022017],[90.38455926,23.74021824]]}},
+{"type":"Feature","properties":{"id":"L04-D09","room":"L04-07","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.384518,23.74017862],[90.3845084,23.74017669]]}},
+{"type":"Feature","properties":{"id":"L04-D10","room":"L04-08","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38447931,23.74017084],[90.38446971,23.7401689]]}}
+]
+}

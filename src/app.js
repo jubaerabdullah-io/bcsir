@@ -19,7 +19,9 @@ import { createUI } from "./ui/ui.js";
 import { createModelGroups } from "./three/model-placements.js";
 import { get3DModelStats, setFadedModelBuildings, setHiddenModelBuildings } from "./three/models3d.js";
 import { createCameraController } from "./map/camera-controls.js";
+import { axisBearings, cameraForPoints, principalBearing } from "./map/camera-fit.js";
 import { FIT_PADDING, flyOffset } from "./map/fit-padding.js";
+import { orientedFootprint } from "./buildings/building-footprint.js";
 import { createWalkMode } from "./walk/walk-mode.js";
 import { createWalkIndoor } from "./walk/walk-indoor.js";
 import { createLayerManager } from "./map/layer-manager.js";
@@ -43,6 +45,7 @@ import { createBuildingModels } from "./buildings/building-models.js";
 import { createIndoor } from "./indoor/indoor-controller.js";
 import { describeTrip, planIndoorTrip } from "./indoor/trip.js";
 import { viewMode } from "./core/view-mode.js";
+import { DEG, geometryPolygons, normalizeDegrees } from "./utils/local-frame.js";
 
 const org = activeOrg();
 const recents = createRecents({ scope: org.id }); // the places used last, listed by the search box and the directions fields
@@ -83,6 +86,7 @@ let indoor;
 let routePlaces = { source: null, destination: null };
 let trip = null; // indoor parts and description of the current route (indoor/trip.js)
 let tripToken = 0;
+let routeDrawn = false; // the route between buildings is drawn (Walk on, a route found)
 
 // Buildings and walls for route correction, walk collision and the minimap.
 function buildNavigationGeometry() {
@@ -111,11 +115,44 @@ function showRouteGeometry(result) {
   minimap?.setRoute(result?.ok ? routePathCoordinates(result) : null, result?.destination?.point || null);
 }
 
-// Bounds around a list of [lon, lat] coordinates.
-function boundsOf(coordinates) {
-  const bounds = new maplibregl.LngLatBounds();
-  coordinates.forEach((coordinate) => bounds.extend(coordinate));
-  return bounds;
+// Frames a route, or a part of it ([lon, lat] coordinates): as large as the free
+// part of the screen allows, also tilted (map/camera-fit.js), turned along the
+// route when that shows it clearly larger (a long route runs up a phone).
+function frameRoute(coordinates, { padding = FIT_PADDING.route(), maxZoom = 18.6, pitch = map.getPitch(), duration = 900 } = {}) {
+  if (!coordinates.length) return;
+  const camera = cameraForPoints(map, coordinates, { pitch, bearings: axisBearings(principalBearing(coordinates)), keepBearing: true, padding, maxZoom });
+  if (camera) map.flyTo({ ...camera, duration, essential: true });
+}
+
+// Bearing of a building's long axis (its footprint), or null.
+function footprintBearing(feature) {
+  const footprint = orientedFootprint(feature);
+  return footprint ? normalizeDegrees(Math.atan2(footprint.u[0], footprint.u[1]) / DEG) % 180 : null;
+}
+
+// The route on the map: between the buildings and inside them (all floors).
+function routeFocusPoints() {
+  if (!lastRoute || !directions?.isWalkOn()) return [];
+  const points = routeDrawn ? [...displayRoute.coordinates, lastRoute.source.point, lastRoute.destination.point] : [];
+  for (const part of [trip?.start, trip?.end]) if (part?.ok) for (const leg of part.legs) if (leg.type === "walk") points.push(...leg.coordinates);
+  return points;
+}
+
+// What the View presets keep in view (map/camera-controls.js): the route, else the
+// chosen room or point, else the selected building, else the open floor plan.
+function cameraFocus() {
+  const route = routeFocusPoints();
+  if (route.length > 1) return { kind: "route", points: route, orientation: principalBearing(route), padding: trip ? FIT_PADDING.indoorRoute : FIT_PADDING.route, maxZoom: trip ? 20 : 18.6 };
+  const inside = indoor?.cameraFocus() || null;
+  if (inside?.kind === "place") return inside;
+  const feature = ui?.activeBuilding();
+  if (feature && String(feature.properties?.id) !== String(inside?.buildingId)) {
+    const top = Number(feature.properties?.render_top_m) || 0;
+    const points = geometryPolygons(feature.geometry).flatMap((rings) => rings[0] || []).flatMap((point) => [[point[0], point[1], 0], [point[0], point[1], top]]);
+    // Below the zoom at which a building with floor plans opens by itself.
+    return { kind: "building", points, orientation: footprintBearing(feature), padding: FIT_PADDING.building, maxZoom: 19 };
+  }
+  return inside;
 }
 
 function indexBuildings() {
@@ -165,13 +202,22 @@ function campusExtent() {
 // The whole-site view: tilted 3D, or straight above and north up with ?view=2d.
 const HOME_CAMERA = viewMode().flat ? { bearing: 0, pitch: 0 } : { bearing: -20, pitch: 58 };
 
+// The site as large as the screen allows. On a phone held upright a long site is
+// turned a quarter to run up the screen, where it is shown much larger.
 function frameCampus(animated = true) {
   const extent = campusExtent();
   if (!extent.features.length) return;
-  const bounds = calculateBounds(extent, maplibregl.LngLatBounds);
-  if (bounds.isEmpty()) return;
-  map.fitBounds(bounds, { padding: FIT_PADDING.site(), ...HOME_CAMERA, duration: animated ? 1300 : 0, maxZoom: 18.5, essential: true });
-  const rememberView = () => { homeView = { center: map.getCenter(), zoom: map.getZoom(), ...HOME_CAMERA }; };
+  const points = extent.features.flatMap((feature) => geometryPolygons(feature.geometry).flatMap((rings) => rings[0] || []).concat(feature.geometry?.type === "LineString" ? feature.geometry.coordinates : []));
+  const camera = points.length > 1
+    ? cameraForPoints(map, points, { pitch: HOME_CAMERA.pitch, bearing: HOME_CAMERA.bearing, bearings: axisBearings(HOME_CAMERA.bearing), keepBearing: HOME_CAMERA.bearing, minGain: 0.3, padding: FIT_PADDING.site(), maxZoom: 18.5 })
+    : null;
+  if (!camera) {
+    const bounds = calculateBounds(extent, maplibregl.LngLatBounds);
+    if (bounds.isEmpty()) return;
+    map.fitBounds(bounds, { padding: FIT_PADDING.site(), ...HOME_CAMERA, duration: animated ? 1300 : 0, maxZoom: 18.5, essential: true });
+  } else if (animated) map.flyTo({ ...camera, duration: 1300, essential: true });
+  else map.jumpTo(camera);
+  const rememberView = () => { homeView = { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() }; };
   if (animated) map.once("moveend", rememberView); else rememberView();
 }
 
@@ -291,11 +337,10 @@ async function planTrip(selection, places, token) {
   for (const part of parts) await indoor.openLevel(part.building, part.from.level, { fit: false });
   if (token !== tripToken || walkController?.isActive() || navigation?.isActive()) return;
   const firstLeg = result.start?.ok ? result.start.legs.find((leg) => leg.type === "walk") : null;
-  const bounds = boundsOf(firstLeg ? firstLeg.coordinates : [
+  frameRoute(firstLeg ? firstLeg.coordinates : [
     ...(outdoor?.ok ? outdoor.coordinates : []),
     ...result.end.legs.filter((leg) => leg.type === "walk" && leg.level === result.end.from.level).flatMap((leg) => leg.coordinates)
-  ]);
-  if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: FIT_PADDING.indoorRoute(), maxZoom: 20, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 900, essential: true });
+  ], { padding: FIT_PADDING.indoorRoute(), maxZoom: 20, pitch: Math.min(map.getPitch(), 52) });
 }
 
 // Shows one step of an indoor route (directions panel): its floor and its line.
@@ -303,8 +348,7 @@ async function showStep(step) {
   if (!step) return;
   if (step.building) await indoor.openLevel(step.building, step.level, { fit: false });
   const coordinates = step.coordinates || (step.point ? [step.point] : []);
-  if (!coordinates.length) return;
-  map.fitBounds(boundsOf(coordinates), { padding: FIT_PADDING.indoorRoute(), maxZoom: step.building ? 20.5 : 18.6, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 800, essential: true });
+  frameRoute(coordinates, { padding: FIT_PADDING.indoorRoute(), maxZoom: step.building ? 20.5 : 18.6, pitch: Math.min(map.getPitch(), 52), duration: 800 });
 }
 
 // Route calculation between buildings uses the original BCSIR algorithm (see
@@ -320,6 +364,7 @@ function updateRoute(selection) {
   directions.sync({ ...selection, entries: { source: placeEntry(places.source), destination: placeEntry(places.destination) } });
   indoor.setEndpoints(places);
   cameraController?.updateRoute(selection);
+  routeDrawn = false;
   if (!selection.source || !selection.destination) {
     lastRoute = null;
     displayRoute = null;
@@ -337,6 +382,7 @@ function updateRoute(selection) {
   const indoorTrip = Boolean(places.source || places.destination);
   // Both ends in one building: there is no walk outside to draw.
   const walking = directions.isWalkOn() && !(indoorTrip && selection.source === selection.destination);
+  routeDrawn = walking && lastRoute.ok;
   showRouteGeometry(walking ? displayRoute : null);
   // A walking figure moves from the start to the destination along the route.
   routeWalker.set(walking ? routePathCoordinates(displayRoute) : null);
@@ -351,8 +397,7 @@ function updateRoute(selection) {
   if (!walking) return;
   if (lastRoute.ok) {
     cameraController?.setRouteCoordinates(displayRoute.coordinates, 0);
-    const bounds = boundsOf([...displayRoute.coordinates, lastRoute.source.point, lastRoute.destination.point]);
-    if (!walkController?.isActive() && !navigation?.isActive()) map.fitBounds(bounds, { padding: FIT_PADDING.route(), maxZoom: 18.6, pitch: map.getPitch(), bearing: map.getBearing(), duration: 900, essential: true });
+    if (!walkController?.isActive() && !navigation?.isActive()) frameRoute([...displayRoute.coordinates, lastRoute.source.point, lastRoute.destination.point]);
   } else {
     ui.showToast("No connected walking path in the road network");
   }
@@ -468,8 +513,7 @@ async function start() {
     getBuildingFeature: buildingById,
     getWorld: () => collisionWorld,
     getWalk: () => walkController,
-    // Live navigation follows a route between buildings: they stay solid.
-    isEnabled: () => !navigation?.isActive(),
+    // Also in a navigation's 3D mode: its route goes on inside the destination building.
     onToast: (message) => ui?.showToast(message)
   });
   directoryData = await directoryLoad;
@@ -529,7 +573,7 @@ async function start() {
   });
 
   // The View menu and the layers panel are never open together: opening one closes the other.
-  cameraController = createCameraController(map, { onReset: resetView, onMessage: ui.showToast, onMenuOpen: () => layerManager?.setOpen(false) });
+  cameraController = createCameraController(map, { onReset: resetView, onMessage: ui.showToast, onMenuOpen: () => layerManager?.setOpen(false), getFocus: cameraFocus });
   window.bcsirCamera = Object.freeze({
     setRouteCoordinates: (coordinates, currentSegmentIndex = 0) => cameraController?.setRouteCoordinates(coordinates, currentSegmentIndex),
     routeUp: () => cameraController?.routeUp(),
@@ -607,6 +651,9 @@ async function start() {
     campusCenter: campusBounds.isEmpty() ? null : campusBounds.getCenter().toArray(),
     cameraController,
     getRoute: () => (directions.isWalkOn() ? displayRoute : null),
+    // 3D mode goes on inside the destination building to the chosen room.
+    getIndoorRoute: () => (directions.isWalkOn() && trip?.end?.ok ? { building: trip.end.building, legs: trip.end.legs, name: trip.end.to.label, levelName: (id) => indoor.levelShort(trip.end.building, id) } : null),
+    getIndoorPosition: () => indoorWalk.state().inside,
     // Off the route for a while: a new route from the position to the same
     // destination, with the original routing algorithm.
     reroute: (position) => {
@@ -712,6 +759,8 @@ async function start() {
     modelReplacedBuildings: () => routeOcclusion.replacedIds(),
     buildingModels: () => buildingModels.state(),
     walkPose: () => walkController.getPose(),
+    walkTo: (position) => walkController.moveTo(position),
+    cameraFocus: () => cameraFocus(),
     walkOpen: (position, heading) => walkController.open(position, { heading }),
     walkClose: () => walkController.close(),
     walkView: () => walkController.getView(),

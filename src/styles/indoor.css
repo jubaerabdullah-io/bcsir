@@ -180,10 +180,19 @@ html[data-theme="dark"] .org-card-badge { background: rgba(251, 191, 36, 0.18); 
   .floor-button,
   .floor-exterior { height: 40px; }
 }
-/* Phones: beside the map controls instead of above them, clear of the search box
-   or the directions panel at the top. */
+/* Phones: at the right edge just below the search box or the directions panel
+   (--top-area-bottom), where the card rising from the bottom (--sheet-height, both
+   kept by ui.js) and the controls in the bottom corner leave it free. The plan is
+   framed beside it (map/fit-padding.js). */
 @media (max-width: 700px) {
-  .floor-control { position: absolute; right: calc(100% + 10px); bottom: 0; }
+  .floor-control {
+    position: fixed;
+    right: max(var(--gutter), env(safe-area-inset-right));
+    top: calc(var(--top-area-bottom, 64px) + 10px);
+  }
+  .floor-list { max-height: max(116px, calc(100dvh - var(--top-area-bottom, 64px) - max(var(--sheet-height, 0px), 250px) - 110px)); }
+  /* Navigating, the rail stands in the middle of the right edge: beside its controls. */
+  .nav-active .floor-control { position: absolute; top: auto; right: calc(100% + 10px); bottom: 0; }
 }
 /* Walk mode: the walk panel uses the bottom, so the floor selector stands at the
    right edge, below the top bar. There it takes the walker to a floor from a
@@ -195,6 +204,14 @@ html.walk-mode-active .floor-control {
   bottom: auto;
 }
 html.walk-mode-active .floor-exterior { display: none; }
+/* 3D mode of a navigation: below its direction banner. */
+html.nav-active.walk-mode-active .floor-control { top: calc(max(12px, env(safe-area-inset-top)) + 136px); }
+
+/* Location pin on the chosen room or point (indoor-controller.js); it drops in. */
+.place-pin { width: 32px; height: 42px; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.32)); pointer-events: none; }
+.place-pin svg { width: 100%; height: 100%; display: block; transform-origin: 50% 100%; }
+.place-pin-drop svg { animation: place-pin-drop 420ms cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+@keyframes place-pin-drop { from { opacity: 0; transform: translateY(-22px) scale(0.7); } }
 
 /* Lift / stairs buttons on the route: show the floor the route continues on. */
 .floor-change {

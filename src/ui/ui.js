@@ -65,6 +65,18 @@ export function createUI({ map, onClearSelection, onSetSource, onSetDestination 
       if (bottom > 0) $("#app").style.setProperty("--top-area-bottom", `${Math.round(bottom)}px`);
     }).observe(topArea);
   }
+  // How far up from the foot of the screen an open card reaches (--sheet-height): on
+  // phones it is a sheet at the bottom, and the floor selector stays above it.
+  const cards = [...document.querySelectorAll(".info-card")];
+  if (cards.length && window.ResizeObserver) {
+    const measureSheet = () => {
+      const tops = cards.filter((card) => !card.hidden).map((card) => card.getBoundingClientRect()).filter((rect) => rect.height).map((rect) => rect.top);
+      $("#app").style.setProperty("--sheet-height", `${tops.length ? Math.max(0, Math.round(window.innerHeight - Math.min(...tops))) : 0}px`);
+    };
+    const sheetObserver = new ResizeObserver(measureSheet);
+    cards.forEach((card) => sheetObserver.observe(card));
+    window.addEventListener("resize", measureSheet);
+  }
 
   function currentRouteKind(feature) { const id = feature?.properties?.render_id; if (routeSelection.source?.properties?.render_id === id) return "source"; if (routeSelection.destination?.properties?.render_id === id) return "destination"; return ""; }
   function refreshActions() {

@@ -30,7 +30,7 @@ const metres = (a, b) => planarDistanceMeters(a, b, a[1]);
 // getBuildingFeature(id) the buildings-file feature with that id, or null
 // getWorld()             the walk collision (navigation/collision.js)
 // getWalk()              walk mode (walk-mode.js)
-// isEnabled()            false keeps every building solid (live navigation)
+// isEnabled()            false keeps every building solid
 export function createWalkIndoor({ indoor, getBuildingFeature, getWorld, getWalk, isEnabled = () => true, onToast }) {
   const store = indoor.store;
   const spaces = new Map(); // "<building key>/<floor>" -> { site, level, model, space }

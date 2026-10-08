@@ -1,7 +1,15 @@
 // Reused from the reference indoor-mapping project (src/camera-controls.js).
 // BCSIR additions: "isometric" preset, rotateBy()/tiltBy() for the on-screen
 // rotate and tilt buttons, and campus wording in messages.
+//
+// A preset keeps what is in focus in view (getFocus(): the route, else the chosen
+// room or point, else the selected building, else the open floor plan): the
+// camera takes the preset's tilt and a bearing along the axes of what is in focus,
+// and frames it as large as the screen allows (camera-fit.js), also tilted. With
+// nothing in focus the preset turns and tilts the camera about the centre of the
+// view, which stays where it is.
 import { normalizeDegrees } from "../utils/local-frame.js";
+import { axisBearings, cameraForPoints } from "./camera-fit.js";
 
 const PRESET_DURATION = 650;
 // True isometric projection: camera elevation atan(1/sqrt(2)) = 35.264 degrees.
@@ -153,17 +161,19 @@ function headingFromEvent(event) {
   return normalizeDegrees(360 - event.alpha + readScreenAngle());
 }
 
+// getFocus() -> { points: [[lon, lat, height?]...], orientation (bearing of its long
+//   axis), padding() (fit-padding.js), maxZoom } | null: what the presets keep in view.
 export function createCameraController(map, {
   onReset,
   onMessage,
-  onMenuOpen
+  onMenuOpen,
+  getFocus = () => null
 } = {}) {
   const toggle = document.querySelector("#view-toggle");
   const menu = document.querySelector("#view-menu");
   const compass = document.querySelector("#compass-control");
   const modeButtons = Array.from(document.querySelectorAll("[data-camera-mode]"));
-  let target = null;
-  let buildingOrientation = 0;
+  let buildingOrientation = 0; // dominant axis of the site (updateTarget)
   let activeMode = "corner";
   let routeCoordinates = [];
   let routeSegmentIndex = 0;
@@ -208,27 +218,41 @@ export function createCameraController(map, {
       essential: true
     });
   }
-  function presetCenter() {
-    return target?.center || map.getCenter();
+  // The camera of a preset: what is in focus framed at `pitch`, at the best of
+  // `bearings` (or exactly `bearing`); with nothing in focus, the centre and zoom of
+  // the view kept and the bearing of `bearings` nearest the present one.
+  function frameFocus({ pitch, bearings = null, bearing = null, duration = PRESET_DURATION }) {
+    const focus = getFocus?.() || null;
+    const camera = focus?.points?.length
+      ? cameraForPoints(map, focus.points, { pitch, bearing, bearings, padding: focus.padding?.(), maxZoom: focus.maxZoom ?? 20 })
+      : null;
+    if (camera) { easeCamera({ ...camera, duration }); return; }
+    const current = map.getBearing();
+    const nearest = bearing ?? (bearings || [current]).reduce((best, item) => (Math.abs(shortestBearing(current, item) - current) < Math.abs(shortestBearing(current, best) - current) ? item : best));
+    easeCamera({ center: map.getCenter(), zoom: map.getZoom(), pitch, bearing: shortestBearing(current, nearest), duration });
   }
+  // Axis bearing of what is in focus, else of the site.
+  const focusOrientation = () => getFocus?.()?.orientation ?? buildingOrientation;
   function applyPreset(mode) {
     stopFollowModes(mode);
     if (mode === "top") {
-      easeCamera({ center: presetCenter(), zoom: map.getZoom(), pitch: 0, bearing: map.getBearing(), duration: 700 });
+      // Along the axes of what is in focus; with nothing in focus the bearing stays.
+      frameFocus({ pitch: 0, bearings: getFocus?.() ? axisBearings(focusOrientation()) : [map.getBearing()], duration: 700 });
       message("Top view");
     } else if (mode === "corner") {
-      easeCamera({ center: presetCenter(), zoom: map.getZoom(), pitch: 58, bearing: shortestBearing(map.getBearing(), buildingOrientation + 38) });
+      frameFocus({ pitch: 58, bearings: axisBearings(focusOrientation(), 38) });
       message("3D corner view");
     } else if (mode === "isometric") {
-      easeCamera({ center: presetCenter(), zoom: map.getZoom(), pitch: ISOMETRIC_PITCH, bearing: shortestBearing(map.getBearing(), buildingOrientation + 45) });
+      frameFocus({ pitch: ISOMETRIC_PITCH, bearings: axisBearings(focusOrientation(), 45) });
       message("Isometric view");
     } else if (mode === "front") {
-      easeCamera({ center: presetCenter(), zoom: map.getZoom(), pitch: 72, bearing: shortestBearing(map.getBearing(), buildingOrientation + 90) });
+      // Facing a long side.
+      frameFocus({ pitch: 72, bearings: axisBearings(focusOrientation(), 90, 180) });
       message("Front angled view");
     } else if (mode === "free") {
       message("Free camera enabled");
     } else if (mode === "north") {
-      easeCamera({ pitch: map.getPitch(), bearing: shortestBearing(map.getBearing(), 0), duration: 500 });
+      frameFocus({ pitch: map.getPitch(), bearing: 0, duration: 500 });
       message("North up");
     } else if (mode === "reset") {
       onReset?.();
@@ -257,7 +281,7 @@ export function createCameraController(map, {
       return false;
     }
     stopFollowModes("route");
-    easeCamera({ bearing: shortestBearing(map.getBearing(), bearing), pitch: Math.max(map.getPitch(), 58), duration: 450 });
+    frameFocus({ bearing, pitch: Math.max(map.getPitch(), 58), duration: 450 });
     message("Route-up view");
     return true;
   }
@@ -336,7 +360,6 @@ export function createCameraController(map, {
     updateTarget(collection) {
       const next = getCollectionCameraTarget(collection);
       if (!next) return;
-      target = next;
       buildingOrientation = next.orientation;
     },
     updateRoute(selection) {

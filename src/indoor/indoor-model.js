@@ -10,15 +10,24 @@ import { parseColor, parseNumber } from "../data/visual-properties.js";
 import { createNavGrid } from "./nav-grid.js";
 import { classLabel, featureKeys, featureName, firstProperty, isConnectorClass, placeUid, poiClass, unitClass } from "./levels.js";
 
-// Look of a floor plan. Heights are drawn heights in metres: the open floor is shown
-// at ground level, so they only need to read well, not match the building.
+// Look of a floor plan: a cut-away model of the floor, as on architectural
+// renderings. The rooms are floors (flat, a little above the slab), the walls are
+// thin and pale, cut off at wallHeightM with a dark top edge, doors are wooden
+// leaves under a lintel, and furniture stands in the rooms. Heights are drawn
+// heights in metres: the open floor is shown at ground level.
 export const INDOOR_STYLE = {
   floor: "#eef1f4",
   corridor: "#ffffff",
-  wall: "#8d99a8",
-  wallHeightM: 1.5,
-  wallThicknessM: 0.18,
-  unitHeightM: 0.35,
+  wall: "#efe9df",
+  wallCap: "#4b5160",
+  wallHeightM: 2.2,
+  wallThicknessM: 0.12,
+  floorHeightM: 0.08,
+  corridorHeightM: 0.1,
+  unitHeightM: 0.12,
+  door: "#a8724a",
+  doorHeightM: 2.05,
+  doorThicknessM: 0.05,
   // Walk mode sees a floor from inside: rooms flat like the corridor, to walk on
   // (the walker stands at walkFloorM), and walls at least room height.
   walkFloorM: 0.15,
@@ -28,6 +37,30 @@ export const INDOOR_STYLE = {
   routeSource: "#7fb2f0",
   routeDestination: "#f28b82"
 };
+
+// Furniture (furniture.geojson) by its `kind`: height in metres and colour, unless
+// the feature gives `height_m` and `color`. It stands on the room's floor (`base_m`
+// raises it) and is only drawn: it neither blocks walking nor is selected.
+export const FURNITURE = {
+  desk: { height: 0.76, color: "#e9e1d3" },
+  table: { height: 0.75, color: "#d9c3a0" },
+  chair: { height: 0.5, color: "#7a3b33" },
+  armchair: { height: 0.7, color: "#6d4c41" },
+  sofa: { height: 0.72, color: "#8d5b4c" },
+  counter: { height: 1.05, color: "#f1ece4" },
+  cabinet: { height: 1.2, color: "#9b7653" },
+  shelf: { height: 1.9, color: "#8a6a4d" },
+  rack: { height: 2.0, color: "#2f3540" },
+  bench: { height: 0.9, color: "#f4f6f8" },
+  basin: { height: 0.85, color: "#f8fafc" },
+  cubicle: { height: 2.0, color: "#cbd5e1" },
+  carpet: { height: 0.02, color: "#3f7d5c" },
+  podium: { height: 1.1, color: "#9b7653" },
+  board: { height: 1.6, color: "#f8fafc" },
+  plant: { height: 1.1, color: "#4f8a4b" },
+  bed: { height: 0.6, color: "#e2e8f0" }
+};
+const DEFAULT_FURNITURE = { height: 0.75, color: "#c8b8a2" };
 
 // Fill colour of a room by its class (tinted with its floor's colour, below); a
 // room's own "color" property replaces it.
@@ -56,7 +89,7 @@ const DEFAULT_UNIT_COLOR = "#e3e8ef";
 // the slab of a floor are tinted with it (level.color, set by indoor-store.js).
 export const FLOOR_COLORS = ["#6ea8f0", "#63c58a", "#f0b44c", "#b08ae6", "#ee8f8a", "#52c2c0", "#e58fc3", "#a9bb55"];
 export const floorColor = (index) => FLOOR_COLORS[((index % FLOOR_COLORS.length) + FLOOR_COLORS.length) % FLOOR_COLORS.length];
-const FLOOR_TINT = { unit: 0.5, corridor: 0.1, floor: 0.28 }; // share of the floor's colour in each part
+const FLOOR_TINT = { unit: 0.35, corridor: 0.1, floor: 0.28 }; // share of the floor's colour in each part
 
 // "#rrggbb" of two colours mixed: `share` of `tint`, the rest of `color`.
 export function mixColors(color, tint, share) {
@@ -86,8 +119,8 @@ function distanceToOutline(point, rings) {
   return best;
 }
 
-// files: { level, corridor: [], units: [{ file, class, data }], walls: [], pois: [{ file, data }], doors: [] }
-//        (GeoJSON FeatureCollections; `level` may be null)
+// files: { level, corridor: [], units: [{ file, class, data }], walls: [], pois: [{ file, data }], doors: [], furniture: [] }
+//        (GeoJSON FeatureCollections; `level` may be null; furniture is optional)
 // footprint: geometry used as the floor outline when the floor has no level file.
 export function buildLevelModel({ buildingKey, level, files, footprint = null, cellSize = 0.5 }) {
   const problems = [];
@@ -102,11 +135,11 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
   const outlineFeatures = featuresOf(files.level);
   let floor = outlineFeatures.flatMap((feature) => cleanPolygons(feature.geometry));
   if (!floor.length && footprint) floor = cleanPolygons(footprint);
-  floor.forEach((rings, index) => render.push({ type: "Feature", properties: { kind: "floor", uid: `${buildingKey}/${level.id}/floor/${index + 1}`, color: tinted(INDOOR_STYLE.floor, "floor"), ...where }, geometry: { type: "Polygon", coordinates: rings } }));
+  floor.forEach((rings, index) => render.push({ type: "Feature", properties: { kind: "floor", uid: `${buildingKey}/${level.id}/floor/${index + 1}`, color: tinted(INDOOR_STYLE.floor, "floor"), height: INDOOR_STYLE.floorHeightM, ...where }, geometry: { type: "Polygon", coordinates: rings } }));
 
   // ---- Corridors (walkable) --------------------------------------------------------
   const corridors = (files.corridor || []).flatMap((collection) => featuresOf(collection)).flatMap((feature) => cleanPolygons(feature.geometry));
-  corridors.forEach((rings, index) => render.push({ type: "Feature", properties: { kind: "corridor", uid: `${buildingKey}/${level.id}/corridor/${index + 1}`, color: tinted(INDOOR_STYLE.corridor, "corridor"), ...where }, geometry: { type: "Polygon", coordinates: rings } }));
+  corridors.forEach((rings, index) => render.push({ type: "Feature", properties: { kind: "corridor", uid: `${buildingKey}/${level.id}/corridor/${index + 1}`, color: tinted(INDOOR_STYLE.corridor, "corridor"), height: INDOOR_STYLE.corridorHeightM, ...where }, geometry: { type: "Polygon", coordinates: rings } }));
 
   // ---- Rooms ------------------------------------------------------------------------
   const units = [];
@@ -162,12 +195,36 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
     });
   }
 
-  const doors = (files.doors || []).flatMap((collection) => featuresOf(collection)).flatMap((feature) => {
+  const doors = (files.doors || []).flatMap((collection) => featuresOf(collection)).flatMap((feature, index) => {
     const geometry = feature.geometry;
     if (geometry?.type === "Point") return [geometry.coordinates.slice(0, 2)];
     if (geometry?.type === "MultiPoint") return geometry.coordinates.map((point) => point.slice(0, 2));
-    // A door drawn as a line across the opening: its middle.
-    return geometryLines(geometry).filter((line) => line.length >= 2).map((line) => [(line[0][0] + line.at(-1)[0]) / 2, (line[0][1] + line.at(-1)[1]) / 2]);
+    // A door drawn as a line across the opening: its middle; and it is drawn, as a
+    // wooden leaf under the piece of wall above the opening (the lintel).
+    const lines = geometryLines(geometry).filter((line) => line.length >= 2);
+    const properties = feature.properties || {};
+    const wallHeight = parseNumber(properties.wall_height_m) > 0 ? parseNumber(properties.wall_height_m) : INDOOR_STYLE.wallHeightM;
+    const doorHeight = Math.min(wallHeight, parseNumber(properties.height_m) > 0 ? parseNumber(properties.height_m) : INDOOR_STYLE.doorHeightM);
+    const thickness = parseNumber(properties.thickness_m) > 0 ? parseNumber(properties.thickness_m) : INDOOR_STYLE.wallThicknessM;
+    lines.forEach((line, part) => {
+      const uid = `${buildingKey}/${level.id}/door/${index + 1}.${part}`;
+      const leaf = wallLineToPolygon([line[0], line.at(-1)], INDOOR_STYLE.doorThicknessM, "center");
+      const lintel = wallLineToPolygon([line[0], line.at(-1)], thickness, "center");
+      if (leaf) render.push({ type: "Feature", properties: { kind: "door", uid: `${uid}/leaf`, height: doorHeight, color: parseColor(properties.color) || INDOOR_STYLE.door, ...where }, geometry: leaf });
+      if (lintel && wallHeight > doorHeight) render.push({ type: "Feature", properties: { kind: "lintel", uid: `${uid}/lintel`, base: doorHeight, height: wallHeight, color: INDOOR_STYLE.wall, ...where }, geometry: lintel });
+    });
+    return lines.map((line) => [(line[0][0] + line.at(-1)[0]) / 2, (line[0][1] + line.at(-1)[1]) / 2]);
+  });
+
+  // ---- Furniture (drawn only) --------------------------------------------------------
+  (files.furniture || []).flatMap((collection) => featuresOf(collection)).forEach((feature, index) => {
+    const properties = feature.properties || {};
+    const type = String(firstProperty(properties, ["kind", "type", "class"]) ?? "").trim().toLowerCase();
+    const look = FURNITURE[type] || DEFAULT_FURNITURE;
+    const base = INDOOR_STYLE.unitHeightM + (parseNumber(properties.base_m) > 0 ? parseNumber(properties.base_m) : 0);
+    const height = parseNumber(properties.height_m) > 0 ? parseNumber(properties.height_m) : look.height;
+    const color = parseColor(properties.color) || look.color;
+    cleanPolygons(feature.geometry).forEach((rings, part) => render.push({ type: "Feature", properties: { kind: "furniture", uid: `${buildingKey}/${level.id}/furniture/${index + 1}.${part}`, furniture: type, base, height: base + height, color, ...where }, geometry: { type: "Polygon", coordinates: rings } }));
   });
 
   // ---- Walking grid (made when a route first needs it) -------------------------------

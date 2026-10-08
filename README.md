@@ -169,9 +169,10 @@ Create a folder for the building inside the organisation's folder (any name, e.g
   | `level.geojson` | Polygon | floor outline; `name`, `short_name`, `is_default` (the floor the building opens on) |
   | `corridor.geojson` | Polygon | where people walk: corridors, lobbies, halls. **Routes follow these.** |
   | `shops.geojson` (or `rooms`, `offices`, ... any other name) | Polygon | `name` (searchable), `class` (office, shop, toilet, lab, ...: sets the colour), `color` (hex, replaces it), `room_number`, `phone`, `hours`, `description`, `name_bn` |
-  | `walls.geojson` | LineString or Polygon | `thickness_m` (0.18), `height_m` (1.5), `color` |
+  | `walls.geojson` | LineString or Polygon | `thickness_m` (0.12), `height_m` (2.2, where the cut-away view cuts them off), `color` |
   | `pois.geojson` | Point | `name`, `class`: `lift`, `stairs`, `escalator`, `ramp`, `entrance`, `toilet`, `info`, `food`, `prayer`, `atm`, `first-aid`, `fire`, `parking` |
-  | `doors.geojson` (optional) | Point | where a room opens to the corridor; without it a room is entered where its outline is nearest the corridor |
+  | `doors.geojson` (optional) | Point, or LineString across the opening | where a room opens to the corridor; without it a room is entered where its outline is nearest the corridor. A door drawn as a line is also drawn on the map: a wooden leaf under the piece of wall above the opening (`thickness_m`, `height_m` 2.05, `color`) |
+  | `furniture.geojson` (optional) | Polygon | `kind` (`desk`, `table`, `chair`, `sofa`, `counter`, `cabinet`, `shelf`, `rack`, `bench`, `basin`, `cubicle`, `carpet`, `board`, `podium`, `plant`, `bed`: sets its height and colour), `height_m`, `base_m`, `color`. Only drawn, from zoom 18.3: it neither blocks walking nor is selected |
 
   The class may be in a field called `class`, `type`, `category` or `kind`; `Elevator`,
   `Staircase` and similar words are understood, and a point named "Lift B" or "Stair 2"
@@ -197,11 +198,19 @@ folder reloads the page.
 npm run floors:sample -- <organisation> <building id> [--floors 6] [--theme office|factory|warehouse|lab] [--folder name]
 ```
 
-writes a plain floor plan for each floor of a building, laid out inside its footprint (a
-corridor, rooms on both sides, a lift lobby with a lift and stairs, a second stair, an
-entrance on the first floor), in the five files above. It is a start for drawing the real
-floors in QGIS: correctly placed and with the right attributes, but **the rooms are
-invented**. `building.json` marks such a building `"sample": true` and the map says
+writes a plain floor plan for each floor of a building, laid out inside its footprint, in
+the files above (with `doors.geojson` as lines and a `furniture.geojson`). As in a real
+building every floor shares the core: the corridor, the lift lobby with a lift and a
+stair, a second stair, the washrooms and the room behind the lift lobby stand at the same
+places on every floor, and the entrance is on the first floor. Around the core each floor
+is divided differently (`SAMPLE_THEMES` in `scripts/lib/sample-floors.mjs`): single
+offices, pairs of rooms, half-width rooms or one hall on each side of the corridor, a
+waiting lounge open to the corridor on some floors, every other floor divided from the
+other end, and named rooms of their own (for the office theme: reception and canteen on
+the first floor, then administration, accounts, library, training and ICT, and the board
+room and chairman's office on the top floor). Rooms are furnished by their use. It is a
+start for drawing the real floors in QGIS: correctly placed and with the right
+attributes, but **the rooms are invented**. `building.json` marks such a building `"sample": true` and the map says
 "sample" in the tooltip of its floor selector. Draw the real plan over it,
 then remove `"sample"`. The script replaces only folders it generated itself.
 
@@ -212,8 +221,8 @@ then remove `"sample"`. The script replaces only folders it generated itself.
 
 | Action | How |
 |---|---|
-| See a floor | Select a building that has floor plans and choose a floor in the **floor selector**: a narrow column in the right-hand corner, above the map controls (on phones beside them), with the highest floor at the top and the shown floor in grey. It appears only for a building that has floor plans. The building's shell is hidden and the floor is drawn at ground level, **each floor in a colour of its own** (blue, green, amber, violet, ... from the lowest floor up: `FLOOR_COLORS` in `src/indoor/indoor-model.js`; a room with its own `color` keeps it). The button at the top of the selector shows the building from outside again. Zooming far in on such a building opens its first floor. Selecting a building without floor plans hides the floor selector and shows the open building from outside again (floors a route runs through stay open). |
-| Find a room | The search box lists rooms and points (lifts, toilets, ...) with their floor and building; choosing one opens that floor and selects the room. Clicking a room on an open floor does the same. |
+| See a floor | Select a building that has floor plans and choose a floor in the **floor selector**: a narrow column in the right-hand corner, above the map controls (on phones at the right edge just below the search box, clear of the card that rises from the bottom), with the highest floor at the top and the shown floor in grey. It appears only for a building that has floor plans. The building's shell is hidden and the floor is drawn at ground level as a cut-away model: thin pale walls with a dark edge where they are cut off, wooden doors, furniture and the room floors, **each floor in a colour of its own** (blue, green, amber, violet, ... from the lowest floor up: `FLOOR_COLORS` in `src/indoor/indoor-model.js`; a room with its own `color` keeps it). The button at the top of the selector shows the building from outside again. Opening a floor frames it as large as the part of the screen left free by the panels allows; on a phone held upright a long building is turned to run up the screen. Zooming far in on such a building opens its first floor. Selecting a building without floor plans hides the floor selector and shows the open building from outside again (floors a route runs through stay open). |
+| Find a room | The search box lists rooms and points (lifts, toilets, ...) with their floor and building; choosing one opens that floor, selects the room or point, marks it with a red location pin and brings it close up into the middle of the part of the screen that the card and the search box leave free. Clicking a room on an open floor selects it (with its pin) without moving the map. |
 | Directions between rooms | **Directions** / **Start here** on a room's card, or type room names in the directions panel. |
 | Walk inside | In **Walk** mode, walk up to the building's entrance: the building opens on that floor (an "entrance" badge marks the door) and you walk in. Inside you walk between the walls and through the doors, at an easier pace; the room you enter is named. At a lift or the stairs, choose a floor in the floor selector (right edge while walking) or press **Page Up** / **Page Down**. Walk out through the entrance; the building closes again behind you. Clicking on an open floor plan to start the walk starts it there, on that floor. |
 
@@ -236,7 +245,7 @@ entrance → the outdoor road network → the other building's entrance → its 
   the lift ("↑ L6") switches to the floor the route continues on, and the floors the route
   uses carry a dot in the floor selector.
 - What it does not do: there is no positioning indoors (GPS does not tell floors), so
-  **Start** guides the outdoor part only; and a route never passes through a room to reach
+  **Start** guides the outdoor part only (**3D mode** walks the indoor part too); and a route never passes through a room to reach
   another corridor.
 
 ## Using the map
@@ -253,7 +262,7 @@ entrance → the outdoor road network → the other building's entrance → its 
 | Street or satellite map | Layers button (right). Satellite shows the imagery with the building labels and the route only; the drawn buildings, roads, gardens, trees, walls and 3D models come back with Street. The same panel has the dark map switch. |
 | Pan, rotate, tilt | Drag. Right-drag (or Ctrl + drag) rotates and tilts. Scroll zooms. |
 | Zoom, rotate, tilt buttons | Right-hand controls. Rotate and tilt buttons are hidden on phones and short windows. |
-| Camera presets | **View** menu: Top-down, Isometric, 3D Corner, Front, Free, Follow Direction, Route Up, North Up, Reset. Compass: north up. |
+| Camera presets | **View** menu: Top-down, Isometric, 3D Corner, Front, Free, Follow Direction, Route Up, North Up, Reset. Compass: north up. A preset keeps what is in focus in view and frames it as large as the screen allows, also tilted (`src/map/camera-fit.js`): the route when one is drawn, else the chosen room or point, else the selected building, else the open floor; the view turns along its axes. With nothing in focus the view turns and tilts about its centre. |
 | First-person walk (game mode) | **Walk** (bottom right, below the map controls), choose the view, then click a location on the map: the camera goes down there. W/A/S/D or arrows to move fast (4.5 m/s, the cartoon walker runs), hold Shift for 9 m/s, **Space to jump**, mouse to look (looking up shows a blue sky with clouds), V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), **Jump** in their middle, drag the view to look. Walls and buildings cannot be walked through, except that a building with floor plans is walked into through its entrance (see [Floor plans](#on-the-map)); a circular minimap (bottom left) shows the surroundings with short building names, the route and the destination. |
 | Live navigation | With a route drawn, **Start** under the route summary: follows the phone's GPS along the route, turns the map with its compass, shows the next turn and the remaining distance and time. See [Live navigation](#live-navigation-and-3d-mode). |
 | 3D mode | **3D mode** under the route summary: walk the route in first-person view with the same guidance. |
@@ -413,12 +422,17 @@ position), facing along the route; the route stays drawn; the banner keeps givin
 next turn. Walking forward turns the view gently towards the route ahead, so holding
 the forward button follows it. **Follow GPS** in the walk panel lets GPS and the
 compass move the walker instead; touching the controls hands it back. Exit (or Esc)
-returns to the map view; × in the banner or **End** ends navigation and restores the
-previous view.
+returns to the map view; × in the banner, **End** or Esc on the map ends navigation and
+restores the previous view.
 
-**Indoors:** GPS cannot tell floors or rooms, so live guidance ends at the building and
-says so when the building has no floor plans. During a navigation session every building
-is solid. Outside one, walk mode goes into a building that has floor plans
+**Indoors:** GPS cannot tell floors or rooms, so on the map live guidance ends at the
+building and says so when the building has no floor plans. In 3D mode a route to a room
+goes on inside (`src/navigation/indoor-guidance.js`): at the building the banner says to
+walk in through the entrance, then leads along the corridors to the lift or the stairs
+("Take Lift A up to L6": choose the floor on the floor selector, which stays at the right
+edge, or press Page Up / Page Down), and on to the room, where it says you have arrived.
+Holding the forward button follows the indoor route as it does outside. Walk mode goes
+into a building that has floor plans, also while navigating
 (`src/walk/walk-indoor.js`): `navigation/collision.js` holds one entry per floor
 (`{ buildingId, level, walkable, walls, doors, entrances }`), the building is entered only
 through an entrance, and the walker then stays on his floor, between its walls, until a
@@ -811,8 +825,9 @@ reaches the map directly.
 │   ├── map/                     map.js and basemaps.js (MapLibre map, street and satellite), bcsir-layers.js
 │   │                            (layers, layer groups), layer-ids.js (layer ids several modules name),
 │   │                            layer-manager.js and basemap-control.js (layers panel), camera-controls.js
-│   │                            (camera presets), fit-padding.js, interactions.js (hover, select, route
-│   │                            endpoints, choose on map), vector-tiles.js
+│   │                            (camera presets), camera-fit.js (framing, also tilted), fit-padding.js,
+│   │                            interactions.js (hover, select, route endpoints, choose on map),
+│   │                            vector-tiles.js
 │   ├── buildings/               building-footprint.js and building-models.js (buildings drawn from GLB
 │   │                            models), building-images.js and building-labels.js (photos, round label
 │   │                            badges), short-names.js
@@ -825,8 +840,8 @@ reaches the map directly.
 │   │                            route-walker.js (walking figure), route-occlusion.js (see-through buildings
 │   │                            in front of the route)
 │   ├── navigation/              live navigation (live-navigation.js), compass, turn guidance
-│   │                            (route-progress.js), walk collision, route geometry around buildings,
-│   │                            walk minimap
+│   │                            (route-progress.js), indoor-guidance.js (3D mode inside the destination),
+│   │                            walk collision, route geometry around buildings, walk minimap
 │   ├── indoor/                  floor plans: levels.js (floor folders and files), indoor-model.js
 │   │                            (a floor from its files), nav-grid.js (walking grid),
 │   │                            indoor-router.js (lifts and stairs), indoor-store.js, trip.js

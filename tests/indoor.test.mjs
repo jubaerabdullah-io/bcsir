@@ -50,6 +50,7 @@ test("floor files: the five standard names, and any other name is a room layer",
   assert.equal(levelFileKind("Walls.geojson").kind, "walls");
   assert.equal(levelFileKind("pois.geojson").kind, "pois");
   assert.equal(levelFileKind("doors.geojson").kind, "doors");
+  assert.equal(levelFileKind("furniture.geojson").kind, "furniture", "drawn, not a room layer");
   assert.deepEqual(levelFileKind("shops.geojson"), { kind: "units", unitClass: "shop" });
   assert.deepEqual(levelFileKind("offices.geojson"), { kind: "units", unitClass: "office" });
   assert.equal(poiClass({ type: "Elevator" }), "lift");
@@ -197,14 +198,14 @@ test("router: another floor is reached by the lift or the stairs, whichever is q
   assert.equal(createBuildingRouter({ key: "test", levels, shafts: [] }).route(anchor("L01", 20, "A"), anchor("L06", 20, "B")).reason, "no-connector");
 });
 
-test("template floors: the five files per floor, inside the footprint, routable", () => {
+test("template floors: the seven files per floor, inside the footprint, routable", () => {
   const building = { type: "Feature", properties: { id: 9, entrance_coords: at(15, -1) }, geometry: { type: "Polygon", coordinates: square(0, 0, 30, 16) } };
   const { files, summary } = sampleFloors(building, { floors: 3 });
-  assert.deepEqual(Object.keys(files).filter((file) => file.startsWith("L02/")).sort(), ["L02/corridor.geojson", "L02/level.geojson", "L02/pois.geojson", "L02/shops.geojson", "L02/walls.geojson"]);
+  assert.deepEqual(Object.keys(files).filter((file) => file.startsWith("L02/")).sort(), ["L02/corridor.geojson", "L02/doors.geojson", "L02/furniture.geojson", "L02/level.geojson", "L02/pois.geojson", "L02/shops.geojson", "L02/walls.geojson"]);
   assert.equal(files["building.json"].sample, true);
   assert.equal(summary.floors, 3);
   for (const [file, data] of Object.entries(files)) {
-    if (!/(shops|corridor|pois)\.geojson$/.test(file)) continue;
+    if (!/(shops|corridor|pois|furniture)\.geojson$/.test(file)) continue;
     for (const feature of data.features) {
       const points = feature.geometry.type === "Point" ? [feature.geometry.coordinates] : feature.geometry.coordinates[0];
       for (const point of points) assert.ok(point[0] >= 90 - 1e-9 && point[1] >= 23 - 1e-9 && pointInRings(point, square(-0.01, -0.01, 30.01, 16.01)), `${file}: inside the footprint`);
@@ -212,11 +213,31 @@ test("template floors: the five files per floor, inside the footprint, routable"
   }
   assert.ok(files["L01/pois.geojson"].features.some((feature) => feature.properties.class === "entrance"), "an entrance on the first floor");
   assert.ok(!files["L02/pois.geojson"].features.some((feature) => feature.properties.class === "entrance"));
-  const model = buildLevelModel({ buildingKey: "b", level: { id: "L01", ordinal: 1 }, files: { level: files["L01/level.geojson"], corridor: [files["L01/corridor.geojson"]], walls: [files["L01/walls.geojson"]], doors: [], pois: [{ file: "pois.geojson", data: files["L01/pois.geojson"] }], units: [{ file: "shops.geojson", class: "shop", data: files["L01/shops.geojson"] }] } });
-  assert.deepEqual(model.problems, []);
-  for (const unit of model.units) assert.ok(model.anchorFor(unit.uid), `${unit.name} is reached from the corridor`);
-  for (const poi of model.pois) assert.ok(model.anchorFor(poi.uid), `${poi.name} is on the walkable area`);
-  assert.ok(model.render.features.some((feature) => feature.properties.kind === "wall"));
+  for (const folder of ["L01", "L02", "L03"]) {
+    const model = buildLevelModel({ buildingKey: "b", level: { id: folder, ordinal: Number(folder.slice(1)) }, files: { level: files[`${folder}/level.geojson`], corridor: [files[`${folder}/corridor.geojson`]], walls: [files[`${folder}/walls.geojson`]], doors: [files[`${folder}/doors.geojson`]], furniture: [files[`${folder}/furniture.geojson`]], pois: [{ file: "pois.geojson", data: files[`${folder}/pois.geojson`] }], units: [{ file: "shops.geojson", class: "shop", data: files[`${folder}/shops.geojson`] }] } });
+    assert.deepEqual(model.problems, []);
+    for (const unit of model.units) {
+      const anchor = model.anchorFor(unit.uid);
+      assert.ok(anchor, `${folder} ${unit.name} is reached from the corridor`);
+      assert.ok(anchor.via, `${folder} ${unit.name} is entered by its door`);
+    }
+    for (const poi of model.pois) assert.ok(model.anchorFor(poi.uid), `${folder} ${poi.name} is on the walkable area`);
+    const kinds = new Set(model.render.features.map((feature) => feature.properties.kind));
+    for (const kind of ["wall", "door", "lintel", "furniture"]) assert.ok(kinds.has(kind), `${folder} draws ${kind}s`);
+  }
+  // The core stands still (lift and stairs at the same places), the rooms around it differ.
+  const layout = (folder) => files[`${folder}/shops.geojson`].features.map((feature) => JSON.stringify(feature.geometry.coordinates)).sort().join();
+  const cores = (folder) => files[`${folder}/pois.geojson`].features.filter((feature) => ["lift", "stairs"].includes(feature.properties.class)).map((feature) => JSON.stringify(feature.geometry.coordinates));
+  assert.equal(new Set(["L01", "L02", "L03"].map(layout)).size, 3, "each floor is divided differently");
+  assert.deepEqual(cores("L02"), cores("L01"));
+  assert.deepEqual(cores("L03"), cores("L01"));
+});
+
+test("BCSIR Secretariat: its six floors are laid out differently", () => {
+  const { org, store } = storeOf("bcsir");
+  const building = store.forBuildingId(127);
+  const rooms = (level) => org.places.filter((place) => place.building === building.key && place.level === level && place.kind === "unit").map((place) => `${place.name}@${place.point.join(",")}`).sort().join("|");
+  assert.equal(new Set(building.levels.map((level) => rooms(level.id))).size, building.levels.length);
 });
 
 test("floor colours: every floor of a building is drawn in a colour of its own", () => {

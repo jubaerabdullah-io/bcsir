@@ -5,6 +5,8 @@
 "features": [
 {"type":"Feature","properties":{"id":"lift-a","name":"Lift A","class":"lift"},"geometry":{"type":"Point","coordinates":[90.3845824,23.74021037]}},
 {"type":"Feature","properties":{"id":"stair-1","name":"Stair 1","class":"stairs"},"geometry":{"type":"Point","coordinates":[90.38455145,23.74020414]}},
-{"type":"Feature","properties":{"id":"stair-2","name":"Stair 2","class":"stairs"},"geometry":{"type":"Point","coordinates":[90.38475249,23.74021201]}}
+{"type":"Feature","properties":{"id":"stair-2","name":"Stair 2","class":"stairs"},"geometry":{"type":"Point","coordinates":[90.38475249,23.74021201]}},
+{"type":"Feature","properties":{"id":"fire-1","name":"Fire Extinguisher","class":"fire"},"geometry":{"type":"Point","coordinates":[90.38461535,23.74019546]}},
+{"type":"Feature","properties":{"id":"water-1","name":"Drinking Water","class":"water"},"geometry":{"type":"Point","coordinates":[90.38453893,23.74018007]}}
 ]
 }

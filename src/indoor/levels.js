@@ -10,7 +10,9 @@
 //       shops.geojson          rooms: any other file name is a room layer
 //       walls.geojson          walls (LineString or Polygon)
 //       pois.geojson           points: lift, stairs, entrance, toilet, ...
-//       doors.geojson          optional: where a room opens to the corridor (Point)
+//       doors.geojson          optional: where a room opens to the corridor (Point, or
+//                              a LineString across the opening: then a door is drawn)
+//       furniture.geojson      optional: desks, tables, shelves, ... (Polygon), drawn only
 //     L02/ ...
 //
 // Floor folder names: L01, L02, ... (also L1, F1, "Level 1", "1"), G / GF / L00
@@ -58,13 +60,14 @@ const FILE_KINDS = [
   ["corridor", /^(?:corridor|corridors|walkway|walkways|lobby|lobbies|hall|halls)$/],
   ["walls", /^(?:wall|walls)$/],
   ["pois", /^(?:poi|pois|point|points)$/],
-  ["doors", /^(?:door|doors)$/]
+  ["doors", /^(?:door|doors)$/],
+  ["furniture", /^(?:furniture|furnishings?|fittings?|fixtures?)$/]
 ];
 const SINGULAR = { shops: "shop", rooms: "room", offices: "office", units: "room", labs: "lab", laboratories: "lab", toilets: "toilet", stores: "store", halls: "hall", classes: "classroom", classrooms: "classroom" };
 
-// { kind, unitClass } of a floor file: "level", "corridor", "walls", "pois" or
-// "doors"; every other file is a room layer ("units") whose features default to
-// the class named by the file ("shops.geojson" -> "shop").
+// { kind, unitClass } of a floor file: "level", "corridor", "walls", "pois",
+// "doors" or "furniture"; every other file is a room layer ("units") whose
+// features default to the class named by the file ("shops.geojson" -> "shop").
 export function levelFileKind(fileName) {
   const stem = String(fileName ?? "").replace(/\.(geo)?json$/i, "").trim().toLowerCase();
   for (const [kind, pattern] of FILE_KINDS) if (pattern.test(stem)) return { kind, unitClass: null };

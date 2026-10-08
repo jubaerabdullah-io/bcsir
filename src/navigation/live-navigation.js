@@ -10,10 +10,16 @@
 // route and destination kept. Driven by the on-screen / keyboard controls, or
 // by GPS and the compass after "Follow GPS".
 //
-// GPS does not tell floors or rooms, and no building has an indoor map, so
-// guidance ends at the building (its recorded entrance, else the edge of its
-// footprint). Where GPS is missing, refused, weak or far from the campus, the
-// position can be set by tapping the map ("Set position"), or walked in 3D mode.
+// GPS does not tell floors or rooms, so on the map guidance ends at the building
+// (its recorded entrance, else the edge of its footprint). In 3D mode a route to a
+// room of a building with floor plans goes on inside: in through the entrance,
+// along the corridors to the lift or the stairs, a floor change (the floor
+// selector, or Page Up / Page Down), and on to the room, leg by leg
+// (getIndoorRoute(): the indoor legs of indoor/trip.js; getIndoorPosition(): the
+// building and floor the walker is on, walk/walk-indoor.js). Where GPS is missing,
+// refused, weak or far from the campus, the position can be set by tapping the map
+// ("Set position"), or walked in 3D mode. Esc ends navigation on the map (in 3D
+// mode it first leaves 3D mode).
 //
 // Rendering: the camera and the position marker are animated in one
 // requestAnimationFrame loop that runs only while something moves (a new GPS
@@ -27,6 +33,7 @@ import { routePathCoordinates } from "../routing/route-service.js";
 import { createCompass } from "./compass.js";
 import { angleDelta, bearingOf, createLocalFrame, distance, geometryPolygons, insideRings, normalizeDegrees } from "../utils/local-frame.js";
 import { bearingAt, compassWord, createRouteModel, formatGuidanceDistance, guidance, locate, maneuverText, pointAt } from "./route-progress.js";
+import { indoorStages, nextIndoorStage, remainingAfter } from "./indoor-guidance.js";
 
 const FOLLOW_ZOOM = 19;
 const FOLLOW_PITCH = 60;
@@ -57,7 +64,10 @@ const ICON_PATHS = {
   "sharp-right": "M8 5v9l9 6M17 20v-5M17 20h-5",
   uturn: "M8 20V9a4 4 0 0 1 8 0v6M16 15l-3-3M16 15l3-3",
   arrive: "M12 21s6-5.6 6-11a6 6 0 0 0-12 0c0 5.4 6 11 6 11Zm0-8.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z",
-  depart: "M12 20V5M12 5l-5 5M12 5l5 5"
+  depart: "M12 20V5M12 5l-5 5M12 5l5 5",
+  enter: "M13.5 4.5h5v15h-5 M5 12h9 M10.8 8.6 14.2 12l-3.4 3.4",
+  lift: "M7.5 4.5h9v15h-9z M10 10.5l2-2.4 2 2.4 M10 13.5l2 2.4 2-2.4",
+  stairs: "M5 18.5h3.5V15H12v-3.5h3.5V8H19"
 };
 
 function iconSvg(type, rotation = 0) {
@@ -98,7 +108,10 @@ function clipOutside(points, feature, fromStart) {
   return points;
 }
 
-export function createLiveNavigation({ map, walk, getRoute, reroute, collision, campusCenter, cameraController, onSession, onToast } = {}) {
+// getIndoorRoute() -> { building, legs, name, levelName(id) } | null: the route inside
+//   the destination building (to a room), followed in 3D mode after the outdoor part
+// getIndoorPosition() -> { building, level } | null: where the walker is inside
+export function createLiveNavigation({ map, walk, getRoute, reroute, collision, campusCenter, cameraController, getIndoorRoute, getIndoorPosition, onSession, onToast } = {}) {
   const $ = (selector) => document.querySelector(selector);
   const ui = {
     banner: $("#nav-banner"), icon: $("#nav-maneuver"), distance: $("#nav-distance"), text: $("#nav-text"), then: $("#nav-then"), line: $("#nav-line"),
@@ -151,7 +164,46 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     session.offRouteSince = 0;
     session.offRoute = false;
     session.arrived = false;
+    session.indoor = null;
     return true;
+  }
+
+  // ---- Inside the destination building (3D mode) -------------------------------
+  // { stages, index, name, levelName }: the stage he is at (indoor-guidance.js).
+  const indoorStage = () => session?.indoor?.stages[session.indoor.index] || null;
+  function beginIndoor() {
+    const route = getIndoorRoute?.();
+    const stages = route ? indoorStages(route.legs) : [];
+    if (!stages.length || stages[0].type !== "walk") return false;
+    session.indoor = { stages, index: 0, name: route.name || destinationName(), levelName: route.levelName || ((id) => id) };
+    session.model = stages[0].model;
+    session.progress = session.position ? locate(session.model, session.position) : null;
+    session.offRoute = false;
+    session.offRouteSince = 0;
+    onToast?.(`${destinationName()}: walk in through the entrance to ${session.indoor.name}`);
+    return true;
+  }
+  // After a move inside: on to the next stage when this one is done.
+  function followIndoor() {
+    const { indoor } = session;
+    const next = nextIndoorStage(indoor.stages, indoor.index, getIndoorPosition?.() || null, session.position);
+    if (next === indoor.index) return;
+    if (next >= indoor.stages.length) {
+      indoor.index = indoor.stages.length - 1;
+      session.arrived = true;
+      session.arrivalNote = "";
+      onToast?.(`You have arrived at ${indoor.name}`);
+      return;
+    }
+    indoor.index = next;
+    const stage = indoorStage();
+    if (stage.type === "walk") {
+      session.model = stage.model;
+      session.progress = locate(stage.model, session.position);
+      // Off the lift or the stairs he faces the way on (after this move is done).
+      const position = session.position;
+      if (session.view === "walk" && next > 0) requestAnimationFrame(() => { if (session?.indoor?.index === next && walk.isActive()) walk.setPose(position, bearingAt(stage.model, 0, 3)); });
+    } else onToast?.(`${stage.name}: choose ${indoor.levelName(stage.toLevel)} on the floor selector, or press Page ${stage.direction === "up" ? "Up" : "Down"}.`);
   }
 
   // ---- Heading and camera animation ---------------------------------------------
@@ -258,12 +310,17 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     session.speed = Number.isFinite(speed) ? speed : null;
     const progress = locate(session.model, position, { hint: session.progress?.along ?? null });
     session.progress = progress;
-    const reliable = accuracy === null || accuracy <= UNUSABLE_GPS_M;
-    const threshold = Math.max(OFF_ROUTE_MIN_M, Math.min(35, (accuracy || 0) * 1.2));
-    if (reliable && progress.offsetM > threshold && !session.arrived) session.offRouteSince ||= now;
-    else session.offRouteSince = 0;
-    if (!session.arrived && progress.along >= session.model.total - ARRIVAL_M && progress.offsetM < 15) arrive();
-    checkRoute(now);
+    if (session.indoor) {
+      // Inside: the stages of the indoor route; no off-route or re-routing (the roads do not go there).
+      if (!session.arrived) followIndoor();
+    } else {
+      const reliable = accuracy === null || accuracy <= UNUSABLE_GPS_M;
+      const threshold = Math.max(OFF_ROUTE_MIN_M, Math.min(35, (accuracy || 0) * 1.2));
+      if (reliable && progress.offsetM > threshold && !session.arrived) session.offRouteSince ||= now;
+      else session.offRouteSince = 0;
+      if (!session.arrived && progress.along >= session.model.total - ARRIVAL_M && progress.offsetM < 15) arrive();
+      checkRoute(now);
+    }
     if (source === "gps") setAccuracy(position, accuracy);
     if (session.view === "map" || source === "gps") {
       const shown = session.view === "walk" && collision ? collision.nearestFree(position) : position;
@@ -290,11 +347,15 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
   }
 
   function arrive() {
+    // In 3D mode a route to a room goes on inside the building.
+    if (session.view === "walk" && beginIndoor()) return;
     session.arrived = true;
     session.offRoute = false;
     session.offRouteSince = 0;
     const indoor = collision?.hasIndoor?.(session.destinationId);
-    session.arrivalNote = indoor ? "" : `Indoor directions are not available: ${destinationName()} has no indoor map, and GPS cannot tell floors or rooms.`;
+    session.arrivalNote = !indoor
+      ? `Indoor directions are not available: ${destinationName()} has no indoor map, and GPS cannot tell floors or rooms.`
+      : session.view === "walk" ? `${destinationName()} has floor plans: walk in through its entrance.` : "";
     onToast?.(`You have arrived at ${destinationName()}`);
   }
 
@@ -410,9 +471,21 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     const { model, progress } = session;
     const along = progress?.along ?? 0;
     const g = guidance(model, along);
-    let icon = g.next.type, rotation = 0, distanceText = formatGuidanceDistance(g.distanceToNext), text = maneuverText(g.next, session.destinationName), then = "";
+    const stage = indoorStage();
+    const target = stage ? (stage.type === "walk" ? stage.to : session.indoor.name) : session.destinationName;
+    let icon = g.next.type, rotation = 0, distanceText = formatGuidanceDistance(g.distanceToNext), text = maneuverText(g.next, target), then = "";
+    let remainingM = g.remaining + (stage ? remainingAfter(session.indoor.stages, session.indoor.index) : 0);
     if (session.arrived) {
-      icon = "arrive"; distanceText = ""; text = `You have arrived at ${destinationName()}`;
+      icon = "arrive"; distanceText = ""; text = `You have arrived at ${session.indoor?.name || destinationName()}`; remainingM = 0;
+    } else if (stage?.type === "connector") {
+      // At the lift or the stairs: the floor to go to.
+      icon = stage.class === "lift" ? "lift" : "stairs"; distanceText = session.indoor.levelName(stage.toLevel);
+      text = `Take ${stage.name} ${stage.direction} to ${session.indoor.levelName(stage.toLevel)}`;
+      then = `Choose ${session.indoor.levelName(stage.toLevel)} on the floor selector, or press Page ${stage.direction === "up" ? "Up" : "Down"}`;
+      remainingM = remainingAfter(session.indoor.stages, session.indoor.index);
+    } else if (stage && session.indoor.index === 0 && !getIndoorPosition?.()) {
+      icon = "enter"; distanceText = formatGuidanceDistance(Math.max(0, progress?.offsetM ?? 0));
+      text = "Walk in through the entrance"; then = `Then on to ${stage.to}`;
     } else if (session.offRoute && progress) {
       const here = model.frame.toLocal(session.position);
       const bearing = bearingOf(here, progress.point);
@@ -420,8 +493,8 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
       distanceText = formatGuidanceDistance(progress.offsetM); text = "Off route";
       then = `Walk ${compassWord(bearing)} to rejoin the route`;
     } else {
-      if (g.following) then = `Then ${maneuverText(g.following, session.destinationName).replace(/^./, (c) => c.toLowerCase())}`;
-      else if (along < 5 && g.next.type !== "arrive") then = `${maneuverText(model.maneuvers[0])} to start`;
+      if (g.following) then = `Then ${maneuverText(g.following, target).replace(/^./, (c) => c.toLowerCase())}`;
+      else if (along < 5 && g.next.type !== "arrive" && !stage) then = `${maneuverText(model.maneuvers[0])} to start`;
     }
     const iconKey = `${icon}:${Math.round(rotation / 5)}`;
     if (texts.get(ui.icon) !== iconKey) { texts.set(ui.icon, iconKey); ui.icon.innerHTML = iconSvg(icon, rotation); }
@@ -430,8 +503,9 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     setText(ui.text, text);
     setText(ui.then, then);
     setHidden(ui.then, !then);
-    const eta = session.arrived ? "Arrived" : `${walkingMinutes(g.remaining)} min`;
-    const remaining = session.arrived ? destinationName() : `${formatDistance(g.remaining)} · ${destinationName()}`;
+    const place = session.indoor?.name || destinationName();
+    const eta = session.arrived ? "Arrived" : `${walkingMinutes(remainingM)} min`;
+    const remaining = session.arrived ? place : `${formatDistance(remainingM)} · ${place}`;
     setText(ui.eta, eta);
     setText(ui.remaining, remaining);
     setText(ui.line, `${eta} · ${remaining}`);
@@ -576,6 +650,15 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     onToast?.("Position set. Tap “Use GPS” to follow your phone's location again.");
   });
 
+  // Esc on the map ends navigation (in 3D mode walk mode takes Esc first: it leaves
+  // 3D mode and marks the key as used).
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || event.defaultPrevented || !session || session.view !== "map" || walk.isActive()) return;
+    if (event.target instanceof Element && event.target.closest("input, textarea, select")) return;
+    event.preventDefault();
+    if (session.picking) setPicking(false); else end();
+  });
+
   // A pan, rotation or zoom by the user pauses following; Recenter resumes it.
   ["dragstart", "rotatestart", "pitchstart", "zoomstart"].forEach((name) => map.on(name, (event) => {
     if (!session || session.view !== "map" || !event.originalEvent || session.intro) return;
@@ -617,7 +700,8 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     steer({ position, heading, deltaSeconds }) {
       if (!session || session.view !== "walk" || session.source === "gps" || session.arrived || session.offRoute) return 0;
       const progress = session.progress;
-      if (!progress || progress.offsetM > 4) return 0;
+      // Outside the destination building it also leads him to its entrance from a little farther.
+      if (!progress || progress.offsetM > (session.indoor && !getIndoorPosition?.() ? 20 : 4)) return 0;
       const here = session.model.frame.toLocal(position);
       const ahead = pointAt(session.model, progress.along + 6);
       if (distance(here, ahead) < 1) return 0;
@@ -631,7 +715,8 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
       view: session.view, source: session.source, follow: session.follow, offRoute: session.offRoute, arrived: session.arrived,
       along: session.progress?.along ?? null, offsetM: session.progress?.offsetM ?? null, total: session.model?.total ?? null,
       banner: ui.text.textContent, distance: ui.distance.textContent, then: ui.then.textContent, alert: ui.alert.hidden ? "" : ui.alert.textContent,
-      status: ui.status.textContent, gps: gps.status, compass: compass.status(), heading: anim.heading, maneuvers: session.model.maneuvers.map((m) => m.type)
+      status: ui.status.textContent, gps: gps.status, compass: compass.status(), heading: anim.heading, maneuvers: session.model.maneuvers.map((m) => m.type),
+      indoor: session.indoor ? { index: session.indoor.index, stages: session.indoor.stages.map((stage) => (stage.type === "walk" ? `walk:${stage.level}` : `${stage.class}:${stage.toLevel}`)) } : null
     } : null),
     feedPosition(lngLat, { accuracy = 5, heading = null, speed = null } = {}) {
       onFix({ coords: { longitude: lngLat[0], latitude: lngLat[1], accuracy, heading, speed }, timestamp: Date.now() });

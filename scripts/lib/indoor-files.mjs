@@ -14,6 +14,7 @@ export function readLevelFiles(root, orgId, building, level) {
     corridor: files.corridor.map(read),
     walls: files.walls.map(read),
     doors: files.doors.map(read),
+    furniture: (files.furniture || []).map(read),
     pois: files.pois.map((file) => ({ file, data: read(file) })),
     units: files.units.map((unit) => ({ ...unit, data: read(unit.file) }))
   };

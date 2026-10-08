@@ -1113,7 +1113,10 @@ html[data-theme="dark"] .destination-action.active-route-action { color: #ff8a80
 .nav-active .map-controls button { width: 44px; height: 44px; }
 .nav-active .map-controls button:not(#zoom-in):not(#zoom-out) { display: none; }
 .nav-active .map-rail { top: 50%; bottom: auto; transform: translateY(-50%); }
-.nav-active.walk-mode-active .map-rail { display: none; }
+/* 3D mode: of the rail only the floor selector stays, to change floor at a lift or
+   the stairs (indoor.css places it below the banner). */
+.nav-active.walk-mode-active .map-rail { transform: none; }
+.nav-active.walk-mode-active .map-rail > :not(.floor-control) { display: none; }
 @media (min-width: 701px) {
   .nav-active .info-card { top: calc(max(12px, env(safe-area-inset-top)) + 168px); max-height: max(180px, calc(100dvh - 340px)); }
 }

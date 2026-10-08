@@ -1,0 +1,18 @@
+{
+"type": "FeatureCollection",
+"name": "doors",
+"crs": {"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},
+"features": [
+{"type":"Feature","properties":{"id":"L03-D01","room":"L03-01","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38470745,23.74021676],[90.38469786,23.74021482]]}},
+{"type":"Feature","properties":{"id":"L03-D02","room":"L03-02","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38463007,23.74020118],[90.38462048,23.74019925]]}},
+{"type":"Feature","properties":{"id":"L03-D03","room":"L03-03","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38475646,23.740199],[90.38474687,23.74019707]]}},
+{"type":"Feature","properties":{"id":"L03-D04","room":"L03-04","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38471777,23.74019121],[90.38470818,23.74018928]]}},
+{"type":"Feature","properties":{"id":"L03-D05","room":"L03-05","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38467908,23.74018342],[90.38466949,23.74018149]]}},
+{"type":"Feature","properties":{"id":"L03-D06","room":"L03-06","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38464039,23.74017563],[90.3846308,23.7401737]]}},
+{"type":"Feature","properties":{"id":"L03-D07","room":"L03-07","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38452433,23.74015227],[90.38451473,23.74015034]]}},
+{"type":"Feature","properties":{"id":"L03-D08","room":"L03-08","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38448564,23.74014449],[90.38447604,23.74014255]]}},
+{"type":"Feature","properties":{"id":"L03-D09","room":"L03-09","thickness_m":0.1},"geometry":{"type":"LineString","coordinates":[[90.38456886,23.74022017],[90.38455926,23.74021824]]}},
+{"type":"Feature","properties":{"id":"L03-D10","room":"L03-10","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.384518,23.74017862],[90.3845084,23.74017669]]}},
+{"type":"Feature","properties":{"id":"L03-D11","room":"L03-11","thickness_m":0.12},"geometry":{"type":"LineString","coordinates":[[90.38447931,23.74017084],[90.38446971,23.7401689]]}}
+]
+}

@@ -129,7 +129,7 @@ function scanLevel(directory, folder, { buildingKey, where, problems, places }) 
   const parsed = parseLevelFolder(folder);
   const files = readdirSync(path.join(directory, folder)).filter((file) => /\.geojson$/i.test(file)).sort();
   if (!parsed || !files.length) return null;
-  const level = { ...parsed, files: { level: null, corridor: [], walls: [], pois: [], doors: [], units: [] } };
+  const level = { ...parsed, files: { level: null, corridor: [], walls: [], pois: [], doors: [], furniture: [], units: [] } };
   const outline = [];
   for (const file of files) {
     const { kind, unitClass: fileClass } = levelFileKind(file);

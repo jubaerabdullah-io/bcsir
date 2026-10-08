@@ -1,11 +1,13 @@
 // MapLibre sources and layers of the open floor plans.
 //
 // An opened building is drawn without its shell, and the chosen floor lies at
-// ground level: the floor slab, the corridors, the rooms (low coloured blocks) and
-// the walls are fill-extrusions (so they hide and are hidden by the buildings
-// around them correctly), room names and point icons are symbols, and the indoor
-// part of a route is a line above them. One source holds every open floor; each
-// feature carries `kind`, `building` and `level` (indoor-model.js).
+// ground level, as a cut-away model: the floor slab, the corridors and the rooms
+// (their floors, coloured by use), the furniture, the doors and the walls (pale,
+// with a dark top edge where they are cut off) are fill-extrusions (so they hide
+// and are hidden by the buildings around them correctly), room names and point
+// icons are symbols, and the indoor part of a route is a line above them. One
+// source holds every open floor; each feature carries `kind`, `building` and
+// `level` (indoor-model.js).
 import { INDOOR_STYLE } from "./indoor-model.js";
 import { STYLE } from "../core/config.js";
 import { INDOOR_LAYERS } from "../map/layer-ids.js";
@@ -19,6 +21,11 @@ export const INDOOR_ROUTE_SOURCE = "indoor-route";
 const { units: INDOOR_UNIT_LAYER, pois: INDOOR_POI_LAYER, labels: INDOOR_LABEL_LAYER } = INDOOR_LAYERS;
 // Layers a click or the pointer can pick a room or point from.
 export const INDOOR_HIT_LAYERS = [INDOOR_POI_LAYER, INDOOR_LABEL_LAYER, INDOOR_UNIT_LAYER];
+const FURNITURE_LAYER = "indoor-furniture";
+const DOOR_LAYER = "indoor-doors";
+const LINTEL_LAYER = "indoor-lintels";
+const WALL_CAP_LAYER = "indoor-wall-caps";
+const WALL_CAP_M = 0.03;
 
 const kind = (name) => ["==", ["get", "kind"], name];
 const state = (name) => ["boolean", ["feature-state", name], false];
@@ -84,10 +91,10 @@ export function addIndoorLayers(map, { beforeId } = {}) {
   map.addSource(INDOOR_LABEL_SOURCE, { type: "geojson", data: EMPTY, promoteId: "uid" });
   map.addSource(INDOOR_ROUTE_SOURCE, { type: "geojson", data: EMPTY });
 
-  const extrusion = (id, filter, paint) => map.addLayer({ id, type: "fill-extrusion", source: INDOOR_SOURCE, filter, paint: { "fill-extrusion-base": 0, "fill-extrusion-opacity": 1, "fill-extrusion-vertical-gradient": false, ...paint } }, beforeId);
+  const extrusion = (id, filter, paint, options = {}) => map.addLayer({ id, type: "fill-extrusion", source: INDOOR_SOURCE, filter, ...options, paint: { "fill-extrusion-base": 0, "fill-extrusion-opacity": 1, "fill-extrusion-vertical-gradient": false, ...paint } }, beforeId);
   // The slab and the corridors carry the colour of their floor (indoor-model.js).
-  extrusion("indoor-floor", kind("floor"), { "fill-extrusion-color": ["coalesce", ["get", "color"], INDOOR_STYLE.floor], "fill-extrusion-height": 0.1 });
-  extrusion("indoor-corridor", kind("corridor"), { "fill-extrusion-color": ["coalesce", ["get", "color"], INDOOR_STYLE.corridor], "fill-extrusion-height": 0.14 });
+  extrusion("indoor-floor", kind("floor"), { "fill-extrusion-color": ["coalesce", ["get", "color"], INDOOR_STYLE.floor], "fill-extrusion-height": ["coalesce", ["get", "height"], INDOOR_STYLE.floorHeightM] });
+  extrusion("indoor-corridor", kind("corridor"), { "fill-extrusion-color": ["coalesce", ["get", "color"], INDOOR_STYLE.corridor], "fill-extrusion-height": ["coalesce", ["get", "height"], INDOOR_STYLE.corridorHeightM] });
   // Route endpoints take precedence, then the selected and the hovered room.
   extrusion(INDOOR_UNIT_LAYER, kind("unit"), {
     "fill-extrusion-color": ["case",
@@ -98,7 +105,13 @@ export function addIndoorLayers(map, { beforeId } = {}) {
       ["get", "color"]],
     "fill-extrusion-height": ["get", "height"]
   });
+  // Furniture, from a close zoom on (it is too small to read farther out).
+  extrusion(FURNITURE_LAYER, kind("furniture"), { "fill-extrusion-color": ["get", "color"], "fill-extrusion-base": ["get", "base"], "fill-extrusion-height": ["get", "height"], "fill-extrusion-vertical-gradient": true }, { minzoom: 18.3 });
+  extrusion(DOOR_LAYER, kind("door"), { "fill-extrusion-color": ["get", "color"], "fill-extrusion-height": ["get", "height"], "fill-extrusion-vertical-gradient": true });
   extrusion("indoor-walls", kind("wall"), { "fill-extrusion-color": ["get", "color"], "fill-extrusion-height": ["get", "height"], "fill-extrusion-vertical-gradient": true });
+  extrusion(LINTEL_LAYER, kind("lintel"), { "fill-extrusion-color": ["get", "color"], "fill-extrusion-base": ["get", "base"], "fill-extrusion-height": ["get", "height"] });
+  // The dark edge where the walls are cut off.
+  extrusion(WALL_CAP_LAYER, ["any", kind("wall"), kind("lintel")], { "fill-extrusion-color": INDOOR_STYLE.wallCap, "fill-extrusion-base": ["get", "height"], "fill-extrusion-height": ["+", ["get", "height"], WALL_CAP_M] });
 
   // Indoor part of the route: the legs on the shown floors, and (dashed) the legs
   // on the other floors of an open building.
@@ -152,9 +165,15 @@ export function setIndoorRoute(map, collection) {
 }
 
 // Walk mode sees an open floor from inside: its rooms flat like the corridor, to
-// walk on, and its walls at room height. Off: the plan as it is drawn on the map.
+// walk on, its walls at room height and its doorways open. Off: the plan as it is
+// drawn on the map.
 export function setIndoorWalkView(map, on) {
   if (!map.getLayer(INDOOR_UNIT_LAYER)) return;
+  const wallTop = on ? ["max", ["get", "height"], INDOOR_STYLE.walkWallHeightM] : ["get", "height"];
   map.setPaintProperty(INDOOR_UNIT_LAYER, "fill-extrusion-height", on ? INDOOR_STYLE.walkFloorM : ["get", "height"]);
-  map.setPaintProperty("indoor-walls", "fill-extrusion-height", on ? ["max", ["get", "height"], INDOOR_STYLE.walkWallHeightM] : ["get", "height"]);
+  map.setPaintProperty("indoor-walls", "fill-extrusion-height", wallTop);
+  map.setPaintProperty(LINTEL_LAYER, "fill-extrusion-height", wallTop);
+  map.setPaintProperty(WALL_CAP_LAYER, "fill-extrusion-base", wallTop);
+  map.setPaintProperty(WALL_CAP_LAYER, "fill-extrusion-height", ["+", wallTop, WALL_CAP_M]);
+  map.setLayoutProperty(DOOR_LAYER, "visibility", on ? "none" : "visible");
 }

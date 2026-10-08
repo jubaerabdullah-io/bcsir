@@ -11,14 +11,17 @@
 // Selecting another building takes the selector away from a building with floors
 // and shows that building from outside again, unless the route runs through it.
 import * as maplibregl from "maplibre-gl";
+import { orientedFootprint } from "../buildings/building-footprint.js";
 import { planarDistanceMeters } from "../utils/geo-utils.js";
-import { geometryPolygons, insideRings } from "../utils/local-frame.js";
+import { DEG, geometryPolygons, insideRings, normalizeDegrees } from "../utils/local-frame.js";
 import { orgDataPath } from "../core/org.js";
 import { fetchPublicJSON } from "../core/paths.js";
-import { FIT_PADDING, flyOffset } from "../map/fit-padding.js";
+import { axisBearings, cameraForPoints, circlePoints } from "../map/camera-fit.js";
+import { FIT_PADDING } from "../map/fit-padding.js";
 import { ROUTE_LAYERS } from "../map/layer-ids.js";
 import { createFloorControl } from "./floor-control.js";
 import { addIndoorLayers, INDOOR_HIT_LAYERS, INDOOR_SOURCE, setIndoorData, setIndoorRoute, setIndoorWalkView } from "./indoor-layers.js";
+import { INDOOR_STYLE } from "./indoor-model.js";
 import { createIndoorStore } from "./indoor-store.js";
 import { CONNECTOR_CLASSES } from "./levels.js";
 import { createPlaceCard } from "./place-card.js";
@@ -27,21 +30,27 @@ const FOCUS_ZOOM = 17.2; // from this zoom the building at the centre of the vie
 const FOCUS_REACH_M = 30; // ... also when the centre is this near its footprint centre
 const AUTO_OPEN_ZOOM = 19.2; // zooming in this far opens the building at the centre (org.json "floors.auto_open_zoom")
 const FLOOR_LAYERS = ["indoor-floor", "indoor-corridor", "indoor-walls"];
+const FLOOR_MAX_ZOOM = 20.5; // a floor plan is framed at most this close
+const PLACE_REACH_M = 8; // a chosen room or point is framed with this much around it
+const PLACE_ZOOM = [19.4, 20.8]; // ... between these zooms
+// Location pin on the chosen room or point.
+const PIN = '<svg viewBox="0 0 32 42" aria-hidden="true"><path d="M16 1.5C8 1.5 1.5 7.9 1.5 15.8 1.5 26.4 16 40.5 16 40.5S30.5 26.4 30.5 15.8C30.5 7.9 24 1.5 16 1.5Z" fill="#ea4335" stroke="#fff" stroke-width="2.5"/><circle cx="16" cy="15.5" r="5.6" fill="#7f1d1d"/></svg>';
 
 // The floor's files, fetched from the organisation's data folder (revalidated, so
 // a floor saved again from QGIS is read fresh).
 async function fetchLevelFiles(building, level) {
   const read = (file) => fetchPublicJSON(orgDataPath(`${building.entry.folder}/${level.id}/${file}`));
   const { files } = level;
-  const [outline, corridor, walls, doors, pois, units] = await Promise.all([
+  const [outline, corridor, walls, doors, furniture, pois, units] = await Promise.all([
     files.level ? read(files.level) : null,
     Promise.all(files.corridor.map(read)),
     Promise.all(files.walls.map(read)),
     Promise.all(files.doors.map(read)),
+    Promise.all((files.furniture || []).map(read)),
     Promise.all(files.pois.map(async (file) => ({ file, data: await read(file) }))),
     Promise.all(files.units.map(async (unit) => ({ ...unit, data: await read(unit.file) })))
   ]);
-  return { level: outline, corridor, walls, doors, pois, units };
+  return { level: outline, corridor, walls, doors, furniture, pois, units };
 }
 
 // getBuildingFeature(id)   the buildings-file feature with that id (render copy), or null
@@ -71,8 +80,17 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   let hovered = null;
   let endpoints = { source: null, destination: null };
   let legs = []; // indoor legs of the current route
+  let walkView = false;
+  const orientations = new Map(); // building key -> bearing of its long axis
 
   if (hasFloors) addIndoorLayers(map, { beforeId: map.getLayer(ROUTE_LAYERS.casing) ? ROUTE_LAYERS.casing : undefined });
+
+  const pinElement = document.createElement("div");
+  pinElement.className = "place-pin";
+  pinElement.innerHTML = PIN;
+  pinElement.setAttribute("role", "img");
+  const pin = new maplibregl.Marker({ element: pinElement, anchor: "bottom", offset: [0, -8] });
+  let pinUid = null; // the room or point the pin stands on
 
   const floorControl = createFloorControl({
     onSelect: (levelId) => focus && !onFloorPick?.(focus, levelId) && openLevel(focus, levelId),
@@ -141,6 +159,61 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     set(selected, { selected: true });
     set(endpoints.source, { routeSource: true });
     set(endpoints.destination, { routeDestination: true });
+    showPin();
+  }
+
+  // The location pin on the chosen room or point (not where a route pin stands,
+  // and not while walking). It drops in when it moves to another place.
+  function showPin() {
+    const place = selected && !walkView && selected !== endpoints.source && selected !== endpoints.destination ? models.get(selected.split("/")[0])?.place(selected) : null;
+    if (!place) { pin.remove(); pinUid = null; return; }
+    pin.setLngLat(place.point);
+    pinElement.setAttribute("aria-label", `Chosen: ${place.name || place.classLabel}`);
+    if (pinUid !== place.uid) {
+      pinElement.classList.remove("place-pin-drop");
+      void pinElement.offsetWidth; // restarts the animation
+      pinElement.classList.add("place-pin-drop");
+    }
+    pin.addTo(map);
+    pinUid = place.uid;
+  }
+
+  // ---- Framing ------------------------------------------------------------------------
+  // Bearing of a building's long axis (its footprint), the axes a floor is framed along.
+  function orientationOf(key) {
+    if (!orientations.has(key)) {
+      const footprint = orientedFootprint(featureOf(store.building(key)));
+      orientations.set(key, footprint ? normalizeDegrees(Math.atan2(footprint.u[0], footprint.u[1]) / DEG) % 180 : null);
+    }
+    return orientations.get(key);
+  }
+  const bearingsOf = (key) => (orientationOf(key) === null ? null : axisBearings(orientationOf(key)));
+
+  // The outline of a building's floor (the open floor's, else the footprint, else its
+  // box), at the floor and at the top of its walls.
+  function outlinePoints(key) {
+    const building = store.building(key);
+    const polygons = models.get(key)?.floor?.length ? models.get(key).floor : geometryPolygons(featureOf(building)?.geometry);
+    let ring = polygons.flatMap((rings) => rings[0] || []);
+    const box = building?.entry.bbox;
+    if (!ring.length && box) ring = [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]];
+    return ring.flatMap((point) => [[point[0], point[1], 0], [point[0], point[1], INDOOR_STYLE.wallHeightM]]);
+  }
+
+  // A room (its outline) or point, with PLACE_REACH_M around it.
+  function placePoints(place) {
+    const outline = place.kind === "unit" ? place.polygons.flatMap((rings) => rings[0]) : [];
+    return [...outline, ...circlePoints(place.point, PLACE_REACH_M)];
+  }
+
+  // What the View presets keep in view (camera-controls.js): the chosen room or
+  // point, else the open floor of the building the floor selector is on; or null.
+  function cameraFocus() {
+    const place = selected ? models.get(selected.split("/")[0])?.place(selected) : null;
+    if (place) return { kind: "place", building: place.building, points: placePoints(place), orientation: orientationOf(place.building), padding: FIT_PADDING.place, maxZoom: PLACE_ZOOM[1] };
+    const key = focus && open.has(focus) ? focus : [...open.keys()].at(-1);
+    if (!key) return null;
+    return { kind: "floor", building: key, buildingId: store.building(key)?.buildingId ?? null, points: outlinePoints(key), orientation: orientationOf(key), padding: FIT_PADDING.building, maxZoom: FLOOR_MAX_ZOOM };
   }
 
   function drawRoute() {
@@ -201,14 +274,19 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     onChange?.();
   }
 
-  // Brings a building into view when it is far away or small on screen.
+  // Brings a building's floor into view, as large as the free part of the screen
+  // allows: turned along the building's axes when that shows it clearly larger (a
+  // long building runs up a phone held upright). Nothing moves while the view is
+  // already on the building about that close.
   function frame(key) {
     const building = store.building(key);
-    const box = building?.entry.bbox;
-    if (!box) return;
-    const centre = map.getCenter().toArray();
-    if (map.getZoom() >= 18.2 && inBox(centre, box)) return;
-    map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: FIT_PADDING.building(), maxZoom: 20, pitch: Math.min(map.getPitch(), 52), bearing: map.getBearing(), duration: 900, essential: true });
+    const points = outlinePoints(key);
+    if (!building || !points.length) return;
+    const camera = cameraForPoints(map, points, { pitch: Math.min(map.getPitch(), 52), bearings: bearingsOf(key), keepBearing: true, minGain: 0.15, padding: FIT_PADDING.building(), maxZoom: FLOOR_MAX_ZOOM });
+    if (!camera) return;
+    const box = building.entry.bbox;
+    if (map.getZoom() >= camera.zoom - 0.35 && (!box || inBox(map.getCenter().toArray(), box))) return;
+    map.flyTo({ ...camera, duration: 900, essential: true });
   }
 
   // Shows a floor of a building (and hides the building's shell).
@@ -255,7 +333,12 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     applyStates();
     placeCard.show(place, { building: building.name, level: building.levelById.get(levelId).name });
     onPlaceShown?.(place);
-    if (fly) map.flyTo({ center: place.point, offset: flyOffset(), zoom: Math.max(map.getZoom(), 19.4), pitch: Math.min(Math.max(map.getPitch(), 40), 55), bearing: map.getBearing(), speed: 0.8, curve: 1.2, essential: true });
+    // The place in the middle of what the card and the panels leave free, close up,
+    // with its pin (the card is shown first, so it counts).
+    if (fly) {
+      const camera = cameraForPoints(map, placePoints(place), { pitch: Math.min(Math.max(map.getPitch(), 30), 50), bearings: bearingsOf(key), keepBearing: true, minGain: 0.15, padding: FIT_PADDING.place(), minZoom: PLACE_ZOOM[0], maxZoom: PLACE_ZOOM[1] });
+      if (camera) map.flyTo({ ...camera, speed: 0.8, curve: 1.2, essential: true });
+    }
     return true;
   }
 
@@ -323,8 +406,12 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     openLevels: () => Object.fromEntries(open),
     selectedPlace: () => selected,
     focusedBuilding: () => focus,
-    // Walk mode sees the open floors from inside (indoor-layers.js).
-    setWalkView(on) { if (hasFloors) setIndoorWalkView(map, on); },
+    cameraFocus,
+    // Walk mode sees the open floors from inside (indoor-layers.js), without the pin.
+    setWalkView(on) {
+      walkView = on;
+      if (hasFloors) { setIndoorWalkView(map, on); showPin(); }
+    },
     // A building was selected on the map: the floor selector follows it, and floor
     // plans open in other buildings close (those the route runs through stay).
     buildingSelected(feature) {
