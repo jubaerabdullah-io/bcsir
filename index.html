@@ -129,14 +129,18 @@
           </div>
         </section>
 
-        <nav class="map-controls" aria-label="Map controls">
-          <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
-          <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
-          <button class="camera-step" type="button" data-camera-rotate="-22.5" aria-label="Rotate left" title="Rotate left">⟲</button>
-          <button class="camera-step" type="button" data-camera-rotate="22.5" aria-label="Rotate right" title="Rotate right">⟳</button>
-          <button class="camera-step" type="button" data-camera-tilt="10" aria-label="Tilt camera more" title="Tilt more">⤒</button>
-          <button class="camera-step" type="button" data-camera-tilt="-10" aria-label="Tilt camera less" title="Tilt less">⤓</button>
-        </nav>
+        <!-- My location (map/locate-control.js), then the zoom and camera-step buttons -->
+        <div class="zoom-control">
+          <button id="locate-button" class="rail-button locate-button" type="button" data-state="off" aria-pressed="false" aria-label="Show my location" title="Show my location"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle class="locate-dot" cx="12" cy="12" r="2.8"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg></button>
+          <nav class="map-controls" aria-label="Map controls">
+            <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+            <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+            <button class="camera-step" type="button" data-camera-rotate="-22.5" aria-label="Rotate left" title="Rotate left">⟲</button>
+            <button class="camera-step" type="button" data-camera-rotate="22.5" aria-label="Rotate right" title="Rotate right">⟳</button>
+            <button class="camera-step" type="button" data-camera-tilt="10" aria-label="Tilt camera more" title="Tilt more">⤒</button>
+            <button class="camera-step" type="button" data-camera-tilt="-10" aria-label="Tilt camera less" title="Tilt less">⤓</button>
+          </nav>
+        </div>
 
         <div class="walk-control">
           <button id="walk-mode" class="first-person-button" type="button" aria-pressed="false" aria-label="Walk: choose a location on the map to walk from" title="Walk (V switches to first-person view)">

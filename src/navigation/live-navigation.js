@@ -31,7 +31,7 @@ import { GARDEN_LAYER } from "../map/layer-ids.js";
 import { formatDistance, walkingMinutes } from "../routing/route-summary.js";
 import { routePathCoordinates } from "../routing/route-service.js";
 import { createCompass } from "./compass.js";
-import { angleDelta, bearingOf, createLocalFrame, distance, geometryPolygons, insideRings, normalizeDegrees } from "../utils/local-frame.js";
+import { angleDelta, bearingOf, circlePolygon, createLocalFrame, distance, geometryPolygons, insideRings, normalizeDegrees } from "../utils/local-frame.js";
 import { bearingAt, compassWord, createRouteModel, formatGuidanceDistance, guidance, locate, maneuverText, pointAt } from "./route-progress.js";
 import { indoorStages, nextIndoorStage, remainingAfter } from "./indoor-guidance.js";
 
@@ -74,16 +74,6 @@ function iconSvg(type, rotation = 0) {
   const path = ICON_PATHS[type] || ICON_PATHS.straight;
   const filled = type === "arrive";
   return `<svg viewBox="0 0 24 24" style="transform: rotate(${Math.round(rotation)}deg)" aria-hidden="true"><path d="${path}" ${filled ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"'}/></svg>`;
-}
-
-function circlePolygon(center, radiusM, steps = 40) {
-  const frame = createLocalFrame(center);
-  const ring = [];
-  for (let i = 0; i <= steps; i += 1) {
-    const a = (i / steps) * Math.PI * 2;
-    ring.push(frame.toLngLat([Math.cos(a) * radiusM, Math.sin(a) * radiusM]));
-  }
-  return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [ring] } };
 }
 
 // The part of the route outside its endpoint buildings: without an indoor map

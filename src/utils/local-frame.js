@@ -18,6 +18,17 @@ export function createLocalFrame(origin) {
   };
 }
 
+// GeoJSON polygon of a circle of `radiusM` metres round a lon/lat point.
+export function circlePolygon(center, radiusM, steps = 40) {
+  const frame = createLocalFrame(center);
+  const ring = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const a = (i / steps) * Math.PI * 2;
+    ring.push(frame.toLngLat([Math.cos(a) * radiusM, Math.sin(a) * radiusM]));
+  }
+  return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [ring] } };
+}
+
 export const distance = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 export const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 

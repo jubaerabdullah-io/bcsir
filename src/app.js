@@ -19,6 +19,7 @@ import { createUI } from "./ui/ui.js";
 import { createModelGroups } from "./three/model-placements.js";
 import { get3DModelStats, setFadedModelBuildings, setHiddenModelBuildings } from "./three/models3d.js";
 import { createCameraController } from "./map/camera-controls.js";
+import { createLocateControl } from "./map/locate-control.js";
 import { axisBearings, cameraForPoints, principalBearing } from "./map/camera-fit.js";
 import { FIT_PADDING, flyOffset } from "./map/fit-padding.js";
 import { orientedFootprint } from "./buildings/building-footprint.js";
@@ -81,6 +82,7 @@ let indoorWalk; // walking inside buildings with floor plans (walk/walk-indoor.j
 let routeOcclusion;
 let minimap;
 let navigation;
+let locate; // the visitor's own position on the map (map/locate-control.js)
 let buildingModels;
 // Floor plans (indoor/indoor-controller.js). A route endpoint is a building; when
 // it is a room or point inside that building, its id is kept here.
@@ -637,6 +639,7 @@ async function start() {
     onStateChange: (state) => {
       // The floors open before the walk are open again after it.
       if (state === "idle") indoorWalk.end();
+      if (state === "entering") locate?.stop();
       indoor.setWalkView(state === "entering" || state === "active");
       minimap?.show(state === "active");
       routeWalker.setSuppressed(state !== "idle" || Boolean(navigation?.isActive()));
@@ -669,6 +672,7 @@ async function start() {
     onSession: (active) => {
       routeWalker.setSuppressed(active || walkController.isActive());
       if (active) {
+        locate.stop(); // navigation shows the position itself
         interactionController.clearSelection();
         interactionController.setPickHandler(null);
         search.close();
@@ -679,6 +683,13 @@ async function start() {
       }
     },
     onToast: ui.showToast
+  });
+
+  locate = createLocateControl(map, {
+    button: document.querySelector("#locate-button"),
+    campusCenter: campusBounds.isEmpty() ? null : campusBounds.getCenter().toArray(),
+    flyOffset,
+    onMessage: ui.showToast
   });
 
   // Satellite shows the imagery alone: the drawn campus layers are hidden.

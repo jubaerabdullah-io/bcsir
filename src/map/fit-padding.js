@@ -8,7 +8,7 @@ const GAP_PX = 12; // between a panel and what is framed beside it
 const FREE_SHARE = 0.4; // of the width and of the height that padding always leaves free
 // The right-hand controls on a wide screen (the Walk button below them is left out:
 // it only takes the bottom corner).
-const RAIL_PARTS = [".floor-control:not([hidden])", ".layers-control", ".view-control", ".map-controls"];
+const RAIL_PARTS = [".floor-control:not([hidden])", ".layers-control", ".view-control", ".zoom-control"];
 
 const isPhone = () => window.innerWidth < PHONE_WIDTH_PX;
 const sides = (value) => (typeof value === "object" ? { ...value } : { top: value, bottom: value, left: value, right: value });
