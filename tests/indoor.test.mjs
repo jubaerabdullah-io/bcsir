@@ -219,7 +219,8 @@ test("template floors: the seven files per floor, inside the footprint, routable
     for (const unit of model.units) {
       const anchor = model.anchorFor(unit.uid);
       assert.ok(anchor, `${folder} ${unit.name} is reached from the corridor`);
-      assert.ok(anchor.via, `${folder} ${unit.name} is entered by its door`);
+      assert.ok(anchor.doors?.length, `${folder} ${unit.name} is entered by its door`);
+      assert.ok(model.doors.some((door) => door[0] === anchor.point[0] && door[1] === anchor.point[1]), `${folder} ${unit.name}: the route ends at the door`);
     }
     for (const poi of model.pois) assert.ok(model.anchorFor(poi.uid), `${folder} ${poi.name} is on the walkable area`);
     const kinds = new Set(model.render.features.map((feature) => feature.properties.kind));
@@ -317,5 +318,34 @@ test("every room and point of every floor plan can be routed to", async () => {
       assert.ok(anchor, `${id}: ${place.uid} (${place.name}) is beside a walkable area`);
     }
     for (const building of store.buildings) assert.ok(await store.entranceAnchor(building.key), `${id}/${building.entry.folder}: an entrance`);
+  }
+});
+
+test("BCSIR Secretariat: routes run straight along the corridors, turn squarely and end at the room's door", async () => {
+  const { org, store } = storeOf("bcsir");
+  const building = store.forBuildingId(127);
+  const entrance = await store.entranceAnchor(building.key);
+  for (const place of org.places.filter((item) => item.building === building.key && item.kind === "unit")) {
+    const to = await store.placeAnchor(place.uid);
+    const result = await store.routeBetween(building.key, entrance, to);
+    assert.equal(result.ok, true, place.uid);
+    const sameFloor = entrance.level === place.level;
+    assert.deepEqual(result.legs.map((leg) => leg.type), sameFloor ? ["walk"] : ["walk", "connector", "walk"], `${place.uid}: no detour by a lift on the way`);
+    assert.ok(to.doors.some((door) => door.point === result.to.point), `${place.uid}: ends at a door of the room`);
+    for (const leg of result.legs.filter((item) => item.type === "walk")) {
+      const model = await store.level(building.key, leg.level);
+      const points = leg.coordinates.map(model.grid.frame.toLocal);
+      assert.deepEqual(leg.coordinates.at(-1), leg === result.legs.at(-1) ? result.to.point : leg.coordinates.at(-1));
+      for (let i = 1; i < points.length; i += 1) {
+        const dx = Math.abs(points[i][0] - points[i - 1][0]), dy = Math.abs(points[i][1] - points[i - 1][1]);
+        assert.ok(Math.min(dx, dy) < 0.01, `${place.uid}: step ${i} on ${leg.level} runs along the walls (${dx.toFixed(2)}, ${dy.toFixed(2)})`);
+        // Every half metre of the line is on the walkable area, or at the door or lift it leads to.
+        const steps = Math.ceil(Math.max(dx, dy) / 0.5);
+        for (let k = 0; k <= steps; k += 1) {
+          const point = model.grid.frame.toLngLat([points[i - 1][0] + (points[i][0] - points[i - 1][0]) * k / steps, points[i - 1][1] + (points[i][1] - points[i - 1][1]) * k / steps]);
+          assert.ok(model.grid.nearestCell(point, 0.8), `${place.uid}: the line stays in the corridor on ${leg.level}`);
+        }
+      }
+    }
   }
 });

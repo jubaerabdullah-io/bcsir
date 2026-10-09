@@ -13,7 +13,7 @@ import { activeOrg, datasetKeyOfPath } from "./core/org.js";
 import { datasetLabel, fetchDataset, loadAllData, prepareDataset } from "./data/bcsir-data.js";
 import { addBcsirLayers, getBuildingStateRef, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setModelHitBuildings, setRouteData, setShellHiddenBuildings, setWallGaps, updateDatasetLayers } from "./map/bcsir-layers.js";
 import { hasTiles, registerProtocol } from "./map/vector-tiles.js";
-import { calculateBounds, lineStrips } from "./utils/geo-utils.js";
+import { calculateBounds, distanceMeters, lineStrips } from "./utils/geo-utils.js";
 import { setupInteractions } from "./map/interactions.js";
 import { createUI } from "./ui/ui.js";
 import { createModelGroups } from "./three/model-placements.js";
@@ -37,7 +37,7 @@ import { createDirections } from "./ui/directions-ui.js";
 import { createRouteMarkers } from "./routing/route-markers.js";
 import { createRouteWalker } from "./routing/route-walker.js";
 import { createBasemapControl, savedBasemap } from "./map/basemap-control.js";
-import { describeDisplayRoute } from "./routing/route-summary.js";
+import { describeDisplayRoute, formatDistance } from "./routing/route-summary.js";
 import { createRouteOcclusion } from "./routing/route-occlusion.js";
 import { blocksWalking, collisionBlockers, createCollisionWorld } from "./navigation/collision.js";
 import { correctRouteResult, prepareObstacles } from "./navigation/route-detour.js";
@@ -88,6 +88,7 @@ let buildingModels;
 // it is a room or point inside that building, its id is kept here.
 let indoor;
 let routePlaces = { source: null, destination: null };
+let sourcePosition = null; // [lon, lat] when the route starts at the visitor's own position ("Your location")
 let trip = null; // indoor parts and description of the current route (indoor/trip.js)
 let tripToken = 0;
 let routeDrawn = false; // the route between buildings is drawn (Walk on, a route found)
@@ -196,7 +197,23 @@ function showPlaceInSearch() {
 // Sets a route endpoint: a building, or (placeUid) a room or point inside it.
 function setEndpoint(kind, feature, placeUid = null) {
   routePlaces[kind] = placeUid;
+  if (kind === "source") sourcePosition = null;
   if (kind === "source") interactionController.setSourceFeature(feature); else interactionController.setDestinationFeature(feature);
+}
+
+// "Your location" in the From field: the route starts where the visitor stands
+// (map/locate-control.js asks the browser). False when the position is not known.
+const FAR_FROM_CAMPUS_M = 1500;
+async function routeFromMyLocation() {
+  const point = await locate.position();
+  if (!point) return false;
+  routePlaces.source = null;
+  sourcePosition = point;
+  interactionController.clearSourceFeature(); // no building is the start: the route is calculated again
+  const bounds = calculateBounds(campusExtent(), maplibregl.LngLatBounds);
+  const away = bounds.isEmpty() ? 0 : distanceMeters(point, bounds.getCenter().toArray());
+  if (away > FAR_FROM_CAMPUS_M) ui.showToast(`You are ${formatDistance(away)} from the campus: the route starts at the nearest campus road`);
+  return true;
 }
 
 function campusExtent() {
@@ -268,7 +285,7 @@ function routeFromCard(kind, feature, context) {
 
 function pinFor(feature, endpoint) {
   const resolved = endpoint || (feature ? routeService.endpointFor(feature) : null);
-  return resolved ? { point: resolved.point, name: String(feature?.properties?.name_en || "").trim() } : null;
+  return resolved ? { point: resolved.point, name: resolved.kind === "position" ? "Your location" : String(feature?.properties?.name_en || "").trim() } : null;
 }
 
 // Pin of a route endpoint: on the chosen room or point, else on the building's entrance.
@@ -292,13 +309,24 @@ function showRoutePins(pins = routePins) {
   routeMarkers.set({ source: visible(pins.source), destination: visible(pins.destination) });
 }
 
+// A pin on a room stands at its door, where a route to it ends. The door is known
+// once the room's floor is read; `token` drops a result a newer route has overtaken.
+async function showDoorPins(places, token) {
+  const kinds = ["source", "destination"].filter((kind) => places[kind]);
+  const anchors = await Promise.all(kinds.map((kind) => indoor.store.placeAnchor(places[kind]).catch(() => null)));
+  if (token !== tripToken) return;
+  const pins = { ...routePins };
+  kinds.forEach((kind, index) => { if (anchors[index] && pins[kind]?.uid === places[kind]) pins[kind] = { ...pins[kind], point: anchors[index].point }; });
+  showRoutePins(pins);
+}
+
 // The part of a route inside buildings (indoor/trip.js): from a room to the
 // building's entrance, and from the entrance of the destination building to the
 // room there, by the lift or the stairs. `token` drops a result that a newer route
 // has overtaken (floors are loaded while it is calculated).
 async function planTrip(selection, places, token) {
   const sameBuilding = selection.source === selection.destination;
-  const keyOf = (feature) => indoor.store.forBuildingId(feature.properties?.id)?.key || null;
+  const keyOf = (feature) => indoor.store.forBuildingId(feature?.properties?.id)?.key || null;
   const outdoorResult = displayRoute;
   let result;
   try {
@@ -362,25 +390,28 @@ function updateRoute(selection) {
   if (!selection.source) routePlaces.source = null;
   if (!selection.destination) routePlaces.destination = null;
   const places = { ...routePlaces };
+  // The visitor's position is the start while no building or room is.
+  const position = selection.source ? null : sourcePosition;
   const token = ++tripToken;
   trip = null;
   ui.updateRouteSelection(selection);
-  directions.sync({ ...selection, entries: { source: placeEntry(places.source), destination: placeEntry(places.destination) } });
+  directions.sync({ ...selection, position, entries: { source: placeEntry(places.source), destination: placeEntry(places.destination) } });
   indoor.setEndpoints(places);
   cameraController?.updateRoute(selection);
   routeDrawn = false;
-  if (!selection.source || !selection.destination) {
+  if ((!selection.source && !position) || !selection.destination) {
     lastRoute = null;
     displayRoute = null;
     showRouteGeometry(null);
-    showRoutePins({ source: endpointPin("source", selection.source), destination: endpointPin("destination", selection.destination) });
+    showRoutePins({ source: position ? { point: position, name: "Your location" } : endpointPin("source", selection.source), destination: endpointPin("destination", selection.destination) });
+    showDoorPins(places, token);
     routeWalker.set(null);
     directions.showRoute(null);
     navigation?.setRoute(null);
     indoor.setRouteLegs([]);
     return;
   }
-  lastRoute = routeService.route(selection.source, selection.destination);
+  lastRoute = position ? routeService.routeFromPoint(position, selection.destination) : routeService.route(selection.source, selection.destination);
   displayRoute = correctRouteResult(lastRoute, obstacles);
   showRoutePins({ source: endpointPin("source", selection.source, lastRoute.source), destination: endpointPin("destination", selection.destination, lastRoute.destination) });
   const indoorTrip = Boolean(places.source || places.destination);
@@ -565,9 +596,10 @@ async function start() {
     onUse: (entry) => recents.add(entry),
     resolveFeature: featureForEntry,
     onSetEndpoint: (kind, feature, entry) => setEndpoint(kind, feature, entry?.kind === "place" ? entry.placeUid : null),
-    onClearEndpoint: (kind) => { routePlaces[kind] = null; if (kind === "source") interactionController.clearSourceFeature(); else interactionController.clearDestinationFeature(); },
-    onSwap: () => { routePlaces = { source: routePlaces.destination, destination: routePlaces.source }; interactionController.swapRouteEndpoints(); },
-    onClearRoute: () => { routePlaces = { source: null, destination: null }; interactionController.clearRouteSelection(); },
+    onUseLocation: routeFromMyLocation,
+    onClearEndpoint: (kind) => { routePlaces[kind] = null; if (kind === "source") sourcePosition = null; if (kind === "source") interactionController.clearSourceFeature(); else interactionController.clearDestinationFeature(); },
+    onSwap: () => { sourcePosition = null; routePlaces = { source: routePlaces.destination, destination: routePlaces.source }; interactionController.swapRouteEndpoints(); },
+    onClearRoute: () => { sourcePosition = null; routePlaces = { source: null, destination: null }; interactionController.clearRouteSelection(); },
     onStep: showStep,
     onStepFreeChange: () => updateRoute(interactionController.getRouteSelection()),
     // An empty field of the open panel takes the next building or room clicked on the map.
@@ -669,6 +701,18 @@ async function start() {
       if (result.ok) showRouteGeometry(result);
       return result;
     },
+    // Off the route inside the destination building (a wrong turn, another floor):
+    // a new route from where the walker stands to the same room, drawn in its place.
+    rerouteIndoor: async (position, where) => {
+      const end = trip?.end;
+      if (!end?.ok || !where || where.building !== end.building) return null;
+      const from = (await indoor.store.level(where.building, where.level)).anchorAt(position, "Your position", 8);
+      if (!from) return null;
+      const result = await indoor.store.routeBetween(end.building, from, end.to, { stepFree: directions.isStepFree() });
+      if (!result.ok || trip?.end !== end || !navigation.isActive()) return null;
+      indoor.setRouteLegs(result.legs);
+      return result.legs;
+    },
     onSession: (active) => {
       routeWalker.setSuppressed(active || walkController.isActive());
       if (active) {
@@ -680,6 +724,7 @@ async function start() {
         layerManager?.setOpen(false);
       } else {
         showRouteGeometry(directions.isWalkOn() ? displayRoute : null); // a re-routed line goes back to the chosen route
+        indoor.setRouteLegs(directions.isWalkOn() ? [trip?.start, trip?.end].filter((part) => part?.ok).flatMap((part) => part.legs) : []);
       }
     },
     onToast: ui.showToast

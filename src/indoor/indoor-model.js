@@ -195,7 +195,15 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
     });
   }
 
+  // The room each door belongs to (its `room` property: the room's id), where recorded.
+  const doorRooms = new Map();
   const doors = (files.doors || []).flatMap((collection) => featuresOf(collection)).flatMap((feature, index) => {
+    const points = doorPoints(feature, index);
+    const room = firstProperty(feature.properties || {}, ["room", "room_id", "unit", "unit_id"]);
+    if (room !== undefined && room !== null && room !== "") points.forEach((point) => doorRooms.set(point, String(room)));
+    return points;
+  });
+  function doorPoints(feature, index) {
     const geometry = feature.geometry;
     if (geometry?.type === "Point") return [geometry.coordinates.slice(0, 2)];
     if (geometry?.type === "MultiPoint") return geometry.coordinates.map((point) => point.slice(0, 2));
@@ -214,7 +222,7 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
       if (lintel && wallHeight > doorHeight) render.push({ type: "Feature", properties: { kind: "lintel", uid: `${uid}/lintel`, base: doorHeight, height: wallHeight, color: INDOOR_STYLE.wall, ...where }, geometry: lintel });
     });
     return lines.map((line) => [(line[0][0] + line.at(-1)[0]) / 2, (line[0][1] + line.at(-1)[1]) / 2]);
-  });
+  }
 
   // ---- Furniture (drawn only) --------------------------------------------------------
   (files.furniture || []).flatMap((collection) => featuresOf(collection)).forEach((feature, index) => {
@@ -241,8 +249,10 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
 
   const byUid = new Map([...units, ...pois].map((place) => [place.uid, place]));
 
-  // Routing anchor of a room or point: { level, point, cell, label, via } or null
-  // when it cannot be reached from the walkable area.
+  // Routing anchor of a room or point: { level, point, cell, label, doors? } or null
+  // when it cannot be reached from the walkable area. A route to a room ends at its
+  // door, not in its middle: `point` is the door (`doors`: all its doors, of which
+  // the route takes the handiest), and `centre` the room's label point.
   function anchorFor(uid) {
     const place = byUid.get(uid);
     const navGrid = getGrid();
@@ -251,16 +261,17 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
       const snapped = navGrid.nearestCell(place.point, 6);
       return snapped ? { level: level.id, point: place.point, cell: snapped.cell, label: place.name } : null;
     }
-    // A door of this room (a door point on or near its outline), else the place
-    // where the room's outline is nearest the corridor.
+    // The doors of this room: those recorded for it, else the door points on or near
+    // its outline. Without a door, the place where its outline is nearest the corridor.
     const rings = place.polygons.flat();
-    const door = doors.map((point) => ({ point, d: distanceToOutline(point, rings) })).filter((item) => item.d <= 1.2).sort((p, q) => p.d - q.d)[0];
-    if (door) {
-      const snapped = navGrid.nearestCell(door.point, 3);
-      if (snapped) return { level: level.id, point: place.point, cell: snapped.cell, label: place.name || place.classLabel, via: door.point };
-    }
+    const label = place.name || place.classLabel;
+    const id = firstProperty(place.properties, ["id", "room_id", "unit_id"]);
+    const near = doors.map((point) => ({ point, d: distanceToOutline(point, rings) })).filter((item) => item.d <= 1.2).sort((p, q) => p.d - q.d);
+    const own = id === undefined || id === null ? [] : near.filter((item) => doorRooms.get(item.point) === String(id));
+    const reachable = (own.length ? own : near).map((item) => ({ point: item.point, cell: navGrid.nearestCell(item.point, 3)?.cell })).filter((door) => door.cell !== undefined);
+    if (reachable.length) return { level: level.id, point: reachable[0].point, cell: reachable[0].cell, label, centre: place.point, doors: reachable };
     const reached = navGrid.nearestCellToPolygon(rings, place.point, 2.5);
-    return reached ? { level: level.id, point: place.point, cell: reached.cell, label: place.name || place.classLabel } : null;
+    return reached ? { level: level.id, point: navGrid.cellCentre(reached.cell), cell: reached.cell, label, centre: place.point } : null;
   }
 
   // Routing anchor of any position on this floor (an entrance, a point on the map).

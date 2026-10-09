@@ -63,9 +63,10 @@ export function connectorSeconds(type, floors) {
 //         floor's files are not loaded: such a floor cannot be walked on)
 // shafts: groupShafts() of the building's connector points
 // The start and the destination are anchors:
-//   { level, point: [lon, lat], cell, label, via?: [lon, lat] }
-// `cell` is the walkable cell the place is reached from (a room: the cell at its
-// door; a point: the cell it stands on) and `point` the place itself.
+//   { level, point: [lon, lat], cell, label, doors?: [{ point, cell }] }
+// `point` is where the route starts or ends (a room: its door; a point: itself)
+// and `cell` the walkable cell it is reached from. A room with several doors
+// lists them all in `doors`: the route uses the one that gives the shortest walk.
 export function createBuildingRouter({ key, levels, shafts }) {
   const levelById = new Map(levels.map((level) => [level.id, level]));
 
@@ -73,20 +74,31 @@ export function createBuildingRouter({ key, levels, shafts }) {
   function route(from, to, { stepFree = false } = {}) {
     const start = levelById.get(from?.level), end = levelById.get(to?.level);
     if (!start?.grid || !end?.grid) return { ok: false, reason: "floor-not-loaded" };
-    if (!start.grid.isWalkable(from.cell) || !end.grid.isWalkable(to.cell)) return { ok: false, reason: "not-reachable" };
-    const nodes = [{ kind: "start", level: start, cell: from.cell }, { kind: "end", level: end, cell: to.cell }];
+    const doorsOf = (anchor, grid) => (anchor.doors?.length ? anchor.doors : [{ point: anchor.point, cell: anchor.cell }]).filter((door) => grid.isWalkable(door.cell));
+    const nodes = [{ kind: "start", level: start, doors: doorsOf(from, start.grid) }, { kind: "end", level: end, doors: doorsOf(to, end.grid) }];
+    if (!nodes[0].doors.length || !nodes[1].doors.length) return { ok: false, reason: "not-reachable" };
+    // The quickest walk between two nodes of one floor: { cost, from, to } (the doors used).
+    const walkBetween = (a, b) => {
+      let best = { cost: Infinity, from: a.doors[0], to: b.doors[0] };
+      for (const p of a.doors) for (const q of b.doors) {
+        const cost = a.level.grid.cost(p.cell, q.cell);
+        if (cost < best.cost) best = { cost, from: p, to: q };
+      }
+      return best;
+    };
     for (const shaft of shafts) {
       if (stepFree && !CONNECTOR_CLASSES[shaft.class]?.accessible) continue;
       for (const [levelId, member] of shaft.members) {
         const level = levelById.get(levelId);
         if (!level?.grid) continue;
         const snapped = level.grid.nearestCell(member.point, 6);
-        if (snapped) nodes.push({ kind: "connector", level, cell: snapped.cell, shaft, member });
+        if (snapped) nodes.push({ kind: "connector", level, doors: [{ point: member.point, cell: snapped.cell }], shaft, member });
       }
     }
     const time = new Array(nodes.length).fill(Infinity);
     const previous = new Array(nodes.length).fill(-1);
     const done = new Array(nodes.length).fill(false);
+    const rode = new Array(nodes.length).fill(false); // the node was reached by its lift or stairs
     time[0] = 0;
     for (;;) {
       let current = -1;
@@ -98,12 +110,15 @@ export function createBuildingRouter({ key, levels, shafts }) {
         if (done[i] || i === current) continue;
         const other = nodes[i];
         let seconds = Infinity;
-        if (node.kind === "connector" && other.kind === "connector" && node.shaft === other.shaft) {
-          seconds = connectorSeconds(node.shaft.class, other.level.ordinal - node.level.ordinal);
-        } else if (other.level === node.level) {
-          seconds = node.level.grid.cost(node.cell, other.cell) / WALK_SPEED_MPS;
+        // A lift or stairs walked to is taken, and one arrived by is left on foot:
+        // a walk never passes through one on its way along a floor.
+        const ride = node.kind === "connector" && other.kind === "connector" && node.shaft === other.shaft;
+        if (ride) {
+          if (!rode[current]) seconds = connectorSeconds(node.shaft.class, other.level.ordinal - node.level.ordinal);
+        } else if (other.level === node.level && (node.kind !== "connector" || rode[current])) {
+          seconds = walkBetween(node, other).cost / WALK_SPEED_MPS;
         }
-        if (time[current] + seconds < time[i]) { time[i] = time[current] + seconds; previous[i] = current; }
+        if (time[current] + seconds < time[i]) { time[i] = time[current] + seconds; previous[i] = current; rode[i] = ride; }
       }
     }
     if (!Number.isFinite(time[1])) {
@@ -115,6 +130,7 @@ export function createBuildingRouter({ key, levels, shafts }) {
     order.reverse();
 
     const legs = [];
+    let first = nodes[0].doors[0], last = nodes[1].doors[0]; // the doors the route starts and ends at
     for (let k = 1; k < order.length; k += 1) {
       const a = nodes[order[k - 1]], b = nodes[order[k]];
       if (a.kind === "connector" && b.kind === "connector" && a.shaft === b.shaft && a.level !== b.level) {
@@ -134,17 +150,14 @@ export function createBuildingRouter({ key, levels, shafts }) {
         });
         continue;
       }
-      const found = a.level.grid.path(a.cell, b.cell);
+      // The line runs from the place itself (the room's door, the lift's position)
+      // to the place itself, although they are not on the grid.
+      const pair = walkBetween(a, b);
+      const found = a.level.grid.path(pair.from.cell, pair.to.cell, { start: pair.from.point, end: pair.to.point });
       if (!found) return { ok: false, reason: "not-connected" };
-      const coordinates = [...found.coordinates];
-      // The first and last steps reach the places themselves (the room's label
-      // point, the lift's position), which are not on the grid.
-      const head = a.kind === "start" ? [from.via, from.point] : [a.member.point];
-      const tail = b.kind === "end" ? [to.via, to.point] : [b.member.point];
-      for (const point of head.filter(Boolean)) coordinates.unshift(point);
-      for (const point of tail.filter(Boolean)) coordinates.push(point);
-      let distanceM = 0;
-      for (let i = 1; i < coordinates.length; i += 1) distanceM += planarDistanceMeters(coordinates[i - 1], coordinates[i]);
+      if (a.kind === "start") first = pair.from;
+      if (b.kind === "end") last = pair.to;
+      const { coordinates, distanceM } = found;
       legs.push({
         type: "walk",
         building: key,
@@ -159,6 +172,8 @@ export function createBuildingRouter({ key, levels, shafts }) {
     }
     return {
       ok: true,
+      from: { ...from, point: first.point, cell: first.cell },
+      to: { ...to, point: last.point, cell: last.cell },
       legs,
       distanceM: legs.reduce((sum, leg) => sum + (leg.distanceM || 0), 0),
       seconds: legs.reduce((sum, leg) => sum + leg.seconds, 0),

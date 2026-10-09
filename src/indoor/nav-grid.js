@@ -9,16 +9,18 @@
 //   blocked   polygons cut out of them (for a floor without a corridor file, its rooms)
 //
 // A cell is walkable when its centre is inside a walkable polygon and inside no
-// blocked one. Steps go to the 8 neighbours (a diagonal step only between two free
-// side cells, so a route never cuts a wall corner). Cells beside a wall cost more,
-// which keeps routes in the middle of a corridor; the found path is then
-// straightened wherever the straight line stays clear.
+// blocked one. The grid is turned to the direction of the floor's walls, and steps
+// go to the 4 side neighbours only, so a route is made of straight runs along and
+// across the corridors, with square corners: it never cuts a corner or crosses a
+// room. Cells beside a wall cost more, which keeps routes in the middle of a
+// corridor, and every turn costs a little, which keeps them from zigzagging.
 import { createLocalFrame, distance, polylineLength } from "../utils/local-frame.js";
 
 const MAX_CELLS = 600000;
-const SQRT2 = Math.SQRT2;
+const TURN_COST_M = 1.5; // a turn counts as this much walking
+const STEPS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 // Cost factor of a cell by its distance from the nearest wall, in cells.
-const CLEARANCE_COST = [0, 1.7, 1.25];
+const CLEARANCE_COST = [0, 3, 1.5];
 
 // Even-odd scanline fill of a polygon (rings in local metres) into `target`.
 function fillPolygon(rings, target, value, { minX, minY, cols, rows, size }) {
@@ -54,6 +56,46 @@ function pointToRings(point, rings) {
     }
   }
   return best;
+}
+
+// Direction (radians) most of the outline runs along or across: each edge votes
+// with its length, and directions a quarter turn apart are the same.
+function dominantAngle(polygons) {
+  let c = 0, s = 0;
+  for (const rings of polygons) for (const ring of rings) {
+    for (let i = 1; i < ring.length; i += 1) {
+      const dx = ring[i][0] - ring[i - 1][0], dy = ring[i][1] - ring[i - 1][1];
+      const length = Math.hypot(dx, dy);
+      if (!length) continue;
+      const angle = 4 * Math.atan2(dy, dx);
+      c += length * Math.cos(angle);
+      s += length * Math.sin(angle);
+    }
+  }
+  return Math.atan2(s, c) / 4;
+}
+
+// Ends a list of corner points at `target` itself (a door, a lift: a place beside
+// the last cell, not on a cell centre), keeping every step along an axis. A last
+// run that leads straight to the target is moved sideways onto its line; one that
+// passes it stops level with it and turns to it.
+function attach(points, target) {
+  const last = points[points.length - 1];
+  const dx = target[0] - last[0], dy = target[1] - last[1];
+  if (Math.hypot(dx, dy) < 0.02) return;
+  const axis = Math.abs(dx) >= Math.abs(dy) ? 0 : 1; // the target is approached along this axis
+  const side = 1 - axis;
+  const before = points[points.length - 2];
+  const run = before ? (Math.abs(last[0] - before[0]) >= Math.abs(last[1] - before[1]) ? 0 : 1) : -1;
+  if (run === axis && points.length > 2) {
+    before[side] = target[side];
+    last[side] = target[side];
+    last[axis] = target[axis];
+    return;
+  }
+  if (run === side) last[side] = target[side];
+  else if (Math.abs(target[side] - last[side]) >= 0.02) { const corner = [...last]; corner[side] = target[side]; points.push(corner); }
+  points.push([target[0], target[1]]);
 }
 
 // Binary min-heap of cell indices keyed by a Float32Array of costs.
@@ -98,7 +140,16 @@ function createHeap(cost) {
 export function createNavGrid({ walkable, blocked = [], cellSize = 0.5, origin = null }) {
   const first = walkable?.[0]?.[0]?.[0];
   if (!first) return null;
-  const frame = createLocalFrame(origin || first);
+  // Metres along and across the walls: the local frame, turned by their direction.
+  const base = createLocalFrame(origin || first);
+  const angle = dominantAngle(walkable.map((rings) => rings.map((ring) => ring.map(base.toLocal))));
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const frame = {
+    origin: base.origin,
+    angle,
+    toLocal: (point) => { const [x, y] = base.toLocal(point); return [x * cos + y * sin, y * cos - x * sin]; },
+    toLngLat: ([u, v]) => base.toLngLat([u * cos - v * sin, u * sin + v * cos])
+  };
   const toLocalPolygon = (rings) => rings.map((ring) => ring.map(frame.toLocal));
   const areas = walkable.map(toLocalPolygon);
   const holes = blocked.map(toLocalPolygon);
@@ -186,81 +237,69 @@ export function createNavGrid({ walkable, blocked = [], cellSize = 0.5, origin =
     return best ? { cell: best.cell, distanceM: best.distanceM } : null;
   }
 
-  // Cost (metres, weighted by wall clearance) from one cell to every reachable
-  // cell, with the step each was reached by. Kept for the last few sources.
+  // Cost (metres, weighted by wall clearance, plus the turns) from one cell to
+  // every reachable cell. A state is a cell and the direction it was entered in
+  // (cell * 4 + direction), so that turns can be counted. Kept for the last few sources.
   const fields = new Map();
   function fieldFrom(source) {
     if (fields.has(source)) return fields.get(source);
-    const cost = new Float32Array(cols * rows).fill(Infinity);
-    const previous = new Int32Array(cols * rows).fill(-1);
-    const done = new Uint8Array(cols * rows);
+    const cost = new Float32Array(cols * rows * 4).fill(Infinity);
+    const previous = new Int32Array(cols * rows * 4).fill(-1);
+    const done = new Uint8Array(cols * rows * 4);
     const heap = createHeap(cost);
-    cost[source] = 0;
-    heap.push(source);
+    for (let d = 0; d < 4; d += 1) { cost[source * 4 + d] = 0; heap.push(source * 4 + d); }
     while (heap.size) {
       const current = heap.pop();
       if (done[current]) continue;
       done[current] = 1;
-      const col = current % cols, row = (current - col) / cols;
-      for (let dr = -1; dr <= 1; dr += 1) {
-        for (let dc = -1; dc <= 1; dc += 1) {
-          if (!dr && !dc) continue;
-          const c = col + dc, r = row + dr;
-          if (!free(c, r)) continue;
-          if (dr && dc && (!free(col + dc, row) || !free(col, row + dr))) continue;
-          const next = r * cols + c;
-          if (done[next]) continue;
-          const step = (dr && dc ? SQRT2 : 1) * size * (costOf(current) + costOf(next)) / 2;
-          if (cost[current] + step < cost[next]) {
-            cost[next] = cost[current] + step;
-            previous[next] = current;
-            heap.push(next);
-          }
+      const cell = current >> 2, heading = current & 3;
+      const col = cell % cols, row = (cell - col) / cols;
+      for (let d = 0; d < 4; d += 1) {
+        const c = col + STEPS[d][0], r = row + STEPS[d][1];
+        if (!free(c, r)) continue;
+        const next = (r * cols + c) * 4 + d;
+        if (done[next]) continue;
+        const step = size * (costOf(cell) + costOf(r * cols + c)) / 2 + (d === heading || cell === source ? 0 : TURN_COST_M);
+        if (cost[current] + step < cost[next]) {
+          cost[next] = cost[current] + step;
+          previous[next] = current;
+          heap.push(next);
         }
       }
     }
     const field = { cost, previous };
     fields.set(source, field);
-    if (fields.size > 24) fields.delete(fields.keys().next().value);
+    if (fields.size > 12) fields.delete(fields.keys().next().value);
     return field;
   }
 
-  // Straight line between two cell centres stays on cells at least `limit` clear of walls.
-  function clear(a, b, limit) {
-    const steps = Math.max(1, Math.ceil(distance(a, b) / (size / 2)));
-    for (let k = 0; k <= steps; k += 1) {
-      const t = k / steps;
-      const index = cellAt([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
-      if (index < 0 || !walk[index] || clearance[index] < limit) return false;
-    }
-    return true;
+  // The state a cell is best reached in from the field's source, or -1.
+  function bestState({ cost }, cell) {
+    let best = -1;
+    for (let d = 0; d < 4; d += 1) if (Number.isFinite(cost[cell * 4 + d]) && (best < 0 || cost[cell * 4 + d] < cost[best])) best = cell * 4 + d;
+    return best;
   }
 
   // Shortest walk between two cells: { coordinates: [[lon, lat], ...], distanceM }
-  // or null when they are not connected.
-  function path(from, to) {
+  // or null when they are not connected. The line is the corners of the walk.
+  // `start` / `end` ([lon, lat]) are the places themselves, beside those cells
+  // (a door, a lift): the line starts and ends at them.
+  function path(from, to, { start = null, end = null } = {}) {
     if (from < 0 || to < 0 || !walk[from] || !walk[to]) return null;
-    const { cost, previous } = fieldFrom(from);
-    if (!Number.isFinite(cost[to])) return null;
-    const cells = [];
-    for (let cell = to; cell !== -1; cell = previous[cell]) cells.push(cell);
-    cells.reverse();
-    // Straighten: from each kept point, jump to the farthest later point that is in
-    // a clear straight line, staying as far from the walls as the grid path was.
-    const points = [];
-    let anchor = 0;
-    points.push(centre(cells[0]));
-    while (anchor < cells.length - 1) {
-      let next = anchor + 1;
-      let limit = clearance[cells[anchor]];
-      const limits = [limit];
-      for (let k = anchor + 1; k < cells.length; k += 1) { limit = Math.min(limit, clearance[cells[k]]); limits.push(limit); }
-      for (let k = cells.length - 1; k > anchor + 1; k -= 1) {
-        if (clear(centre(cells[anchor]), centre(cells[k]), Math.min(2, limits[k - anchor]))) { next = k; break; }
-      }
-      points.push(centre(cells[next]));
-      anchor = next;
+    const field = fieldFrom(from);
+    const reached = bestState(field, to);
+    if (reached < 0) return null;
+    const states = [];
+    for (let state = reached; state !== -1; state = field.previous[state]) states.push(state);
+    states.reverse();
+    let points = [centre(states[0] >> 2)];
+    for (let k = 2; k < states.length; k += 1) {
+      if ((states[k] & 3) !== (states[k - 1] & 3)) points.push(centre(states[k - 1] >> 2));
     }
+    if (states.length > 1) points.push(centre(to));
+    if (start) { points.reverse(); attach(points, frame.toLocal(start)); points.reverse(); }
+    if (end) attach(points, frame.toLocal(end));
+    points = points.filter((point, index) => index === 0 || distance(point, points[index - 1]) > 0.01);
     return { coordinates: points.map(frame.toLngLat), distanceM: polylineLength(points) };
   }
 
@@ -276,7 +315,12 @@ export function createNavGrid({ walkable, blocked = [], cellSize = 0.5, origin =
     nearestCell,
     nearestCellToPolygon,
     // Weighted walking cost in metres between two cells (Infinity when unconnected).
-    cost: (from, to) => (from < 0 || to < 0 || !walk[from] || !walk[to] ? Infinity : fieldFrom(from).cost[to]),
+    cost(from, to) {
+      if (from < 0 || to < 0 || !walk[from] || !walk[to]) return Infinity;
+      const field = fieldFrom(from);
+      const state = bestState(field, to);
+      return state < 0 ? Infinity : field.cost[state];
+    },
     path
   };
 }

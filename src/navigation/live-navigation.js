@@ -4,8 +4,12 @@
 // the phone's compass (walking direction when there is no usable compass),
 // with the user's position in the lower part of the screen. A banner shows the
 // next turn and its distance, the sheet the remaining distance and time.
-// Leaving the route shows the way back to it; staying off it re-routes from
-// the current position with the original routing algorithm.
+// The route follows the walker, as in Google Maps: whenever he leaves it (a
+// wrong turn, another path) a new route is found from where he now is, with the
+// original routing algorithm, and drawn in place of the old one. A position that
+// is exact (3D mode, a position set on the map) re-routes within a second or two
+// of leaving the line; a GPS position, which jumps, a little later and farther
+// from it. Inside a building the route to the room is found again the same way.
 // 3D mode: the same session in first-person walk mode (walk/walk-mode.js), with the
 // route and destination kept. Driven by the on-screen / keyboard controls, or
 // by GPS and the compass after "Follow GPS".
@@ -42,11 +46,17 @@ const INTRO_MS = 900;
 const POSITION_EASE_MS = 900;
 const HEADING_SMOOTHING_S = 0.18;
 const HEADING_DEADBAND_DEG = 1.2;
-const OFF_ROUTE_MIN_M = 12;
-const OFF_ROUTE_CONFIRM_MS = 2500;
-const REROUTE_AFTER_MS = 8000;
-const REROUTE_MIN_M = 20;
-const REROUTE_INTERVAL_MS = 15000;
+// Leaving the route, by how the position is known: off it once `offM` away for
+// `confirmMs`, a new route after `rerouteMs` when still `rerouteM` away, and not
+// more often than every `intervalMs`.
+const OFF_ROUTE = {
+  gps: { offM: 12, confirmMs: 2000, rerouteMs: 4000, rerouteM: 12, intervalMs: 6000 },
+  exact: { offM: 6, confirmMs: 600, rerouteMs: 1200, rerouteM: 6, intervalMs: 2500 }
+};
+const offRouteRule = (source) => (source === "gps" ? OFF_ROUTE.gps : OFF_ROUTE.exact);
+const INDOOR_OFF_ROUTE_M = 3; // inside: this far from the line of the corridor (a wrong turn, a room)
+const INDOOR_OFF_CONNECTOR_M = 5; // ... or from the lift or stairs to be taken
+const INDOOR_REROUTE_INTERVAL_MS = 1200;
 const ARRIVAL_M = 6;
 const WEAK_GPS_M = 30;
 const UNUSABLE_GPS_M = 80;
@@ -101,7 +111,9 @@ function clipOutside(points, feature, fromStart) {
 // getIndoorRoute() -> { building, legs, name, levelName(id) } | null: the route inside
 //   the destination building (to a room), followed in 3D mode after the outdoor part
 // getIndoorPosition() -> { building, level } | null: where the walker is inside
-export function createLiveNavigation({ map, walk, getRoute, reroute, collision, campusCenter, cameraController, getIndoorRoute, getIndoorPosition, onSession, onToast } = {}) {
+// rerouteIndoor(position, where) -> Promise<legs | null>: the route inside from where
+//   the walker now is to the same room, when he has left the one he was on
+export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndoor, collision, campusCenter, cameraController, getIndoorRoute, getIndoorPosition, onSession, onToast } = {}) {
   const $ = (selector) => document.querySelector(selector);
   const ui = {
     banner: $("#nav-banner"), icon: $("#nav-maneuver"), distance: $("#nav-distance"), text: $("#nav-text"), then: $("#nav-then"), line: $("#nav-line"),
@@ -194,6 +206,41 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
       const position = session.position;
       if (session.view === "walk" && next > 0) requestAnimationFrame(() => { if (session?.indoor?.index === next && walk.isActive()) walk.setPose(position, bearingAt(stage.model, 0, 3)); });
     } else onToast?.(`${stage.name}: choose ${indoor.levelName(stage.toLevel)} on the floor selector, or press Page ${stage.direction === "up" ? "Up" : "Down"}.`);
+  }
+
+  // Off the indoor route: away from the line of the leg he is on, on a floor the
+  // route does not use, or walking away from the lift or stairs to be taken.
+  function offIndoorRoute(where) {
+    const stage = indoorStage();
+    if (!stage || !where || where.building !== stage.building) return false;
+    if (stage.type === "walk") return where.level !== stage.level || (session.progress?.offsetM ?? 0) > INDOOR_OFF_ROUTE_M;
+    if (where.level === stage.toLevel) return false;
+    if (where.level !== stage.fromLevel || !stage.point) return true;
+    const frame = createLocalFrame(stage.point);
+    return distance(frame.toLocal(session.position), [0, 0]) > INDOOR_OFF_CONNECTOR_M;
+  }
+  // A new route inside from where he is (the floors may have to be read first).
+  function maybeRerouteIndoor() {
+    const { indoor } = session;
+    const where = getIndoorPosition?.() || null;
+    const now = performance.now();
+    if (!rerouteIndoor || indoor.rerouting || now - (indoor.reroutedAt || 0) < INDOOR_REROUTE_INTERVAL_MS || !offIndoorRoute(where)) return;
+    indoor.rerouting = true;
+    indoor.reroutedAt = now;
+    const current = session;
+    Promise.resolve(rerouteIndoor(session.position, where)).catch(() => null).then((legs) => {
+      if (session !== current || session.indoor !== indoor) return;
+      indoor.rerouting = false;
+      const stages = legs ? indoorStages(legs) : [];
+      if (!stages.length || session.arrived) return;
+      indoor.stages = stages;
+      indoor.index = 0;
+      if (stages[0].type === "walk") {
+        session.model = stages[0].model;
+        session.progress = locate(session.model, session.position);
+      }
+      render();
+    });
   }
 
   // ---- Heading and camera animation ---------------------------------------------
@@ -301,11 +348,12 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     const progress = locate(session.model, position, { hint: session.progress?.along ?? null });
     session.progress = progress;
     if (session.indoor) {
-      // Inside: the stages of the indoor route; no off-route or re-routing (the roads do not go there).
+      // Inside: the stages of the indoor route, found again from here when he leaves it.
       if (!session.arrived) followIndoor();
+      if (!session.arrived) maybeRerouteIndoor();
     } else {
       const reliable = accuracy === null || accuracy <= UNUSABLE_GPS_M;
-      const threshold = Math.max(OFF_ROUTE_MIN_M, Math.min(35, (accuracy || 0) * 1.2));
+      const threshold = Math.max(offRouteRule(source).offM, Math.min(35, (accuracy || 0) * 1.2));
       if (reliable && progress.offsetM > threshold && !session.arrived) session.offRouteSince ||= now;
       else session.offRouteSince = 0;
       if (!session.arrived && progress.along >= session.model.total - ARRIVAL_M && progress.offsetM < 15) arrive();
@@ -320,17 +368,18 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
     render();
   }
 
-  // Off route once away from it for OFF_ROUTE_CONFIRM_MS, re-route after
-  // REROUTE_AFTER_MS. A standing phone may send no new position, so a timer
+  // Off route once away from it for the rule's confirmMs, re-route after its
+  // rerouteMs (OFF_ROUTE). A standing phone may send no new position, so a timer
   // checks again when the next of these moments comes.
   function checkRoute(now = performance.now()) {
     clearTimeout(routeCheckTimer);
     if (!session) return;
     const wasOff = session.offRoute;
-    session.offRoute = Boolean(session.offRouteSince) && now - session.offRouteSince >= OFF_ROUTE_CONFIRM_MS;
+    const rule = offRouteRule(session.source);
+    session.offRoute = Boolean(session.offRouteSince) && now - session.offRouteSince >= rule.confirmMs;
     maybeReroute(now);
     if (session.offRouteSince) {
-      const due = [OFF_ROUTE_CONFIRM_MS, REROUTE_AFTER_MS].map((ms) => session.offRouteSince + ms - now).filter((ms) => ms > 0);
+      const due = [rule.confirmMs, rule.rerouteMs, session.lastRerouteAt + rule.intervalMs - session.offRouteSince].map((ms) => session.offRouteSince + ms - now).filter((ms) => ms > 0);
       if (due.length) routeCheckTimer = setTimeout(() => { checkRoute(); render(); }, Math.min(...due) + 20);
     }
     if (wasOff !== session.offRoute) updateHeadingTarget();
@@ -351,16 +400,19 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, collision, 
 
   function maybeReroute(now) {
     if (!session.offRoute || !reroute || !session.position) return;
-    if (now - session.offRouteSince < REROUTE_AFTER_MS || session.progress.offsetM < REROUTE_MIN_M || now - session.lastRerouteAt < REROUTE_INTERVAL_MS) return;
+    const rule = offRouteRule(session.source);
+    if (now - session.offRouteSince < rule.rerouteMs || session.progress.offsetM < rule.rerouteM || now - session.lastRerouteAt < rule.intervalMs) return;
     if (session.source === "gps" && (session.accuracy ?? 0) > 25) return;
     if (!onCampus(session.position)) return;
     session.lastRerouteAt = now;
+    const before = session.result?.path?.join("|");
     const next = reroute(session.position);
     if (next?.ok && useRoute(next)) {
       session.progress = locate(session.model, session.position);
-      session.offRouteSince = session.progress.offsetM > OFF_ROUTE_MIN_M ? now : 0;
+      session.offRouteSince = session.progress.offsetM > rule.offM ? now : 0;
       session.offRoute = false;
-      onToast?.("Rerouted from your position");
+      // Said only when the way itself has changed, not for the same roads from a new spot.
+      if (next.path?.join("|") !== before) onToast?.("Rerouted from your position");
     }
   }
 

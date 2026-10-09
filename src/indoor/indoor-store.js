@@ -101,7 +101,8 @@ export function createIndoorStore({ org, loadFiles, footprintOf = () => null }) 
     };
     let result = await attempt([...new Set([from.level, to.level])]);
     if (!result.ok && from.level !== to.level && building.levels.length > 2) result = await attempt(building.levels.map((entry) => entry.id));
-    return { ...result, building: key, from, to };
+    // A found route names the door it uses at each end (indoor-router.js).
+    return { from, to, ...result, building: key };
   }
 
   return {

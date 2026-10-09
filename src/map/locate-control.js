@@ -29,7 +29,7 @@ const LABELS = { off: "Show my location", locating: "Finding your location…", 
 // flyOffset() is where the position is brought to, in pixels from the centre of the
 // map (fit-padding.js): the middle of what the panels leave free.
 export function createLocateControl(map, { button, campusCenter = null, flyOffset = () => [0, 0], onMessage } = {}) {
-  if (!map || !button) return { stop: () => {}, state: () => "off" };
+  if (!map || !button) return { stop: () => {}, state: () => "off", position: async () => null };
 
   const element = document.createElement("div");
   element.className = "nav-user";
@@ -103,12 +103,34 @@ export function createLocateControl(map, { button, campusCenter = null, flyOffse
     const denied = error?.code === 1;
     if (fix && !denied) return;
     stop();
-    onMessage?.(denied ? "Location is blocked for this site. Allow it in the browser's site settings." : "Your location could not be found");
+    onMessage?.(failure(error));
+  }
+
+  // Why the position cannot be asked for (said to the visitor), or null.
+  function unavailable() {
+    if (!window.isSecureContext) return "Your location needs an https:// address";
+    if (!("geolocation" in navigator)) return "Location is not available on this device";
+    return null;
+  }
+  const failure = (error) => (error?.code === 1 ? "Location is blocked for this site. Allow it in the browser's site settings." : "Your location could not be found");
+
+  // The visitor's position now, for a route that starts from it: resolves to
+  // [lon, lat], or to null after saying why it is not known. The position shown on
+  // the map is used when there is one.
+  function position() {
+    if (fix) return Promise.resolve([...fix.point]);
+    const reason = unavailable();
+    if (reason) { onMessage?.(reason); return Promise.resolve(null); }
+    return new Promise((resolve) => navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve([coords.longitude, coords.latitude]),
+      (error) => { onMessage?.(failure(error)); resolve(null); },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    ));
   }
 
   function start() {
-    if (!window.isSecureContext) { onMessage?.("Your location needs an https:// address"); return; }
-    if (!("geolocation" in navigator)) { onMessage?.("Location is not available on this device"); return; }
+    const reason = unavailable();
+    if (reason) { onMessage?.(reason); return; }
     setState("locating");
     watchId = navigator.geolocation.watchPosition(onFix, onError, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
   }
@@ -141,6 +163,7 @@ export function createLocateControl(map, { button, campusCenter = null, flyOffse
   return {
     // Live navigation and walk mode show the position themselves.
     stop,
-    state: () => state
+    state: () => state,
+    position
   };
 }

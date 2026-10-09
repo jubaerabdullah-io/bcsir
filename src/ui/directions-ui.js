@@ -10,6 +10,8 @@
 // is routed to the building recorded for it (see directory.js). If no building
 // is recorded, it says so and sets no endpoint. While the panel is open and a
 // field is empty, a click on a building (or on a room of an open floor) fills it.
+// The From field also offers "Your location" first: the route then starts where
+// the visitor stands (the browser asks for the position).
 //
 // The panel does not calculate routes. It sets the endpoints through the
 // existing interaction controller (setSourceFeature / setDestinationFeature),
@@ -21,11 +23,14 @@
 // On touch screens a tapped field is emptied for typing (the chosen place stays
 // as its placeholder), and choosing a result moves on to the other field if it
 // is still empty, otherwise it closes the on-screen keyboard.
-import { createCombobox } from "../search/combobox.js";
+import { createCombobox, resultItemHTML } from "../search/combobox.js";
 import { escapeHTML } from "../utils/html.js";
 
 const KINDS = ["source", "destination"];
 const ROLE = { source: "starting point", destination: "destination" };
+// The visitor's own position as the starting point (it is not a place of the directory).
+const LOCATION_ENTRY = Object.freeze({ kind: "location", key: "location", title: "Your location", subtitle: "", meta: "Start from where you are" });
+const LOCATION_WORDS = ["your location", "my location", "current location"];
 const ENTRY_KINDS = { source: ["building", "place", "lab"], destination: ["building", "place", "lab", "test"] };
 
 // onNavigate(view) starts live guidance ("map") or the first-person 3D mode
@@ -37,7 +42,9 @@ const ENTRY_KINDS = { source: ["building", "place", "lab"], destination: ["build
 // with each place chosen as an endpoint.
 // onPick(handler) hands the next building or room clicked on the map to
 // handler(feature, entry); null stops that.
-export function createDirections({ getDirectory, getRecent, resolveFeature, onSetEndpoint, onClearEndpoint, onSwap, onClearRoute, onPick, onWalkChange, onMessage, onNavigate, onStep, onStepFreeChange, onUse }) {
+// onUseLocation() makes the visitor's position the starting point; it resolves to
+// false when the position is not known.
+export function createDirections({ getDirectory, getRecent, resolveFeature, onSetEndpoint, onClearEndpoint, onSwap, onClearRoute, onPick, onWalkChange, onMessage, onNavigate, onStep, onStepFreeChange, onUse, onUseLocation }) {
   const panel = document.querySelector("#directions");
   const appTop = panel.closest(".app-top");
   const walk = document.querySelector("#walk-toggle");
@@ -98,6 +105,15 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
   }
 
   function choose(kind, entry) {
+    if (entry.kind === "location") {
+      inputs[kind].value = "Finding your location…";
+      Promise.resolve(onUseLocation?.()).then((found) => {
+        if (found) return; // sync() has filled the field
+        inputs[kind].value = slots[kind] ? entryText(slots[kind].entry) : "";
+        updateControls();
+      });
+      return;
+    }
     const feature = resolveFeature(entry);
     if (!feature) {
       inputs[kind].value = slots[kind] ? entryText(slots[kind].entry) : "";
@@ -120,8 +136,18 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
     combos[kind] = createCombobox({
       input,
       list: document.querySelector(`#${input.id}-results`),
-      search: (query) => getDirectory().search(query, { kinds: ENTRY_KINDS[kind], limit: 20 }),
-      suggest: () => getRecent?.({ kinds: ENTRY_KINDS[kind], exclude: [slots[otherKind(kind)]?.entry.key].filter(Boolean) }) || [],
+      search: (query) => {
+        const found = getDirectory().search(query, { kinds: ENTRY_KINDS[kind], limit: 20 });
+        const typed = query.trim().toLowerCase();
+        if (kind !== "source" || !onUseLocation || !LOCATION_WORDS.some((words) => words.startsWith(typed))) return found;
+        return { results: [LOCATION_ENTRY, ...found.results], total: found.total + 1 };
+      },
+      suggest: () => [
+        ...(kind === "source" && onUseLocation && slots.source?.entry !== LOCATION_ENTRY ? [LOCATION_ENTRY] : []),
+        ...(getRecent?.({ kinds: ENTRY_KINDS[kind], exclude: [slots[otherKind(kind)]?.entry.key].filter(Boolean) }) || [])
+      ],
+      // "Your location" keeps its own icon among the places used last.
+      renderItem: (entry, options) => resultItemHTML(entry, entry === LOCATION_ENTRY ? {} : options),
       onSelect: (entry) => {
         choose(kind, entry);
         if (!touchScreen.matches) return;
@@ -163,6 +189,7 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
   });
 
   swap.addEventListener("click", () => {
+    if (slots.source?.entry === LOCATION_ENTRY) { onMessage?.("Your location can only be the starting point"); return; }
     [slots.source, slots.destination] = [slots.destination, slots.source];
     inputs.source.value = slots.source ? entryText(slots.source.entry) : "";
     inputs.destination.value = slots.destination ? entryText(slots.destination.entry) : "";
@@ -198,7 +225,12 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
   function sync(selection) {
     KINDS.forEach((kind) => {
       const feature = selection?.[kind] || null;
-      if (!feature) {
+      // selection.position: the route starts at the visitor's position.
+      if (!feature && kind === "source" && selection?.position) {
+        if (slots.source?.entry === LOCATION_ENTRY) return;
+        slots.source = { entry: LOCATION_ENTRY, feature: null };
+        inputs.source.value = LOCATION_ENTRY.title;
+      } else if (!feature) {
         slots[kind] = null;
         if (document.activeElement !== inputs[kind]) inputs[kind].value = "";
       } else {
@@ -213,7 +245,7 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
       }
     });
     updateControls();
-    if (selection?.source || selection?.destination) setOpen(true); else refreshPicking();
+    if (selection?.source || selection?.destination || selection?.position) setOpen(true); else refreshPicking();
   }
 
   // Steps of a route that goes through floor plans (trip.js); clicking one shows it.
