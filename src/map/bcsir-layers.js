@@ -15,6 +15,7 @@
 // The source geometry (road centrelines, boundary lines) is never modified; the
 // strips are derived render geometry only.
 import { STYLE } from "../core/config.js";
+import { BADGE_ICON_SIZE } from "../buildings/building-labels.js";
 import { buildingLabelPoints } from "../data/bcsir-data.js";
 import { cutLineGaps, lineStrips, roofSeams, verticalCorners } from "../utils/geo-utils.js";
 import { treeLayer } from "../three/tree-layer.js";
@@ -268,7 +269,7 @@ export function addBcsirLayers(map, render, { badgeFor, useTiles = false } = {})
   // show from zoom 15, all other buildings from zoom 17.
   const labelLayout = {
     "icon-image": ["get", "render_badge"],
-    "icon-size": ["interpolate", ["linear"], ["zoom"], 15, 0.78, 18, 1],
+    "icon-size": BADGE_ICON_SIZE,
     "icon-anchor": "center",
     "icon-padding": 2,
     "icon-optional": false,
@@ -348,8 +349,13 @@ export function setRouteData(map, routeGeoJSON) {
   map.getSource("route")?.setData(routeGeoJSON || EMPTY);
 }
 
-// Refresh the label points after building photos loaded (badge icons changed).
-export function refreshBuildingLabels(map, buildings, badgeFor) {
-  if (usingTiles) return;
+// Refresh the label badges after building photos loaded (badge icons changed).
+// The label points in vector tiles cannot be replaced and name no photo, so
+// there the label layers choose the badge by render_id instead.
+export function refreshBuildingLabels(map, buildings, { badgeFor, badgeExpression }) {
+  if (usingTiles) {
+    for (const id of Object.values(LABEL_LAYERS)) if (map.getLayer(id)) map.setLayoutProperty(id, "icon-image", badgeExpression());
+    return;
+  }
   map.getSource("building-labels")?.setData(buildingLabelPoints(buildings, badgeFor));
 }

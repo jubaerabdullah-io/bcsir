@@ -18,6 +18,18 @@ const PIXEL_RATIO = 2;
 const SIZE = 42; // CSS px of the icon image, including room for the shadow
 const DIAMETER = 30; // CSS px of the white badge
 const RING = 2.5; // white ring around the photo
+export const BADGE_RADIUS = DIAMETER / 2;
+// icon-size of the labels: the badge is a little smaller when zoomed out.
+export const BADGE_ICON_SIZE = ["interpolate", ["linear"], ["zoom"], 15, 0.78, 18, 1];
+
+// The icon of each label as a MapLibre expression, from the loaded photos
+// (render_id -> icon id). For label points that carry no icon of their own: the
+// vector tiles of a production build are made before any photo is loaded
+// (scripts/build-tiles.mjs), so their points all name the fallback.
+export function badgeMatch(badges) {
+  if (!badges.size) return FALLBACK_BADGE;
+  return ["match", ["to-string", ["get", "render_id"]], ...[...badges].flatMap(([id, badge]) => [String(id), badge]), FALLBACK_BADGE];
+}
 
 function badgeCanvas(draw) {
   const canvas = document.createElement("canvas");
@@ -105,5 +117,5 @@ export function createBuildingLabels(map, { onChange } = {}) {
     if (changed) onChange?.();
   }
 
-  return { badgeFor, load, loadedCount: () => resolved.size };
+  return { badgeFor, badgeExpression: () => badgeMatch(resolved), load, loadedCount: () => resolved.size };
 }

@@ -27,6 +27,7 @@ import { createWalkIndoor } from "./walk/walk-indoor.js";
 import { createLayerManager } from "./map/layer-manager.js";
 import { createRouteService, routePathCoordinates, routeToGeoJSON } from "./routing/route-service.js";
 import { createBuildingLabels } from "./buildings/building-labels.js";
+import { createBuildingPin } from "./buildings/building-pin.js";
 import { createDirectory } from "./search/directory.js";
 import { directoryFiles, loadDirectory } from "./data/directory-data.js";
 import { createSearch } from "./search/search-ui.js";
@@ -60,6 +61,7 @@ let modelGroups;
 let layerHandles;
 let layerManager;
 let labels;
+let buildingPin; // location pin on the selected building
 let routeMarkers;
 let routeWalker;
 let directoryData = { laboratories: [], services: [], sources: [], errors: [] };
@@ -404,7 +406,7 @@ function updateRoute(selection) {
 }
 
 function refreshLabels() {
-  refreshBuildingLabels(map, data.render.buildings, labels.badgeFor);
+  refreshBuildingLabels(map, data.render.buildings, labels);
 }
 
 // Development only: reload a single dataset when its file changes on disk.
@@ -474,6 +476,7 @@ async function start() {
   routeService = createRouteService(data.raw.network);
   labels = createBuildingLabels(map, { onChange: () => refreshLabels() });
   layerHandles = addBcsirLayers(map, data.render, { badgeFor: labels.badgeFor, useTiles });
+  buildingPin = createBuildingPin(map);
   labels.load(data.render.buildings);
   routeMarkers = createRouteMarkers(map);
   routeWalker = createRouteWalker(map);
@@ -491,7 +494,7 @@ async function start() {
     map,
     org,
     getBuildingFeature: buildingById,
-    setHiddenShells: (ids) => { routeOcclusion.setHiddenBuildings(ids); setShellHiddenBuildings(map, ids); setHiddenModelBuildings(map, ids); },
+    setHiddenShells: (ids) => { routeOcclusion.setHiddenBuildings(ids); setShellHiddenBuildings(map, ids); setHiddenModelBuildings(map, ids); buildingPin.setHiddenShells(ids); },
     isBusy: () => Boolean(walkController?.isActive() || walkController?.isChoosing() || navigation?.isActive()),
     onPlaceShown: () => { interactionController?.clearSelection(); showPlaceInSearch(); },
     onPlaceHidden: showPlaceInSearch,
@@ -599,8 +602,8 @@ async function start() {
     },
     interceptMove: (event) => indoor.handleMove(event),
     flyOffset,
-    onSelect: (feature) => { indoor.clearSelection(); ui.showBuilding(feature); indoor.buildingSelected(feature); showPlaceInSearch(); },
-    onClear: () => { ui.hideBuilding(); indoor.buildingSelected(null); showPlaceInSearch(); },
+    onSelect: (feature) => { indoor.clearSelection(); ui.showBuilding(feature); indoor.buildingSelected(feature); buildingPin.set(feature); showPlaceInSearch(); },
+    onClear: () => { ui.hideBuilding(); indoor.buildingSelected(null); buildingPin.set(null); showPlaceInSearch(); },
     onRouteChange: updateRoute
   });
 

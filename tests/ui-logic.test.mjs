@@ -11,6 +11,8 @@ import { BASEMAP_SOURCES, BASEMAPS, basemapLayers, basemapVisibility, thumbnailU
 import { describeEndpoint, describeRoute, formatDistance, walkingMinutes } from "../src/routing/route-summary.js";
 import { viewMode } from "../src/core/view-mode.js";
 import { createRecents } from "../src/search/recents.js";
+import { badgeMatch, FALLBACK_BADGE } from "../src/buildings/building-labels.js";
+import { buildingPinData } from "../src/buildings/building-pin.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
@@ -45,6 +47,23 @@ test("labels carry the badge icon chosen for each building, geometry is not chan
   assert.equal(labels.features.find((feature) => feature.properties.render_id === "102").properties.render_badge, "bcsir-badge:photo");
   assert.equal(labels.features.find((feature) => feature.properties.render_id === "101").properties.render_badge, "bcsir-badge:none");
   assert.equal(JSON.stringify(buildings.features.map((feature) => feature.geometry)), snapshot);
+});
+
+test("vector-tile labels choose the loaded photo badge by render_id", () => {
+  assert.equal(badgeMatch(new Map()), FALLBACK_BADGE);
+  assert.deepEqual(badgeMatch(new Map([["102", "bcsir-badge:a"], [111, "bcsir-badge:b"]])),
+    ["match", ["to-string", ["get", "render_id"]], "102", "bcsir-badge:a", "111", "bcsir-badge:b", FALLBACK_BADGE]);
+});
+
+test("the pin on the selected building stands where its label does, or on the ground", () => {
+  const feature = buildings.features.find((item) => item.properties.id === 111);
+  const label = buildingLabelPoints({ features: [feature] }).features[0];
+  const roof = buildingPinData(feature).features[0];
+  assert.deepEqual(roof.geometry.coordinates, label.geometry.coordinates);
+  assert.equal(roof.properties.height, label.properties.render_top_m + 1);
+  assert.equal(roof.properties.ground, false);
+  assert.equal(buildingPinData(feature, { ground: true }).features[0].properties.height, 0);
+  assert.equal(buildingPinData(null).features.length, 0);
 });
 
 test("basemaps: the street layer is unchanged, satellite has Esri attribution, only one is visible", () => {

@@ -25,6 +25,8 @@ export const ROUTE_FADED_LAYERS = { body: "buildings-body-route-faded", roof: "b
 export const MODEL_HIT_LAYER = "buildings-model-hit";
 
 export const LABEL_LAYERS = { major: "building-labels-major", minor: "building-labels-minor" };
+// Location pin on the selected building (buildings/building-pin.js).
+export const BUILDING_PIN_LAYER = "building-pin";
 export const ROUTE_LAYERS = { casing: "route-casing", line: "route-line", access: "route-access" };
 export const GARDEN_LAYER = "garden-3d";
 
@@ -42,7 +44,8 @@ export const INDOOR_LAYERS = {
 };
 
 // Line and symbol layers that stay above the GLB models, bottom to top
-// (models3d.js keepMapOverlaysOnTop): indoor routes and labels, the route, building labels.
+// (models3d.js keepMapOverlaysOnTop): indoor routes and labels, the route, building
+// labels and the pin on the selected building.
 export const OVERLAY_LAYERS = [
   INDOOR_LAYERS.routeOther,
   INDOOR_LAYERS.routeCasing,
@@ -53,5 +56,6 @@ export const OVERLAY_LAYERS = [
   ROUTE_LAYERS.line,
   ROUTE_LAYERS.access,
   LABEL_LAYERS.major,
-  LABEL_LAYERS.minor
+  LABEL_LAYERS.minor,
+  BUILDING_PIN_LAYER
 ];
