@@ -11,7 +11,8 @@
 // is recorded, it says so and sets no endpoint. While the panel is open and a
 // field is empty, a click on a building (or on a room of an open floor) fills it.
 // The From field also offers "Your location" first: the route then starts where
-// the visitor stands (the browser asks for the position).
+// the visitor stands (the browser asks for the position). It has its own button in
+// the field as well, so on a phone it takes one tap, without the suggestion list.
 //
 // The panel does not calculate routes. It sets the endpoints through the
 // existing interaction controller (setSourceFeature / setDestinationFeature),
@@ -57,6 +58,9 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
   const swap = document.querySelector("#direction-swap");
   const inputs = { source: document.querySelector("#direction-from"), destination: document.querySelector("#direction-to") };
   const clearButtons = { source: panel.querySelector('[data-clear="source"]'), destination: panel.querySelector('[data-clear="destination"]') };
+  // "Your location" in the From field itself: one tap on a phone, where the
+  // suggestion list is only seen after the field has been tapped.
+  const locateButton = panel.querySelector("[data-use-location]");
   const slots = { source: null, destination: null }; // { entry, feature }
   const touchScreen = window.matchMedia("(hover: none) and (pointer: coarse)");
   const phone = window.matchMedia("(max-width: 700px)");
@@ -66,6 +70,8 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
   let picking = null; // the empty field the next click on the map fills
   let lastField = null; // the field focused last
   let walkOn = true;
+  let locating = false;
+  if (locateButton && !onUseLocation) locateButton.hidden = true;
 
   const entryText = (entry) => (entry.kind === "test" && entry.subtitle ? `${entry.title} · ${entry.subtitle}` : entry.kind === "place" && entry.meta ? `${entry.title} · ${entry.meta}` : entry.title);
   const otherKind = (kind) => (kind === "source" ? "destination" : "source");
@@ -78,6 +84,13 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
       clearButtons[kind].hidden = !inputs[kind].value;
     });
     swap.disabled = !slots.source && !slots.destination;
+    if (locateButton && onUseLocation) {
+      const on = slots.source?.entry === LOCATION_ENTRY;
+      locateButton.dataset.state = locating ? "locating" : on ? "on" : "off";
+      locateButton.setAttribute("aria-pressed", String(on));
+      locateButton.title = locating ? "Finding your location…" : on ? "The route starts at your location" : "Use your current location";
+      locateButton.setAttribute("aria-label", locateButton.title);
+    }
   }
 
   // While the panel is open, a click on the map fills an empty field: the one
@@ -107,9 +120,11 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
   function choose(kind, entry) {
     if (entry.kind === "location") {
       inputs[kind].value = "Finding your location…";
+      locating = true;
+      updateControls();
       Promise.resolve(onUseLocation?.()).then((found) => {
-        if (found) return; // sync() has filled the field
-        inputs[kind].value = slots[kind] ? entryText(slots[kind].entry) : "";
+        locating = false;
+        if (!found) inputs[kind].value = slots[kind] ? entryText(slots[kind].entry) : "";
         updateControls();
       });
       return;
@@ -186,6 +201,14 @@ export function createDirections({ getDirectory, getRecent, resolveFeature, onSe
     combos[kind].close();
     if (slots[kind]) onClearEndpoint(kind); else updateControls();
     inputs[kind].focus();
+  });
+
+  // The locate button of the From field: start the route at the visitor's position.
+  locateButton?.addEventListener("click", () => {
+    if (!onUseLocation || locating) return;
+    combos.source.close();
+    choose("source", LOCATION_ENTRY);
+    setOpen(true);
   });
 
   swap.addEventListener("click", () => {

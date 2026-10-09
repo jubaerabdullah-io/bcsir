@@ -11,8 +11,12 @@
 // of leaving the line; a GPS position, which jumps, a little later and farther
 // from it. Inside a building the route to the room is found again the same way.
 // 3D mode: the same session in first-person walk mode (walk/walk-mode.js), with the
-// route and destination kept. Driven by the on-screen / keyboard controls, or
-// by GPS and the compass after "Follow GPS".
+// route and destination kept. It follows GPS and the compass from the start: the
+// walker stands where the visitor stands (while the first position is awaited the
+// walk starts at the beginning of the route and jumps to the visitor as soon as it
+// arrives; where GPS is refused, missing or away from the campus it stays on the
+// route and says so). "Follow GPS" turns the following off and on again, and the
+// on-screen / keyboard controls take over whenever it is off.
 //
 // GPS does not tell floors or rooms, so on the map guidance ends at the building
 // (its recorded entrance, else the edge of its footprint). In 3D mode a route to a
@@ -362,6 +366,9 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
     if (source === "gps") setAccuracy(position, accuracy);
     if (session.view === "map" || source === "gps") {
       const shown = session.view === "walk" && collision ? collision.nearestFree(position) : position;
+      // In 3D mode the position waited for is not eased in from the route start: the
+      // walker stands where the visitor stands.
+      if (session.snapToGps && source === "gps") { session.snapToGps = false; anim.center = shown; anim.to = null; walk.setPose?.(shown, anim.heading ?? 0); }
       animateTo(shown);
       updateHeadingTarget();
     }
@@ -442,7 +449,17 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
     const { longitude, latitude, accuracy, heading, speed } = position.coords;
     const point = [longitude, latitude];
     gps.fix = { point, accuracy, heading, speed, time: position.timestamp };
-    if (!onCampus(point)) { gps.status = "far"; render(); return; }
+    if (!onCampus(point)) {
+      gps.status = "far";
+      if (session.view === "walk" && session.snapToGps) {
+        session.snapToGps = false;
+        session.useGps = false;
+        if (session.source === "none") session.source = "manual";
+        onToast?.("Your position is away from the campus, so the walk starts at the route.");
+      }
+      render();
+      return;
+    }
     gps.status = accuracy > WEAK_GPS_M ? "weak" : "live";
     if (session.useGps) updatePosition(point, { source: "gps", accuracy, course: heading, speed });
     else render();
@@ -452,6 +469,12 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
     if (!session) return;
     gps.status = error?.code === 1 ? "denied" : error?.code === 3 ? "slow" : "unavailable";
     if (error?.code === 1) stopWatchOnly();
+    if (session.view === "walk" && session.snapToGps && gps.status !== "slow") {
+      session.snapToGps = false;
+      session.useGps = false;
+      session.source = session.source === "none" ? "manual" : session.source;
+      onToast?.(gps.status === "denied" ? "Location is blocked for this site, so the walk starts at the route. Allow it in the browser’s site settings." : "Your location is not available, so the walk starts at the route.");
+    }
     render();
   }
   function stopWatchOnly() {
@@ -566,8 +589,8 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
     setText(ui.position, session.picking ? "Cancel" : "Set position");
     if (ui.walkGps) {
       setHidden(ui.walkGps, !walkView);
-      ui.walkGps.setAttribute("aria-pressed", String(session.useGps && session.source === "gps"));
-      setText(ui.walkGps, session.useGps && session.source === "gps" ? "Following GPS" : "Follow GPS");
+      ui.walkGps.setAttribute("aria-pressed", String(session.useGps));
+      setText(ui.walkGps, session.useGps ? (session.source === "gps" ? "Following GPS" : "Waiting for GPS…") : "Follow GPS");
     }
   }
 
@@ -578,8 +601,15 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
       session.view = "walk";
       session.picking = false;
       marker.remove(); markerShown = false;
-      const useGps = session.useGps && gpsUsable() && session.source === "gps";
-      const start = useGps ? session.position : (session.source === "manual" && session.position) || session.model.coordinates[0];
+      const useGps = session.useGps && gpsUsable();
+      // Waiting for the first position: the walk starts at the beginning of the route
+      // and jumps to the visitor as soon as the GPS gives a position.
+      session.snapToGps = session.useGps && !useGps;
+      if (session.snapToGps) {
+        if (!session.gpsRequested) startGps();
+        if (gps.status === "waiting" || gps.status === "slow") onToast?.("Waiting for your GPS position…");
+      }
+      const start = useGps ? (session.source === "gps" && session.position) || gps.fix.point : (session.source === "manual" && session.position) || session.model.coordinates[0];
       const free = collision ? collision.nearestFree(start) : start;
       const heading = (useGps ? chosenHeading() : null) ?? bearingAt(session.model, session.progress?.along ?? 0);
       session.source = useGps ? "gps" : "manual";
@@ -603,15 +633,14 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
   function start({ view = "map" } = {}) {
     const result = getRoute?.();
     if (!result?.ok) { onToast?.("Choose a starting point and a destination with a walking route first"); return false; }
-    const live = view === "map";
-    if (live) compass.start(); // iOS: must run inside the tap
+    compass.start(); // iOS: must run inside the tap
     if (session) {
-      if (live && !session.gpsRequested) { session.useGps = true; startGps(); }
+      if (!session.gpsRequested) { session.useGps = true; startGps(); }
       setView(view);
       return true;
     }
     session = {
-      view: "map", source: "none", useGps: live, gpsRequested: false, follow: true, intro: false, picking: false,
+      view: "map", source: "none", useGps: true, gpsRequested: false, snapToGps: false, follow: true, intro: false, picking: false,
       position: null, accuracy: null, course: null, speed: null, progress: null, offRouteSince: 0, offRoute: false,
       arrived: false, arrivalNote: "", lastRerouteAt: 0, result: null, model: null, destinationName: "", destinationId: "",
       savedCamera: { center: map.getCenter().toArray(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing(), padding: { ...map.getPadding() } }
@@ -623,7 +652,7 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
     ui.banner.hidden = false;
     cameraController?.release?.();
     onSession?.(true);
-    if (live) startGps();
+    startGps();
     render();
     if (view === "walk") setView("walk");
     else enterFollowCamera();
