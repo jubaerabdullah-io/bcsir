@@ -52,14 +52,16 @@ export const BUILDING_MODELS = {
   modules: { "models/buildings/residential.glb": RESIDENTIAL_MODULE }
 };
 
-// The Walk Mode character (walk-character.js): the cartoon walker,
-// models/shared/characters/male.glb (`npm run models:character`), with clips named Idle,
-// Walk, Run and Jump; `colors` recolour its materials (Skin, Hair, Shirt, Trousers,
-// Shoes) and the picker's figure. More entries would add a choice of character in
-// the picker; an entry may also set height (m) and walkPace, runPace (m/s its Walk
-// and Run clips are animated for).
+// The Walk Mode character (walk-character.js): a scanned man with a motion-captured
+// walk, models/shared/characters/nathan.glb (`npm run models:character` makes it from
+// the model added to that folder, and prints these numbers), with clips named Idle,
+// Walk and Run. height: metres he is drawn tall; walkPace, runPace: m/s over the
+// ground his Walk and Run clips are made for, so his feet do not slide (the clips
+// are played faster or slower as he moves faster or slower than that). More entries
+// would add a choice of character in the picker; an entry may also set `colors`,
+// which recolour the model's materials by name and the picker's figure.
 export const WALK_CHARACTERS = [
-  { id: "blue-shirt", name: "Walker", model: "models/shared/characters/male.glb", colors: { Skin: "#a8744f", Hair: "#17110d", Shirt: "#2f6db0", Trousers: "#2a2e36", Shoes: "#1b1b1b" } }
+  { id: "nathan", name: "Nathan", model: "models/shared/characters/nathan.glb", height: 1.8, walkPace: 1.2, runPace: 2.51 }
 ];
 
 // Look of the ground surfaces made from a GLB (surface-layer.js), by model file

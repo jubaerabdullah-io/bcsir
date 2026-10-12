@@ -13,11 +13,11 @@ import { activeOrg, datasetKeyOfPath } from "./core/org.js";
 import { datasetLabel, fetchDataset, loadAllData, prepareDataset } from "./data/bcsir-data.js";
 import { addBcsirLayers, getBuildingStateRef, LAYER_GROUPS, refreshBuildingLabels, SATELLITE_HIDDEN_GROUPS, setModelHitBuildings, setRouteData, setShellHiddenBuildings, setWallGaps, updateDatasetLayers } from "./map/bcsir-layers.js";
 import { hasTiles, registerProtocol } from "./map/vector-tiles.js";
-import { calculateBounds, distanceMeters, lineStrips } from "./utils/geo-utils.js";
+import { calculateBounds, distanceMeters, labelAnchor, lineStrips } from "./utils/geo-utils.js";
 import { setupInteractions } from "./map/interactions.js";
 import { createUI } from "./ui/ui.js";
 import { createModelGroups } from "./three/model-placements.js";
-import { get3DModelStats, setFadedModelBuildings, setHiddenModelBuildings } from "./three/models3d.js";
+import { get3DModelStats, setCutModelBuildings, setFadedModelBuildings, setHiddenModelBuildings } from "./three/models3d.js";
 import { createCameraController } from "./map/camera-controls.js";
 import { createLocateControl } from "./map/locate-control.js";
 import { axisBearings, cameraForPoints, principalBearing } from "./map/camera-fit.js";
@@ -45,6 +45,7 @@ import { createLiveNavigation } from "./navigation/live-navigation.js";
 import { createMinimap } from "./navigation/minimap.js";
 import { createBuildingModels } from "./buildings/building-models.js";
 import { createIndoor } from "./indoor/indoor-controller.js";
+import { INDOOR_STYLE } from "./indoor/indoor-model.js";
 import { describeTrip, planIndoorTrip } from "./indoor/trip.js";
 import { viewMode } from "./core/view-mode.js";
 import { DEG, geometryPolygons, normalizeDegrees } from "./utils/local-frame.js";
@@ -139,8 +140,16 @@ function footprintBearing(feature) {
 function routeFocusPoints() {
   if (!lastRoute || !directions?.isWalkOn()) return [];
   const points = routeDrawn ? [...displayRoute.coordinates, lastRoute.source.point, lastRoute.destination.point] : [];
-  for (const part of [trip?.start, trip?.end]) if (part?.ok) for (const leg of part.legs) if (leg.type === "walk") points.push(...leg.coordinates);
+  for (const part of [trip?.start, trip?.end]) if (part?.ok) for (const leg of part.legs) if (leg.type === "walk") points.push(...onFloor(leg.coordinates, part.building, leg.level));
   return points;
+}
+
+// [lon, lat] points of a floor of a building, at that floor's height when the
+// building is open (a floor plan lies at its height in the building; from outside
+// the route is drawn on the ground).
+function onFloor(coordinates, building, level) {
+  const height = building && indoor?.isOpen(building) ? indoor.elevation(building, level) : 0;
+  return height ? coordinates.map((point) => [point[0], point[1], height]) : coordinates;
 }
 
 // What the View presets keep in view (map/camera-controls.js): the route, else the
@@ -283,30 +292,56 @@ function routeFromCard(kind, feature, context) {
   interactionController.clearSelection();
 }
 
-function pinFor(feature, endpoint) {
-  const resolved = endpoint || (feature ? routeService.endpointFor(feature) : null);
-  return resolved ? { point: resolved.point, name: resolved.kind === "position" ? "Your location" : String(feature?.properties?.name_en || "").trim() } : null;
+// Where a route pin stands on a building: on top of it, above the middle of its
+// roof (where its label is), not at the entrance down on the road.
+// { point, height (m), key (of its floor plans, or null) }, or null.
+const PIN_ABOVE_ROOF_M = 1; // as the building's label and the pin of a selected building
+const PIN_ABOVE_FLOOR_M = 0.3;
+function roofOf(feature) {
+  const point = feature ? labelAnchor(feature) : null;
+  if (!point) return null;
+  return { point, height: (Number(feature.properties?.render_top_m) || 0) + PIN_ABOVE_ROOF_M, key: indoor?.store.forBuildingId(feature.properties?.id)?.key || null };
 }
 
-// Pin of a route endpoint: on the chosen room or point, else on the building's entrance.
+// Pin of a building that is a route endpoint (or of the visitor's own position,
+// which stays on the ground).
+function pinFor(feature, endpoint) {
+  const resolved = endpoint || (feature ? routeService.endpointFor(feature) : null);
+  if (!resolved) return null;
+  if (resolved.kind === "position") return { point: resolved.point, name: "Your location" };
+  return { point: resolved.point, name: String(feature?.properties?.name_en || "").trim(), roof: roofOf(feature) };
+}
+
+// Pin of a route endpoint: on the chosen room or point, else on the building.
 function endpointPin(kind, feature, endpoint) {
   const uid = routePlaces[kind];
   const place = uid ? indoor.store.place(uid) : null;
-  return place ? { point: place.point, name: place.name, uid } : pinFor(feature, endpoint);
+  return place ? { point: place.point, name: place.name, uid, roof: roofOf(feature) } : pinFor(feature, endpoint);
 }
 
-// Draws the route pins. A pin on a room is left out while another floor of its
-// building is shown: rooms above each other would otherwise share one spot.
+// Draws the route pins, each on top of its building: on the roof while the
+// building is shown from outside, on the open floor while its floor plan is shown.
+// A pin on a room stands on the room while its floor is shown, and is left out
+// while another floor of its building is: rooms above each other would otherwise
+// share one spot.
 let routePins = { source: null, destination: null };
 function showRoutePins(pins = routePins) {
   routePins = pins;
   const open = indoor.openLevels();
-  const visible = (pin) => {
-    if (!pin?.uid) return pin;
-    const [key, levelId] = pin.uid.split("/");
-    return open[key] === undefined || open[key] === levelId ? pin : null;
+  const onRoof = (pin) => (pin.roof ? { ...pin, point: pin.roof.point, height: pin.roof.height, onBadge: true } : pin);
+  const placed = (pin) => {
+    if (!pin) return null;
+    if (pin.uid) {
+      const [key, levelId] = pin.uid.split("/");
+      if (open[key] === undefined) return onRoof(pin);
+      return open[key] === levelId ? { ...pin, height: indoor.elevation(key, levelId) + PIN_ABOVE_FLOOR_M } : null;
+    }
+    const key = pin.roof?.key;
+    if (!key || open[key] === undefined) return onRoof(pin);
+    // Its floor plan is open: on top of what is drawn of the building.
+    return { ...pin, point: pin.roof.point, height: indoor.shownElevation(key) + INDOOR_STYLE.wallHeightM };
   };
-  routeMarkers.set({ source: visible(pins.source), destination: visible(pins.destination) });
+  routeMarkers.set({ source: placed(pins.source), destination: placed(pins.destination) });
 }
 
 // A pin on a room stands at its door, where a route to it ends. The door is known
@@ -360,8 +395,8 @@ async function planTrip(selection, places, token) {
   // Pins on the places the indoor route really starts and ends at.
   const last = sameBuilding ? result.start : result.end;
   showRoutePins({
-    source: places.source && result.start?.ok ? { point: result.start.from.point, name: result.start.from.label, uid: places.source } : endpointPin("source", selection.source, lastRoute?.source),
-    destination: places.destination && last?.ok ? { point: last.to.point, name: last.to.label, uid: places.destination } : endpointPin("destination", selection.destination, lastRoute?.destination)
+    source: places.source && result.start?.ok ? { point: result.start.from.point, name: result.start.from.label, uid: places.source, roof: roofOf(selection.source) } : endpointPin("source", selection.source, lastRoute?.source),
+    destination: places.destination && last?.ok ? { point: last.to.point, name: last.to.label, uid: places.destination, roof: roofOf(selection.destination) } : endpointPin("destination", selection.destination, lastRoute?.destination)
   });
   if (!walking || !parts.length) return;
   // The floors the route starts and arrives on are opened, and the camera shows the
@@ -369,9 +404,9 @@ async function planTrip(selection, places, token) {
   for (const part of parts) await indoor.openLevel(part.building, part.from.level, { fit: false });
   if (token !== tripToken || walkController?.isActive() || navigation?.isActive()) return;
   const firstLeg = result.start?.ok ? result.start.legs.find((leg) => leg.type === "walk") : null;
-  frameRoute(firstLeg ? firstLeg.coordinates : [
+  frameRoute(firstLeg ? onFloor(firstLeg.coordinates, result.start.building, firstLeg.level) : [
     ...(outdoor?.ok ? outdoor.coordinates : []),
-    ...result.end.legs.filter((leg) => leg.type === "walk" && leg.level === result.end.from.level).flatMap((leg) => leg.coordinates)
+    ...result.end.legs.filter((leg) => leg.type === "walk" && leg.level === result.end.from.level).flatMap((leg) => onFloor(leg.coordinates, result.end.building, leg.level))
   ], { padding: FIT_PADDING.indoorRoute(), maxZoom: 20, pitch: Math.min(map.getPitch(), 52) });
 }
 
@@ -379,7 +414,7 @@ async function planTrip(selection, places, token) {
 async function showStep(step) {
   if (!step) return;
   if (step.building) await indoor.openLevel(step.building, step.level, { fit: false });
-  const coordinates = step.coordinates || (step.point ? [step.point] : []);
+  const coordinates = onFloor(step.coordinates || (step.point ? [step.point] : []), step.building, step.level);
   frameRoute(coordinates, { padding: FIT_PADDING.indoorRoute(), maxZoom: step.building ? 20.5 : 18.6, pitch: Math.min(map.getPitch(), 52), duration: 800 });
 }
 
@@ -478,7 +513,7 @@ async function reloadDataset(file) {
       buildNavigationGeometry();
       if (lastRoute && key === "buildings") updateRoute(interactionController.getRouteSelection());
     }
-    if (key === "buildings") buildingModels.update();
+    if (key === "buildings") { buildingModels.update(); indoor.redraw({ heights: true }); }
     await modelGroups.refreshDataset(key);
     ui.showToast(`${datasetLabel(key)} reloaded`);
   } catch (error) {
@@ -527,7 +562,17 @@ async function start() {
     map,
     org,
     getBuildingFeature: buildingById,
-    setHiddenShells: (ids) => { routeOcclusion.setHiddenBuildings(ids); setShellHiddenBuildings(map, ids); setHiddenModelBuildings(map, ids); buildingPin.setHiddenShells(ids); },
+    // An open building has no label and no extrusion of its own. Its GLB model is
+    // not drawn when its ground floor is open, and only below the open floor otherwise.
+    setOpenShells: (shells) => {
+      const ids = shells.map((shell) => shell.id);
+      routeOcclusion.setHiddenBuildings(ids);
+      setShellHiddenBuildings(map, ids);
+      setHiddenModelBuildings(map, shells.filter((shell) => !shell.cutM).map((shell) => shell.id));
+      setCutModelBuildings(map, Object.fromEntries(shells.filter((shell) => shell.cutM).map((shell) => [shell.id, shell.cutM])));
+      buildingPin.setOpenShells(shells);
+    },
+    hasModelShell: (id) => routeOcclusion.replacedIds().includes(String(id)),
     isBusy: () => Boolean(walkController?.isActive() || walkController?.isChoosing() || navigation?.isActive()),
     onPlaceShown: () => { interactionController?.clearSelection(); showPlaceInSearch(); },
     onPlaceHidden: showPlaceInSearch,
@@ -561,7 +606,7 @@ async function start() {
     getBuildings: () => data.render.buildings,
     // Models tiled bay by bay are listed per organisation (org.json "model_modules").
     config: { ...BUILDING_MODELS, modules: org.model_modules || {} },
-    onReplacedChange: (ids, wallGaps) => { routeOcclusion.setReplacedBuildings(ids); setModelHitBuildings(map, ids); setWallGaps(map, wallGaps); }
+    onReplacedChange: (ids, wallGaps) => { routeOcclusion.setReplacedBuildings(ids); setModelHitBuildings(map, ids); setWallGaps(map, wallGaps); indoor.redraw(); }
   });
 
   // GLB models placed by GeoJSON features, one set per layer group.
@@ -643,7 +688,7 @@ async function start() {
 
   walkController = createWalkMode({
     map,
-    // Inside a building the walker stands on its floor plan, which is drawn at ground level.
+    // Inside a building the walker stands on its floor plan, at that floor's height in the building.
     getFloorElevation: () => indoorWalk.floorElevation(),
     getLevelLabel: () => indoorWalk.levelLabel(),
     getSpeedFactor: () => indoorWalk.speedFactor(),

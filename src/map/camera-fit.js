@@ -65,12 +65,18 @@ export function fitView(points, { width, height, fov = 36.87, mapPadding = ZERO,
     }
     return { minX, maxX, minY, maxY };
   }
-  // Ground point (metres from the centre) seen at a screen point, or null above the horizon.
+  // Point (metres from the centre) seen at a screen point on the level the points
+  // lie at on average, or null above the horizon. On that level, not on the ground:
+  // a floor high in a building is nearer the camera, where a metre is more pixels,
+  // so moving the centre by what the ground would need overshoots (by more than
+  // twice from the sixth floor up, and the centring below then never settles).
+  const level = local.reduce((sum, point) => sum + point[2], 0) / local.length;
   function ground(sx, sy, k) {
+    const z = level * k;
     const denominator = d * cos - sy * sin;
     if (denominator <= 1e-6) return null;
-    const y = (sy * d) / denominator;
-    return [(sx * (d + y * sin)) / d / k, y / k];
+    const y = (sy * (d - z * cos) - d * z * sin) / denominator;
+    return [(sx * (d + y * sin - z * cos)) / d / k, y / k];
   }
   const start = local.reduce((acc, [X, Y]) => [Math.min(acc[0], X), Math.max(acc[1], X), Math.min(acc[2], Y), Math.max(acc[3], Y)], [Infinity, -Infinity, Infinity, -Infinity]);
   // The camera centre that puts the middle of the points' screen box in the middle

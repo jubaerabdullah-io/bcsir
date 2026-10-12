@@ -38,8 +38,13 @@ function probeFor(map) {
       probe.listeners.forEach((listener) => listener());
     }
   };
-  const add = () => { if (!map.getLayer(LAYER_ID)) map.addLayer(layer); };
-  if (map.isStyleLoaded()) add(); else map.once("load", add);
+  // Added now when the style can take it (isStyleLoaded() is also false while the
+  // map only loads data, long after its style is there), else when it can.
+  const add = () => {
+    try { if (!map.getLayer(LAYER_ID)) map.addLayer(layer); } catch { /* no style yet: added on "load" or "styledata" */ }
+  };
+  add();
+  map.once("load", add);
   map.on("styledata", add);
   return probe;
 }

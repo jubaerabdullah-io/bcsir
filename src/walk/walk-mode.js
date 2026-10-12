@@ -52,8 +52,11 @@ import { createWalkSky } from "./walk-sky.js";
 // listener used while walking is removed when Walk Mode ends, with the character.
 const EYE_HEIGHT_METERS = 1.65;
 const LOOK_AHEAD_METERS = 16;
-const WALK_SPEED_METERS_PER_SECOND = 4.5;
-const SHIFT_SPEED_MULTIPLIER = 2; // Shift: 9 m/s
+// A person's paces, so the character's motion-captured steps match the ground he
+// covers: a brisk walk, and a run with Shift (walk-character.js plays its Walk and
+// Run clips at the rate these speeds need).
+const WALK_SPEED_METERS_PER_SECOND = 1.6;
+const SHIFT_SPEED_MULTIPLIER = 2.25; // Shift: 3.6 m/s
 const JUMP = { speed: 5.2, gravity: 16 }; // take-off m/s, m/s² (about 0.85 m high, 0.65 s in the air)
 const TURN_SPEED_DEGREES_PER_SECOND = 105;
 const MOUSE_SENSITIVITY = 0.16;
