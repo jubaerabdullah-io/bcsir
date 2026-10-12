@@ -82,6 +82,7 @@ let indoorWalk; // walking inside buildings with floor plans (walk/walk-indoor.j
 let routeOcclusion;
 let minimap;
 let navigation;
+let simulator = null; // development only: replays mock GPS tracks (dev/simulator-ui.js)
 let locate; // the visitor's own position on the map (map/locate-control.js)
 let buildingModels;
 // Floor plans (indoor/indoor-controller.js). A route endpoint is a building; when
@@ -395,6 +396,7 @@ function updateRoute(selection) {
   const token = ++tripToken;
   trip = null;
   ui.updateRouteSelection(selection);
+  simulator?.update(selection, position);
   directions.sync({ ...selection, position, entries: { source: placeEntry(places.source), destination: placeEntry(places.destination) } });
   indoor.setEndpoints(places);
   cameraController?.updateRoute(selection);
@@ -682,6 +684,12 @@ async function start() {
   });
 
   const campusBounds = calculateBounds(campusExtent(), maplibregl.LngLatBounds);
+  // Development only (left out of builds): "Simulate" replays a mock GPS track.
+  if (import.meta.env.DEV) {
+    simulator = (await import("./dev/simulator-ui.js")).createSimulatorUI({ getNavigation: () => navigation, onToast: ui.showToast });
+    const selection = interactionController.getRouteSelection();
+    simulator?.update(selection, selection.source ? null : sourcePosition);
+  }
   navigation = createLiveNavigation({
     map,
     walk: walkController,
@@ -692,6 +700,7 @@ async function start() {
     // 3D mode goes on inside the destination building to the chosen room.
     getIndoorRoute: () => (directions.isWalkOn() && trip?.end?.ok ? { building: trip.end.building, legs: trip.end.legs, name: trip.end.to.label, levelName: (id) => indoor.levelShort(trip.end.building, id) } : null),
     getIndoorPosition: () => indoorWalk.state().inside,
+    getGeolocation: () => simulator?.geolocation() ?? navigator.geolocation,
     // Off the route for a while: a new route from the position to the same
     // destination, with the original routing algorithm.
     reroute: (position) => {
@@ -714,6 +723,7 @@ async function start() {
       return result.legs;
     },
     onSession: (active) => {
+      simulator?.sessionChanged(active);
       routeWalker.setSuppressed(active || walkController.isActive());
       if (active) {
         locate.stop(); // navigation shows the position itself

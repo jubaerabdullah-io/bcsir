@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="bcsir-3d-map mock:tracks" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Chairman Gate → Dr. Qudrat-I-Khuda Bhaban</name>
+    <trkseg>
+      <trkpt lat="23.7408458" lon="90.3835207"><ele>0</ele><time>2026-01-01T00:00:00.000Z</time></trkpt>
+      <trkpt lat="23.7408458" lon="90.3835207"><ele>0</ele><time>2026-01-01T00:00:02.000Z</time></trkpt>
+      <trkpt lat="23.7408446" lon="90.3835628"><ele>0</ele><time>2026-01-01T00:00:05.365Z</time></trkpt>
+      <trkpt lat="23.7408427" lon="90.3836057"><ele>0</ele><time>2026-01-01T00:00:08.729Z</time></trkpt>
+      <trkpt lat="23.7408407" lon="90.3836486"><ele>0</ele><time>2026-01-01T00:00:12.094Z</time></trkpt>
+      <trkpt lat="23.7408388" lon="90.3836916"><ele>0</ele><time>2026-01-01T00:00:15.459Z</time></trkpt>
+      <trkpt lat="23.7407964" lon="90.3837014"><ele>0</ele><time>2026-01-01T00:00:19.174Z</time></trkpt>
+      <trkpt lat="23.7407539" lon="90.3837112"><ele>0</ele><time>2026-01-01T00:00:22.889Z</time></trkpt>
+      <trkpt lat="23.7407114" lon="90.383721"><ele>0</ele><time>2026-01-01T00:00:26.604Z</time></trkpt>
+      <trkpt lat="23.7406689" lon="90.3837308"><ele>0</ele><time>2026-01-01T00:00:30.319Z</time></trkpt>
+      <trkpt lat="23.7406264" lon="90.3837406"><ele>0</ele><time>2026-01-01T00:00:34.034Z</time></trkpt>
+      <trkpt lat="23.7405839" lon="90.3837504"><ele>0</ele><time>2026-01-01T00:00:37.749Z</time></trkpt>
+      <trkpt lat="23.7405414" lon="90.3837602"><ele>0</ele><time>2026-01-01T00:00:41.464Z</time></trkpt>
+      <trkpt lat="23.7404989" lon="90.38377"><ele>0</ele><time>2026-01-01T00:00:45.179Z</time></trkpt>
+      <trkpt lat="23.7404564" lon="90.3837798"><ele>0</ele><time>2026-01-01T00:00:48.894Z</time></trkpt>
+      <trkpt lat="23.7404139" lon="90.3837896"><ele>0</ele><time>2026-01-01T00:00:52.609Z</time></trkpt>
+      <trkpt lat="23.7403714" lon="90.3837994"><ele>0</ele><time>2026-01-01T00:00:56.324Z</time></trkpt>
+      <trkpt lat="23.7403289" lon="90.383809"><ele>0</ele><time>2026-01-01T00:01:00.039Z</time></trkpt>
+      <trkpt lat="23.7402863" lon="90.3838187"><ele>0</ele><time>2026-01-01T00:01:03.754Z</time></trkpt>
+      <trkpt lat="23.7402438" lon="90.3838284"><ele>0</ele><time>2026-01-01T00:01:07.469Z</time></trkpt>
+      <trkpt lat="23.7402013" lon="90.383838"><ele>0</ele><time>2026-01-01T00:01:11.184Z</time></trkpt>
+      <trkpt lat="23.7401588" lon="90.3838477"><ele>0</ele><time>2026-01-01T00:01:14.899Z</time></trkpt>
+      <trkpt lat="23.7401162" lon="90.3838573"><ele>0</ele><time>2026-01-01T00:01:18.614Z</time></trkpt>
+      <trkpt lat="23.7401068" lon="90.3838171"><ele>0</ele><time>2026-01-01T00:01:21.866Z</time></trkpt>
+      <trkpt lat="23.7400974" lon="90.3837769"><ele>0</ele><time>2026-01-01T00:01:25.118Z</time></trkpt>
+      <trkpt lat="23.7400882" lon="90.3837366"><ele>0</ele><time>2026-01-01T00:01:28.370Z</time></trkpt>
+      <trkpt lat="23.7400797" lon="90.3836961"><ele>0</ele><time>2026-01-01T00:01:31.622Z</time></trkpt>
+      <trkpt lat="23.7400797" lon="90.3836961"><ele>0</ele><time>2026-01-01T00:01:33.622Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

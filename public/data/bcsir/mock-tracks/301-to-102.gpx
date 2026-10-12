@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="bcsir-3d-map mock:tracks" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Main Gate → INARS</name>
+    <trkseg>
+      <trkpt lat="23.7390314" lon="90.3850073"><ele>0</ele><time>2026-01-01T00:00:00.000Z</time></trkpt>
+      <trkpt lat="23.7390314" lon="90.3850073"><ele>0</ele><time>2026-01-01T00:00:02.000Z</time></trkpt>
+      <trkpt lat="23.7390732" lon="90.3850008"><ele>0</ele><time>2026-01-01T00:00:05.640Z</time></trkpt>
+      <trkpt lat="23.7391144" lon="90.3849893"><ele>0</ele><time>2026-01-01T00:00:09.280Z</time></trkpt>
+      <trkpt lat="23.7391557" lon="90.3849778"><ele>0</ele><time>2026-01-01T00:00:12.921Z</time></trkpt>
+      <trkpt lat="23.7391969" lon="90.3849664"><ele>0</ele><time>2026-01-01T00:00:16.561Z</time></trkpt>
+      <trkpt lat="23.7392382" lon="90.3849549"><ele>0</ele><time>2026-01-01T00:00:20.201Z</time></trkpt>
+      <trkpt lat="23.7392794" lon="90.3849435"><ele>0</ele><time>2026-01-01T00:00:23.841Z</time></trkpt>
+      <trkpt lat="23.7393206" lon="90.384932"><ele>0</ele><time>2026-01-01T00:00:27.481Z</time></trkpt>
+      <trkpt lat="23.7393619" lon="90.3849205"><ele>0</ele><time>2026-01-01T00:00:31.122Z</time></trkpt>
+      <trkpt lat="23.7394031" lon="90.3849091"><ele>0</ele><time>2026-01-01T00:00:34.762Z</time></trkpt>
+      <trkpt lat="23.7394444" lon="90.3848976"><ele>0</ele><time>2026-01-01T00:00:38.402Z</time></trkpt>
+      <trkpt lat="23.7394856" lon="90.3848861"><ele>0</ele><time>2026-01-01T00:00:42.042Z</time></trkpt>
+      <trkpt lat="23.7395269" lon="90.3848747"><ele>0</ele><time>2026-01-01T00:00:45.682Z</time></trkpt>
+      <trkpt lat="23.7395681" lon="90.3848633"><ele>0</ele><time>2026-01-01T00:00:49.323Z</time></trkpt>
+      <trkpt lat="23.7396094" lon="90.3848519"><ele>0</ele><time>2026-01-01T00:00:52.963Z</time></trkpt>
+      <trkpt lat="23.7396506" lon="90.3848405"><ele>0</ele><time>2026-01-01T00:00:56.603Z</time></trkpt>
+      <trkpt lat="23.7396919" lon="90.3848291"><ele>0</ele><time>2026-01-01T00:01:00.243Z</time></trkpt>
+      <trkpt lat="23.7397332" lon="90.3848177"><ele>0</ele><time>2026-01-01T00:01:03.883Z</time></trkpt>
+      <trkpt lat="23.7397744" lon="90.3848063"><ele>0</ele><time>2026-01-01T00:01:07.524Z</time></trkpt>
+      <trkpt lat="23.7397652" lon="90.3847604"><ele>0</ele><time>2026-01-01T00:01:11.203Z</time></trkpt>
+      <trkpt lat="23.739756" lon="90.3847145"><ele>0</ele><time>2026-01-01T00:01:14.882Z</time></trkpt>
+      <trkpt lat="23.7397468" lon="90.3846686"><ele>0</ele><time>2026-01-01T00:01:18.561Z</time></trkpt>
+      <trkpt lat="23.7397376" lon="90.3846227"><ele>0</ele><time>2026-01-01T00:01:22.240Z</time></trkpt>
+      <trkpt lat="23.7397284" lon="90.3845768"><ele>0</ele><time>2026-01-01T00:01:25.919Z</time></trkpt>
+      <trkpt lat="23.7397192" lon="90.3845309"><ele>0</ele><time>2026-01-01T00:01:29.598Z</time></trkpt>
+      <trkpt lat="23.73971" lon="90.384485"><ele>0</ele><time>2026-01-01T00:01:33.277Z</time></trkpt>
+      <trkpt lat="23.7397008" lon="90.3844391"><ele>0</ele><time>2026-01-01T00:01:36.957Z</time></trkpt>
+      <trkpt lat="23.7396916" lon="90.3843932"><ele>0</ele><time>2026-01-01T00:01:40.636Z</time></trkpt>
+      <trkpt lat="23.7396823" lon="90.3843473"><ele>0</ele><time>2026-01-01T00:01:44.315Z</time></trkpt>
+      <trkpt lat="23.7396731" lon="90.3843014"><ele>0</ele><time>2026-01-01T00:01:47.994Z</time></trkpt>
+      <trkpt lat="23.7396639" lon="90.3842555"><ele>0</ele><time>2026-01-01T00:01:51.673Z</time></trkpt>
+      <trkpt lat="23.7396547" lon="90.3842096"><ele>0</ele><time>2026-01-01T00:01:55.352Z</time></trkpt>
+      <trkpt lat="23.7396455" lon="90.3841637"><ele>0</ele><time>2026-01-01T00:01:59.031Z</time></trkpt>
+      <trkpt lat="23.7396363" lon="90.3841178"><ele>0</ele><time>2026-01-01T00:02:02.710Z</time></trkpt>
+      <trkpt lat="23.7396271" lon="90.3840719"><ele>0</ele><time>2026-01-01T00:02:06.389Z</time></trkpt>
+      <trkpt lat="23.7396179" lon="90.384026"><ele>0</ele><time>2026-01-01T00:02:10.068Z</time></trkpt>
+      <trkpt lat="23.7396087" lon="90.3839801"><ele>0</ele><time>2026-01-01T00:02:13.748Z</time></trkpt>
+      <trkpt lat="23.7395995" lon="90.3839342"><ele>0</ele><time>2026-01-01T00:02:17.427Z</time></trkpt>
+      <trkpt lat="23.7395903" lon="90.3838883"><ele>0</ele><time>2026-01-01T00:02:21.106Z</time></trkpt>
+      <trkpt lat="23.739581" lon="90.3838425"><ele>0</ele><time>2026-01-01T00:02:24.785Z</time></trkpt>
+      <trkpt lat="23.7395498" lon="90.3838493"><ele>0</ele><time>2026-01-01T00:02:27.508Z</time></trkpt>
+      <trkpt lat="23.7395205" lon="90.3838551"><ele>0</ele><time>2026-01-01T00:02:30.231Z</time></trkpt>
+      <trkpt lat="23.7395205" lon="90.3838551"><ele>0</ele><time>2026-01-01T00:02:32.231Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

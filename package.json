@@ -17,6 +17,7 @@
     "build:tiles": "node scripts/build-tiles.mjs",
     "verify:originals": "node scripts/verify-originals.mjs",
     "verify:routing": "node scripts/verify-routing.mjs",
+    "mock:tracks": "node scripts/generate-mock-tracks.mjs",
     "test": "node --test \"tests/*.test.mjs\"",
     "verify": "npm run verify:originals && npm run verify:routing && npm test"
   },

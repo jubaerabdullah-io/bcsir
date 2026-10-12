@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="bcsir-3d-map mock:tracks" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Secondary Gate → IGCRT</name>
+    <trkseg>
+      <trkpt lat="23.7396186" lon="90.3863943"><ele>0</ele><time>2026-01-01T00:00:00.000Z</time></trkpt>
+      <trkpt lat="23.7396186" lon="90.3863943"><ele>0</ele><time>2026-01-01T00:00:02.000Z</time></trkpt>
+      <trkpt lat="23.7396588" lon="90.3863945"><ele>0</ele><time>2026-01-01T00:00:05.443Z</time></trkpt>
+      <trkpt lat="23.7396991" lon="90.3863953"><ele>0</ele><time>2026-01-01T00:00:08.886Z</time></trkpt>
+      <trkpt lat="23.7397393" lon="90.3863961"><ele>0</ele><time>2026-01-01T00:00:12.329Z</time></trkpt>
+      <trkpt lat="23.7397796" lon="90.3863968"><ele>0</ele><time>2026-01-01T00:00:15.772Z</time></trkpt>
+      <trkpt lat="23.7398198" lon="90.3863976"><ele>0</ele><time>2026-01-01T00:00:19.215Z</time></trkpt>
+      <trkpt lat="23.7398601" lon="90.3863984"><ele>0</ele><time>2026-01-01T00:00:22.657Z</time></trkpt>
+      <trkpt lat="23.7399003" lon="90.3863991"><ele>0</ele><time>2026-01-01T00:00:26.100Z</time></trkpt>
+      <trkpt lat="23.7399405" lon="90.3863999"><ele>0</ele><time>2026-01-01T00:00:29.543Z</time></trkpt>
+      <trkpt lat="23.7399808" lon="90.3864007"><ele>0</ele><time>2026-01-01T00:00:32.986Z</time></trkpt>
+      <trkpt lat="23.7399889" lon="90.3863539"><ele>0</ele><time>2026-01-01T00:00:36.712Z</time></trkpt>
+      <trkpt lat="23.7399971" lon="90.3863072"><ele>0</ele><time>2026-01-01T00:00:40.439Z</time></trkpt>
+      <trkpt lat="23.7400052" lon="90.3862604"><ele>0</ele><time>2026-01-01T00:00:44.165Z</time></trkpt>
+      <trkpt lat="23.7400079" lon="90.3862137"><ele>0</ele><time>2026-01-01T00:00:47.891Z</time></trkpt>
+      <trkpt lat="23.7399997" lon="90.386167"><ele>0</ele><time>2026-01-01T00:00:51.617Z</time></trkpt>
+      <trkpt lat="23.7399915" lon="90.3861202"><ele>0</ele><time>2026-01-01T00:00:55.343Z</time></trkpt>
+      <trkpt lat="23.7399833" lon="90.3860735"><ele>0</ele><time>2026-01-01T00:00:59.070Z</time></trkpt>
+      <trkpt lat="23.7399751" lon="90.3860267"><ele>0</ele><time>2026-01-01T00:01:02.796Z</time></trkpt>
+      <trkpt lat="23.7399669" lon="90.38598"><ele>0</ele><time>2026-01-01T00:01:06.522Z</time></trkpt>
+      <trkpt lat="23.7399595" lon="90.3859331"><ele>0</ele><time>2026-01-01T00:01:10.248Z</time></trkpt>
+      <trkpt lat="23.739952" lon="90.3858862"><ele>0</ele><time>2026-01-01T00:01:13.974Z</time></trkpt>
+      <trkpt lat="23.7399444" lon="90.3858394"><ele>0</ele><time>2026-01-01T00:01:17.701Z</time></trkpt>
+      <trkpt lat="23.7399366" lon="90.3857925"><ele>0</ele><time>2026-01-01T00:01:21.427Z</time></trkpt>
+      <trkpt lat="23.7399289" lon="90.3857457"><ele>0</ele><time>2026-01-01T00:01:25.153Z</time></trkpt>
+      <trkpt lat="23.7399579" lon="90.3857256"><ele>0</ele><time>2026-01-01T00:01:28.879Z</time></trkpt>
+      <trkpt lat="23.739949" lon="90.3856796"><ele>0</ele><time>2026-01-01T00:01:32.563Z</time></trkpt>
+      <trkpt lat="23.7399402" lon="90.3856335"><ele>0</ele><time>2026-01-01T00:01:36.246Z</time></trkpt>
+      <trkpt lat="23.7399312" lon="90.3855876"><ele>0</ele><time>2026-01-01T00:01:39.930Z</time></trkpt>
+      <trkpt lat="23.7399219" lon="90.3855416"><ele>0</ele><time>2026-01-01T00:01:43.613Z</time></trkpt>
+      <trkpt lat="23.7399127" lon="90.3854956"><ele>0</ele><time>2026-01-01T00:01:47.297Z</time></trkpt>
+      <trkpt lat="23.7399035" lon="90.3854497"><ele>0</ele><time>2026-01-01T00:01:50.980Z</time></trkpt>
+      <trkpt lat="23.7398943" lon="90.3854037"><ele>0</ele><time>2026-01-01T00:01:54.663Z</time></trkpt>
+      <trkpt lat="23.7398851" lon="90.3853578"><ele>0</ele><time>2026-01-01T00:01:58.347Z</time></trkpt>
+      <trkpt lat="23.7398758" lon="90.3853118"><ele>0</ele><time>2026-01-01T00:02:02.030Z</time></trkpt>
+      <trkpt lat="23.7398665" lon="90.3852659"><ele>0</ele><time>2026-01-01T00:02:05.714Z</time></trkpt>
+      <trkpt lat="23.7398572" lon="90.38522"><ele>0</ele><time>2026-01-01T00:02:09.397Z</time></trkpt>
+      <trkpt lat="23.7398479" lon="90.385174"><ele>0</ele><time>2026-01-01T00:02:13.081Z</time></trkpt>
+      <trkpt lat="23.7398386" lon="90.3851281"><ele>0</ele><time>2026-01-01T00:02:16.764Z</time></trkpt>
+      <trkpt lat="23.7398293" lon="90.3850822"><ele>0</ele><time>2026-01-01T00:02:20.448Z</time></trkpt>
+      <trkpt lat="23.73982" lon="90.3850362"><ele>0</ele><time>2026-01-01T00:02:24.131Z</time></trkpt>
+      <trkpt lat="23.7398108" lon="90.3849903"><ele>0</ele><time>2026-01-01T00:02:27.815Z</time></trkpt>
+      <trkpt lat="23.7398017" lon="90.3849443"><ele>0</ele><time>2026-01-01T00:02:31.498Z</time></trkpt>
+      <trkpt lat="23.7397926" lon="90.3848983"><ele>0</ele><time>2026-01-01T00:02:35.182Z</time></trkpt>
+      <trkpt lat="23.7397835" lon="90.3848523"><ele>0</ele><time>2026-01-01T00:02:38.865Z</time></trkpt>
+      <trkpt lat="23.7397744" lon="90.3848063"><ele>0</ele><time>2026-01-01T00:02:42.549Z</time></trkpt>
+      <trkpt lat="23.7397354" lon="90.3848171"><ele>0</ele><time>2026-01-01T00:02:45.994Z</time></trkpt>
+      <trkpt lat="23.7396963" lon="90.3848279"><ele>0</ele><time>2026-01-01T00:02:49.440Z</time></trkpt>
+      <trkpt lat="23.7396573" lon="90.3848387"><ele>0</ele><time>2026-01-01T00:02:52.885Z</time></trkpt>
+      <trkpt lat="23.7396182" lon="90.3848494"><ele>0</ele><time>2026-01-01T00:02:56.331Z</time></trkpt>
+      <trkpt lat="23.7395792" lon="90.3848602"><ele>0</ele><time>2026-01-01T00:02:59.776Z</time></trkpt>
+      <trkpt lat="23.7395401" lon="90.384871"><ele>0</ele><time>2026-01-01T00:03:03.222Z</time></trkpt>
+      <trkpt lat="23.7395484" lon="90.3849043"><ele>0</ele><time>2026-01-01T00:03:05.926Z</time></trkpt>
+      <trkpt lat="23.7395567" lon="90.3849377"><ele>0</ele><time>2026-01-01T00:03:08.631Z</time></trkpt>
+      <trkpt lat="23.7395649" lon="90.384971"><ele>0</ele><time>2026-01-01T00:03:11.336Z</time></trkpt>
+      <trkpt lat="23.7395649" lon="90.384971"><ele>0</ele><time>2026-01-01T00:03:13.336Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

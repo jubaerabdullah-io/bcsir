@@ -16,8 +16,10 @@
 //    sha256 recorded in original-files.sha256.
 // 5. Warns when a GLB in public/models/<org>/ is new or was replaced since
 //    `npm run models:optimize` last ran (public/models/<org>/lod/manifest.json).
+// 6. Leaves the mock GPS tracks (public/data/<org>/mock-tracks/, npm run mock:tracks)
+//    out of the build: only the development GPS simulator reads them.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { buildCatalog, buildOrgIndex, DATA_DIR, listOrganisations, MODELS_DIR } from "./lib/catalog.mjs";
 import { buildRoutingModule, ORIGINAL_ROUTING_FILE } from "./lib/original-routing.mjs";
@@ -30,6 +32,7 @@ const INDEX_URL = /\/data\/([^/]+)\/index\.json$/;
 
 export function bcsirPlugin() {
   let root = process.cwd();
+  let outDir = null;
   let logger = console;
   const sourcePath = (relative) => path.join(root, relative);
 
@@ -88,6 +91,7 @@ export function bcsirPlugin() {
     configResolved(config) {
       root = config.root;
       logger = config.logger;
+      outDir = config.command === "build" ? path.resolve(config.root, config.build.outDir) : null;
     },
 
     buildStart() {
@@ -143,6 +147,11 @@ export function bcsirPlugin() {
     generateBundle() {
       this.emitFile({ type: "asset", fileName: "data/catalog.json", source: `${JSON.stringify(buildCatalog(root))}\n` });
       for (const id of listOrganisations(root)) this.emitFile({ type: "asset", fileName: `data/${id}/index.json`, source: `${JSON.stringify(buildOrgIndex(root, id))}\n` });
+    },
+
+    closeBundle() {
+      if (!outDir) return;
+      for (const id of listOrganisations(root)) rmSync(path.join(outDir, "data", id, "mock-tracks"), { recursive: true, force: true });
     }
   };
 }

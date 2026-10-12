@@ -1,0 +1,180 @@
+{
+  "speedMps": 1.3,
+  "stepM": 5,
+  "tracks": [
+    {
+      "id": "301-to-127",
+      "name": "Main Gate → Secretariat",
+      "from": {
+        "id": 301,
+        "name": "Main Gate",
+        "point": [
+          90.3850073,
+          23.7390314
+        ],
+        "kind": "entrance"
+      },
+      "to": {
+        "id": 127,
+        "name": "Secretariat",
+        "point": [
+          90.3846662,
+          23.7400724
+        ],
+        "kind": "entrance"
+      },
+      "distanceM": 135.8,
+      "durationS": 108.4,
+      "fixes": 33,
+      "files": {
+        "json": "301-to-127.json",
+        "gpx": "301-to-127.gpx"
+      }
+    },
+    {
+      "id": "301-to-102",
+      "name": "Main Gate → INARS",
+      "from": {
+        "id": 301,
+        "name": "Main Gate",
+        "point": [
+          90.3850073,
+          23.7390314
+        ],
+        "kind": "entrance"
+      },
+      "to": {
+        "id": 102,
+        "name": "INARS",
+        "point": [
+          90.3838551,
+          23.7395205
+        ],
+        "kind": "entrance"
+      },
+      "distanceM": 192.7,
+      "durationS": 152.2,
+      "fixes": 44,
+      "files": {
+        "json": "301-to-102.json",
+        "gpx": "301-to-102.gpx"
+      }
+    },
+    {
+      "id": "302-to-110",
+      "name": "Secondary Gate → IGCRT",
+      "from": {
+        "id": 302,
+        "name": "Secondary Gate",
+        "point": [
+          90.3863943,
+          23.7396186
+        ],
+        "kind": "entrance"
+      },
+      "to": {
+        "id": 110,
+        "name": "IGCRT",
+        "point": [
+          90.384971,
+          23.7395649
+        ],
+        "kind": "entrance"
+      },
+      "distanceM": 246.1,
+      "durationS": 193.3,
+      "fixes": 56,
+      "files": {
+        "json": "302-to-110.json",
+        "gpx": "302-to-110.gpx"
+      }
+    },
+    {
+      "id": "304-to-124",
+      "name": "Chairman Gate → Dr. Qudrat-I-Khuda Bhaban",
+      "from": {
+        "id": 304,
+        "name": "Chairman Gate",
+        "point": [
+          90.3835207,
+          23.7408458
+        ],
+        "kind": "entrance"
+      },
+      "to": {
+        "id": 124,
+        "name": "Dr. Qudrat-I-Khuda Bhaban",
+        "point": [
+          90.3836961,
+          23.7400797
+        ],
+        "kind": "entrance"
+      },
+      "distanceM": 116.5,
+      "durationS": 93.6,
+      "fixes": 28,
+      "files": {
+        "json": "304-to-124.json",
+        "gpx": "304-to-124.gpx"
+      }
+    },
+    {
+      "id": "203-to-111",
+      "name": "BCSIR Central Mosque → IFST",
+      "from": {
+        "id": 203,
+        "name": "BCSIR Central Mosque",
+        "point": [
+          90.3870256,
+          23.7397994
+        ],
+        "kind": "entrance"
+      },
+      "to": {
+        "id": 111,
+        "name": "IFST",
+        "point": [
+          90.3847474,
+          23.739511
+        ],
+        "kind": "entrance"
+      },
+      "distanceM": 606.5,
+      "durationS": 470.6,
+      "fixes": 129,
+      "files": {
+        "json": "203-to-111.json",
+        "gpx": "203-to-111.gpx"
+      }
+    },
+    {
+      "id": "101-to-229",
+      "name": "Genomic Research Laboratories → BCSIR High School",
+      "from": {
+        "id": 101,
+        "name": "Genomic Research Laboratories",
+        "point": [
+          90.3837632,
+          23.739123
+        ],
+        "kind": "entrance"
+      },
+      "to": {
+        "id": 229,
+        "name": "BCSIR High School",
+        "point": [
+          90.3863141,
+          23.7408196
+        ],
+        "kind": "entrance"
+      },
+      "distanceM": 471.8,
+      "durationS": 366.9,
+      "fixes": 102,
+      "files": {
+        "json": "101-to-229.json",
+        "gpx": "101-to-229.gpx"
+      }
+    }
+  ]
+}

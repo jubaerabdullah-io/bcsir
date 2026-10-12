@@ -117,7 +117,9 @@ function clipOutside(points, feature, fromStart) {
 // getIndoorPosition() -> { building, level } | null: where the walker is inside
 // rerouteIndoor(position, where) -> Promise<legs | null>: the route inside from where
 //   the walker now is to the same room, when he has left the one he was on
-export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndoor, collision, campusCenter, cameraController, getIndoorRoute, getIndoorPosition, onSession, onToast } = {}) {
+// getGeolocation() -> the source of GPS fixes (navigator.geolocation; a replayed
+//   mock track in development, see dev/gps-simulator.js)
+export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndoor, collision, campusCenter, cameraController, getIndoorRoute, getIndoorPosition, getGeolocation = () => navigator.geolocation, onSession, onToast } = {}) {
   const $ = (selector) => document.querySelector(selector);
   const ui = {
     banner: $("#nav-banner"), icon: $("#nav-maneuver"), distance: $("#nav-distance"), text: $("#nav-text"), then: $("#nav-then"), line: $("#nav-line"),
@@ -135,7 +137,7 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
   const marker = new maplibregl.Marker({ element: markerElement, rotationAlignment: "map", pitchAlignment: "map" });
 
   const compass = createCompass({ onReading: () => { if (session) updateHeadingTarget(); }, onStatus: () => render() });
-  const gps = { watchId: null, status: "off", fix: null, noFixTimer: 0 };
+  const gps = { geo: null, watchId: null, status: "off", fix: null, noFixTimer: 0 };
   const anim = { frame: 0, last: 0, from: null, to: null, start: 0, center: null, heading: null, target: null };
   const texts = new Map();
   let session = null;
@@ -427,18 +429,22 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
   function startGps() {
     if (!session || gps.watchId !== null) return;
     session.gpsRequested = true;
-    if (!window.isSecureContext) { gps.status = "insecure"; render(); return; }
-    if (!("geolocation" in navigator)) { gps.status = "unavailable"; render(); return; }
+    const geo = getGeolocation();
+    const real = geo === navigator.geolocation;
+    if (real && !window.isSecureContext) { gps.status = "insecure"; render(); return; }
+    if (!geo) { gps.status = "unavailable"; render(); return; }
     gps.status = "waiting";
-    gps.watchId = navigator.geolocation.watchPosition(onFix, onGpsError, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
+    gps.geo = geo;
+    gps.watchId = geo.watchPosition(onFix, onGpsError, { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 });
     clearTimeout(gps.noFixTimer);
     gps.noFixTimer = setTimeout(() => { if (session && !gps.fix) { gps.status = gps.status === "waiting" ? "slow" : gps.status; render(); } }, NO_FIX_HINT_MS);
     render();
   }
 
   function stopGps() {
-    if (gps.watchId !== null) navigator.geolocation?.clearWatch(gps.watchId);
+    if (gps.watchId !== null) gps.geo?.clearWatch(gps.watchId);
     gps.watchId = null;
+    gps.geo = null;
     gps.status = "off";
     gps.fix = null;
     clearTimeout(gps.noFixTimer);
@@ -478,8 +484,9 @@ export function createLiveNavigation({ map, walk, getRoute, reroute, rerouteIndo
     render();
   }
   function stopWatchOnly() {
-    if (gps.watchId !== null) navigator.geolocation?.clearWatch(gps.watchId);
+    if (gps.watchId !== null) gps.geo?.clearWatch(gps.watchId);
     gps.watchId = null;
+    gps.geo = null;
   }
   const gpsUsable = () => gps.fix && (gps.status === "live" || gps.status === "weak");
 

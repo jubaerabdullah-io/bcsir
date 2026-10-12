@@ -33,6 +33,11 @@ npm run verify        # originals unchanged + routing equivalence + npm test
 npm run data:prepare  # create missing BCSIR files in public/data/bcsir (see below)
 npm run floors:sample -- bcsir 127   # template floor plans for a building (see Organisations and floor plans)
 npm run data:services # re-import the official INARS testing-service list
+npm run models:optimize   # compress GLBs and write their detail levels (see Optimizing models)
+npm run models:buildings  # rebuild the generated building models (see Realistic building models)
+npm run models:character  # rebuild the Walk Mode character
+npm run build:tiles -- --out <dir>  # pre-process GeoJSON for vector tiles (see Deploying)
+npm run mock:tracks   # mock GPS tracks along a few routes (see Mock GPS tracks)
 ```
 
 Open the URL Vite prints. Do not open `index.html` directly from disk.
@@ -41,9 +46,26 @@ browsers give only to `https://` pages and `localhost`).
 
 ### Deploying (GitHub Pages)
 
-`npm run build` writes `dist/`. The build uses relative URLs (`base: "./"`), so it works
-at any sub-path, such as `https://<user>.github.io/indoormappingt1/`, and locally.
-`BASE_PATH=/indoormappingt1/ npm run build` gives absolute URLs instead. Every file in
+Every push to `main` (or a manual run) deploys the site with
+`.github/workflows/deploy.yml`, on Node 22:
+
+1. `npm ci`, then `npm run build -- --base=/bcsir/` (the site is served at
+   `https://<user>.github.io/bcsir/`);
+2. `node scripts/build-tiles.mjs` writes each organisation's layers (campus ground,
+   buildings, roof seams, corners, garden, labels) as tile-ready GeoJSON, with the same
+   render properties the app computes;
+3. [tippecanoe](https://github.com/felt/tippecanoe) turns them into
+   `dist/data/<org>/tiles.pmtiles` (zoom 12–20);
+4. `dist/` is published to GitHub Pages.
+
+The app uses the `.pmtiles` archive when it finds one (`src/map/vector-tiles.js`) and
+otherwise draws the GeoJSON files directly. `npm run dev` never uses tiles, and a
+`dist/` built locally has none unless tippecanoe is run as in the workflow. Both ways
+draw the same map.
+
+To build by hand: `npm run build` writes `dist/` with relative URLs (`base: "./"`), so it
+works at any sub-path and locally. `BASE_PATH=/bcsir/ npm run build` gives absolute URLs
+instead. In the repository settings, *Pages → Source* must be **GitHub Actions**. Every file in
 `public/` is published; image and model paths are URL-encoded and building photos are
 matched to their real file names (GitHub Pages is case-sensitive, Windows is not).
 `public/.nojekyll` stops a branch-based Pages build from dropping files.
@@ -255,7 +277,7 @@ entrance → the outdoor road network → the other building's entrance → its 
 | Find a building, laboratory or test | The search box (top left) is all that is over the map at first. Click it for the places used last, or type (for example `Pilot Plant`, `Analytical`, `Calcium`); arrow keys and Enter work in the list. Choosing a place flies the map to it and opens its card; the box then shows its name, and its **Close** button (the cross) closes the place and leaves the empty box again. |
 | Building information | Click a building or its round label. The card (below the search box; on phones it rises from the bottom) shows the photo, the names and the website. |
 | Test or laboratory information | Choose it in the search. The map flies to the laboratory's building, highlights it and the card shows the test (sample type, method, fee, time, laboratory, source). |
-| Walking directions | **Directions** on a card, or the blue Directions button in the search box: the directions panel takes the place of the search box. Choose a starting point and a destination by typing (the places used last are listed first), or click a building on the map: while a field is empty, a click fills it. The To field also accepts tests. Swap or clear each field; the panel's cross clears the route and brings the search box back. The panel shows the walking time and distance (and the steps of a route through floor plans); the notes of a route, such as a building without a recorded entrance, are not shown. |
+| Walking directions | **Directions** on a card, or the blue Directions button in the search box: the directions panel takes the place of the search box. Choose a starting point and a destination by typing (the places used last are listed first), or click a building on the map: while a field is empty, a click fills it. The To field also accepts tests. **Your location** as the starting point: the target button in the From field, or "Your location" at the top of its list (also found by typing "my location"); the browser asks for the position and the route starts where you stand. It can only be the starting point. Swap or clear each field; the panel's cross clears the route and brings the search box back. The panel shows the walking time and distance (and the steps of a route through floor plans); the notes of a route, such as a building without a recorded entrance, are not shown. |
 | Walk | The Walk chip at the top of the panel turns the walking route on or off. It is on by default. |
 | Directions from the card | **Directions** (to this place) / **Start here** in the building card. |
 | Return to the whole campus | **View** menu → **Reset View**. |
@@ -389,6 +411,12 @@ chip and the building card only choose the endpoints; the route itself is unchan
   of the Pilot Plant (104), so its access line cannot avoid that building; the summary
   says so.
 
+- **From your location.** A route from "Your location" starts at the visitor's GPS
+  position and joins the network at its nearest node (in the destination's part of the
+  network); the dashed leg is drawn from the position to that node. More than 1.5 km from
+  the campus, a message gives the distance and says the route starts at the nearest
+  campus road (`routeFromPoint` in `route-service.js`, `routeFromMyLocation` in `app.js`).
+
 `npm run verify:routing` runs the **unmodified** `connection_check.js` and compares its
 results with the web route service (connectivity, components, every "No path found"
 pair and every path).
@@ -418,11 +446,14 @@ pair and every path).
   building when no entrance is recorded.
 
 **3D mode** (under the route summary, or on the navigation sheet) opens the first-person
-walk mode on the same route: the camera starts at the route start (or at the GPS
-position), facing along the route; the route stays drawn; the banner keeps giving the
-next turn. Walking forward turns the view gently towards the route ahead, so holding
-the forward button follows it. **Follow GPS** in the walk panel lets GPS and the
-compass move the walker instead; touching the controls hands it back. Exit (or Esc)
+walk mode on the same route, facing along it; the route stays drawn; the banner keeps
+giving the next turn. 3D mode follows GPS and the compass from the start: the walker
+stands where you stand. Until the first position arrives the walk starts at the route
+start and jumps to you when it does ("Waiting for GPS…" on the button). When location
+is refused, unavailable or far from the campus, the walk stays at the route start and a
+message says why. **Follow GPS** in the walk panel turns following off and on; while it
+is off the on-screen and keyboard controls move the walker. Walking forward turns the
+view gently towards the route ahead, so holding the forward button follows it. Exit (or Esc)
 returns to the map view; × in the banner, **End** or Esc on the map ends navigation and
 restores the previous view.
 
@@ -432,13 +463,66 @@ goes on inside (`src/navigation/indoor-guidance.js`): at the building the banner
 walk in through the entrance, then leads along the corridors to the lift or the stairs
 ("Take Lift A up to L6": choose the floor on the floor selector, which stays at the right
 edge, or press Page Up / Page Down), and on to the room, where it says you have arrived.
-Holding the forward button follows the indoor route as it does outside. Walk mode goes
+Holding the forward button follows the indoor route as it does outside. More than 3 m
+from the indoor route, on the wrong floor, or more than 5 m from the lift or stairs to be
+taken, the route to the room is calculated again from where the walker stands (at most
+every 1.2 s). Walk mode goes
 into a building that has floor plans, also while navigating
 (`src/walk/walk-indoor.js`): `navigation/collision.js` holds one entry per floor
 (`{ buildingId, level, walkable, walls, doors, entrances }`), the building is entered only
 through an entrance, and the walker then stays on his floor, between its walls, until a
 lift or the stairs take him to another. Live guidance inside would need an indoor
 positioning source (for example Wi-Fi RTT or BLE beacons).
+
+### Mock GPS tracks
+
+To test live navigation without walking the campus, `npm run mock:tracks`
+(`scripts/generate-mock-tracks.mjs`) writes GPS tracks for a few building pairs to
+`public/data/bcsir/mock-tracks/`. Each route is the one the app draws: the original
+routing, the access legs bent around buildings, entrance to entrance. The tracks are
+outdoor only.
+
+The fixes lie exactly on the route. There is one at every turn, and they are spaced
+evenly between turns, at most 5 m apart: about 33 fixes for the 136 m from the Main
+Gate to the Secretariat. Each pair gets these files:
+
+| File | Contents |
+|---|---|
+| `<from>-to-<to>.json` | the route line and its `fixes` |
+| `<from>-to-<to>.gpx` | the track (Chrome DevTools → Sensors → Location, Android emulator, Xcode) |
+| `<from>-to-<to>-noisy.gpx` | only with `--noise`: the noisy track (also `noisyFixes` in the JSON) |
+
+`index.json` lists every track.
+
+Each fix is shaped like a `GeolocationPosition`:
+`{ t, timestamp, coords: { latitude, longitude, accuracy, heading, speed } }`, where
+`timestamp` is in ms from the start. The walker stands still for 2 s, walks at
+1.3 m/s, and stands for 2 s at the destination.
+
+`--noise 3` adds noisy fixes: a drifting, seeded position error (σ 3 m, at most 5 m,
+and an accuracy of 4–8 m). Their heading and speed stay close to the true values. The
+same seed always gives the same files.
+
+Options: `--speed`, `--step` (metres between fixes, default 5), `--noise` (default 0),
+`--clamp`, `--seed`, `--out`. Edit the pairs in `ROUTE_PAIRS` in the script.
+
+**Simulating in `npm run dev`:** a **Simulate** button appears next to Start and
+3D mode when a track exists for the two chosen buildings. It also appears for the
+same pair in the opposite direction, in which case the track is replayed backwards.
+
+Simulate starts live navigation with GPS replaced by the track's fixes. They play at
+4× walking pace by default, about 26 s from the Main Gate to the Secretariat. Snapping, turns, off-route, rerouting and
+arrival all run as they would with real GPS. The browser's location is not used, so
+no permission or `https://` address is needed.
+
+While it runs, a SIM chip at the bottom left shows the progress. It has a speed button
+(1×, 2×, 4× or 8×, kept for the next simulation) and a pause and resume button. Ending navigation stops the replay.
+
+How it fits together:
+- The code is `src/dev/gps-simulator.js` (replay, tested) and `src/dev/simulator-ui.js`.
+- Live navigation takes its GPS source from `getGeolocation`.
+- Both modules are loaded only in development. The build leaves out the simulator and
+  `data/<org>/mock-tracks/` (`scripts/vite-plugin-bcsir.mjs`).
 
 ## Basemaps
 
@@ -801,6 +885,8 @@ reaches the map directly.
 
 ```text
 ├── index.html                   app page
+├── .github/workflows/deploy.yml  build, vector tiles and GitHub Pages deployment
+├── docs/INTEGRATION_REPORT.md   what was reused from the two source projects and how preservation was verified
 ├── vite.config.js               Vite config (reference settings + BCSIR plugin)
 ├── original-files.sha256        checksums of the original BCSIR files
 ├── original-data-fingerprints.json  geometry/attribute fingerprints of the original layers
@@ -831,7 +917,7 @@ reaches the map directly.
 │   │                            locate-control.js (My location button), vector-tiles.js
 │   ├── buildings/               building-footprint.js and building-models.js (buildings drawn from GLB
 │   │                            models), building-images.js and building-labels.js (photos, round label
-│   │                            badges), short-names.js
+│   │                            badges), building-pin.js (pin on the selected building), short-names.js
 │   ├── three/                   models3d.js (the GLB renderer) with model-features.js, model-manifest.js,
 │   │                            model-parts.js and model-impostors.js; model-placements.js (models placed by
 │   │                            GeoJSON), tree-layer.js, surface-layer.js (grass), three-shared.js (renderer,
@@ -840,9 +926,10 @@ reaches the map directly.
 │   │                            route-summary.js (walking time, notes), route-markers.js (blue / red pins),
 │   │                            route-walker.js (walking figure), route-occlusion.js (see-through buildings
 │   │                            in front of the route)
-│   ├── navigation/              live navigation (live-navigation.js), compass, turn guidance
+│   ├── navigation/              live navigation (live-navigation.js), compass.js, turn guidance
 │   │                            (route-progress.js), indoor-guidance.js (3D mode inside the destination),
-│   │                            walk collision, route geometry around buildings, walk minimap
+│   │                            collision.js (walk collision), route-detour.js (route geometry around
+│   │                            buildings), minimap.js (walk minimap)
 │   ├── indoor/                  floor plans: levels.js (floor folders and files), indoor-model.js
 │   │                            (a floor from its files), nav-grid.js (walking grid),
 │   │                            indoor-router.js (lifts and stairs), indoor-store.js, trip.js
@@ -856,16 +943,20 @@ reaches the map directly.
 │   │                            recents.js (the places used last)
 │   ├── ui/                      ui.js (building card, toast, status, theme), directions-ui.js (From / To
 │   │                            panel and Walk toggle), org-picker.js (shown only when there are several organisations)
+│   ├── dev/                     development only: the mock GPS simulator (gps-simulator.js, simulator-ui.js)
 │   └── styles/                  style.css, indoor.css
 ├── scripts/
 │   ├── make-sample-floors.mjs     npm run floors:sample (template floors for a building)
 │   ├── import-inars-services.mjs  npm run data:services
 │   ├── optimize-models.mjs        npm run models:optimize
 │   ├── build-building-models.mjs  npm run models:buildings (styles and specs in building-models/)
+│   ├── build-character.mjs        npm run models:character (the Walk Mode character)
+│   ├── build-tiles.mjs            npm run build:tiles (GeoJSON for tippecanoe, used by the deploy workflow)
 │   ├── prepare-public-data.mjs    npm run data:prepare
 │   ├── vite-plugin-bcsir.mjs      routing module, the catalog of organisations, live data reload
 │   ├── verify-originals.mjs       npm run verify:originals
 │   ├── verify-routing.mjs         npm run verify:routing
+│   ├── generate-mock-tracks.mjs   npm run mock:tracks (mock GPS tracks, helpers in lib/mock-track.mjs)
 │   └── lib/                       catalog.mjs (organisations, floors, room list), sample-floors.mjs,
 │                                  shapefile reader, public-data helpers, routing extractor
 ├── tests/                       node --test suites + GLB fixture generator
