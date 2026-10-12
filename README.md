@@ -100,7 +100,7 @@ public/
 │   │   ├── BuildingBoundary.geojson    site layers: buildings, boundary, roads, pathways, ...
 │   │   ├── ...
 │   │   └── secretariat/                one folder per building that has floor plans
-│   │       ├── building.json           optional: { "building_id": 127 }
+│   │       ├── building.json           optional: { "building_id": 127, "ground_height_m": 4.0, "floor_height_m": 3.2 }
 │   │       ├── L01/                    one folder per floor
 │   │       │   ├── level.geojson       floor outline (Polygon) and the floor's name
 │   │       │   ├── corridor.geojson    walkable areas (Polygon)
@@ -184,6 +184,10 @@ Create a folder for the building inside the organisation's folder (any name, e.g
   feature of `level.geojson` (for example `"name": "Ground floor", "short_name": "G"` in `L01`).
 - **Which building it is**: the building whose footprint contains the floor outline. To say
   it yourself, add `building.json` with `{ "building_id": 127 }` (the building's `id`).
+- **How high each floor lies**: the lowest floor on the ground and each floor above it one
+  storey higher. `building.json` may give the storey heights of the building's 3D model,
+  `{ "ground_height_m": 4.0, "floor_height_m": 3.2 }`, so a floor plan lies exactly on its
+  floor line; without them the building's height (`top_m - base_m`) is shared out evenly.
 - **Files of a floor** (WGS 84 longitude / latitude, as exported from QGIS):
 
   | File | Geometry | Properties |
@@ -243,7 +247,7 @@ then remove `"sample"`. The script replaces only folders it generated itself.
 
 | Action | How |
 |---|---|
-| See a floor | Select a building that has floor plans and choose a floor in the **floor selector**: a narrow column in the right-hand corner, above the map controls (on phones at the right edge just below the search box, clear of the card that rises from the bottom), with the highest floor at the top and the shown floor in grey. It appears only for a building that has floor plans. The building's shell is hidden and the floor is drawn at ground level as a cut-away model: thin pale walls with a dark edge where they are cut off, wooden doors, furniture and the room floors, **each floor in a colour of its own** (blue, green, amber, violet, ... from the lowest floor up: `FLOOR_COLORS` in `src/indoor/indoor-model.js`; a room with its own `color` keeps it). The button at the top of the selector shows the building from outside again. Opening a floor frames it as large as the part of the screen left free by the panels allows; on a phone held upright a long building is turned to run up the screen. Zooming far in on such a building opens its first floor. Selecting a building without floor plans hides the floor selector and shows the open building from outside again (floors a route runs through stay open). |
+| See a floor | Select a building that has floor plans and choose a floor in the **floor selector**: a narrow column in the right-hand corner, above the map controls (on phones at the right edge just below the search box, clear of the card that rises from the bottom), with the highest floor at the top and the shown floor in grey. It appears only for a building that has floor plans. The floor is drawn **at its own height in the building**, on top of the storeys below it: the first floor lies on the ground with no shell around it, the second floor on top of the ground storey, and the top floor on the whole building with only its top storey and roof taken away (the building's 3D model is cut off at the chosen floor; `ground_height_m` and `floor_height_m` in `building.json` give the storey heights, else the building's height is shared out evenly). The floor itself is a cut-away model: thin pale walls with a dark edge where they are cut off, wooden doors, furniture and the room floors, **each floor in a colour of its own** (blue, green, amber, violet, ... from the lowest floor up: `FLOOR_COLORS` in `src/indoor/indoor-model.js`; a room with its own `color` keeps it). The button at the top of the selector shows the building from outside again. Opening a floor frames it as large as the part of the screen left free by the panels allows; on a phone held upright a long building is turned to run up the screen. Zooming far in on such a building opens its first floor. Selecting a building without floor plans hides the floor selector and shows the open building from outside again (floors a route runs through stay open). |
 | Find a room | The search box lists rooms and points (lifts, toilets, ...) with their floor and building; choosing one opens that floor, selects the room or point, marks it with a red location pin and brings it close up into the middle of the part of the screen that the card and the search box leave free. Clicking a room on an open floor selects it (with its pin) without moving the map. |
 | Directions between rooms | **Directions** / **Start here** on a room's card, or type room names in the directions panel. |
 | Walk inside | In **Walk** mode, walk up to the building's entrance: the building opens on that floor (an "entrance" badge marks the door) and you walk in. Inside you walk between the walls and through the doors, at an easier pace; the room you enter is named. At a lift or the stairs, choose a floor in the floor selector (right edge while walking) or press **Page Up** / **Page Down**. Walk out through the entrance; the building closes again behind you. Clicking on an open floor plan to start the walk starts it there, on that floor. |
@@ -286,7 +290,7 @@ entrance → the outdoor road network → the other building's entrance → its 
 | Zoom, rotate, tilt buttons | Right-hand controls. Rotate and tilt buttons are hidden on phones and short windows. |
 | My location | The round target button above the zoom buttons (beside them on phones and short windows). The browser asks for permission; the position is then marked with a blue dot and a circle of the GPS accuracy, and brought into view. The map follows it until the map is moved away (the button loses its centre dot); a tap brings it back, and a tap while it is followed turns it off. Far from the campus, the distance is told. Location needs an `https://` address, or `localhost`. |
 | Camera presets | **View** menu: Top-down, Isometric, 3D Corner, Front, Free, Follow Direction, Route Up, North Up, Reset. Compass: north up. A preset keeps what is in focus in view and frames it as large as the screen allows, also tilted (`src/map/camera-fit.js`): the route when one is drawn, else the chosen room or point, else the selected building, else the open floor; the view turns along its axes. With nothing in focus the view turns and tilts about its centre. |
-| First-person walk (game mode) | **Walk** (bottom right, below the map controls), choose the view, then click a location on the map: the camera goes down there. W/A/S/D or arrows to move fast (4.5 m/s, the cartoon walker runs), hold Shift for 9 m/s, **Space to jump**, mouse to look (looking up shows a blue sky with clouds), V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), **Jump** in their middle, drag the view to look. Walls and buildings cannot be walked through, except that a building with floor plans is walked into through its entrance (see [Floor plans](#on-the-map)); a circular minimap (bottom left) shows the surroundings with short building names, the route and the destination. |
+| First-person walk (game mode) | **Walk** (bottom right, below the map controls), choose the view, then click a location on the map: the camera goes down there. W/A/S/D or arrows to walk (1.6 m/s, a person's pace), hold Shift to run (3.6 m/s), **Space to jump**, mouse to look (looking up shows a blue sky with clouds), V to switch between third- and first-person view, Esc (or **Exit** on the Walk button) to exit, or to cancel while choosing. On a computer no panel covers the view. On phones: hold the arrow buttons (bottom right), **Jump** in their middle, drag the view to look. Walls and buildings cannot be walked through, except that a building with floor plans is walked into through its entrance (see [Floor plans](#on-the-map)); a circular minimap (bottom left) shows the surroundings with short building names, the route and the destination. |
 | Live navigation | With a route drawn, **Start** under the route summary: follows the phone's GPS along the route, turns the map with its compass, shows the next turn and the remaining distance and time. See [Live navigation](#live-navigation-and-3d-mode). |
 | 3D mode | **3D mode** under the route summary: walk the route in first-person view with the same guidance. |
 | Deep link | `?buildingid=101` opens building 101 (the format of the printed BCSIR QR codes); `?place=secretariat/L06/shops/L06-01` opens a room on its floor. `?org=bcsir` may be added to either. |
@@ -392,7 +396,10 @@ chip and the building card only choose the endpoints; the route itself is unchan
 - **No connection.** When the network has no path, the panel shows "No walking route" and
   no line is drawn.
 - **Display.** Red route line on a white casing, drawn above the 3D buildings. Blue pin at
-  the start, red pin at the destination (HTML markers above the map). A small walking
+  the start, red pin at the destination (HTML markers above the map). A pin on a building
+  stands **on top of the building**, above the middle of its roof, also in the walking view
+  (not at its entrance down on the road); a pin on a room stands on the room, at its
+  floor's height (`route-markers.js`, `map/altitude.js`). A small walking
   figure moves along the route from the start pin to the destination pin and repeats
   (`route-walker.js`). Walking time assumes 5 km/h.
 - **Buildings in front of the route** become see-through (30 % opacity) while they hide
@@ -706,12 +713,20 @@ Loading and drawing costs kept low (2026-09-25; same pictures, checked pixel by 
 
 ### Walk Mode character, sky and minimap names
 
-- **Character:** one cartoon walker, `models/shared/characters/male.glb` (`npm run
-  models:character`, scripts/build-character.mjs: low-poly, Idle, Walk, Run and Jump),
-  set in `WALK_CHARACTERS` in `src/core/config.js`. With one character the picker only asks
+- **Character:** a scanned man with a motion-captured walk,
+  `models/shared/characters/nathan.glb` (1.4 MB), set in `WALK_CHARACTERS` in
+  `src/core/config.js`. `npm run models:character` (scripts/build-character.mjs) makes it
+  from the source model in the same folder, `nathan_animated_003_-_walking_3d_man.glb`
+  ("Nathan Animated 003 - Walking 3D Man" by Renderpeople, CC-BY-4.0: keep the credit;
+  20 MB, used only by that script): the recorded walk closed into a loop (**Walk**), a
+  standing pose that breathes (**Idle**), a jog made from the recording (**Run**) and the
+  texture at 1024 px. The script prints the pace each clip is made for (`walkPace`,
+  `runPace`), which keeps the feet from sliding. With one character the picker only asks
   for the view; more entries would bring back the choice of character.
-- **Game feel:** moving at 4.5 m/s plays the Run clip (from 2.6 m/s); Space (or the
-  phone pad's Jump) jumps about 0.85 m with the Jump pose and the camera follows;
+- **Paces:** a person's: walking at 1.6 m/s plays the Walk clip and Shift runs at 3.6 m/s
+  with the Run clip (from 2.3 m/s; `WALK_SPEED_METERS_PER_SECOND` and
+  `SHIFT_SPEED_MULTIPLIER` in `src/walk/walk-mode.js`); Space (or the
+  phone pad's Jump) jumps about 0.85 m and the camera follows;
   holding Space jumps once.
 - **Sky:** while walking, `src/walk/walk-sky.js` draws a sky dome (gradient, sun, soft
   clouds) above the horizon and behind everything, and sets the map's horizon and fog
@@ -1005,8 +1020,8 @@ reaches the map directly.
 - **Live guidance stops at the door:** there is no indoor positioning source, so **Start**
   guides the outdoor part of a route only. A building without floor plans is solid in walk
   mode; one with floor plans is walked into (the Secretariat's floors are a sample).
-- Inside a building the open floor is drawn at ground level whatever its number, without a
-  ceiling, and the walls are drawn 2.4 m high while walking. Lifts and stairs move the
+- Inside a building the open floor is drawn at its height in the building, on the storeys
+  below it and without a ceiling (the walker stands up there on it), and the walls are drawn 2.4 m high while walking. Lifts and stairs move the
   walker to the same place on the other floor at once.
 - Walk-mode collision covers building footprints (0.5 m or taller) and the boundary and
   internal walls. Flat areas drawn 0.3 m high (research field, Spirulina Pond, play

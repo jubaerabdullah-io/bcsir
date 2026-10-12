@@ -113,3 +113,19 @@ test("indoor guidance: in through the entrance, to the lift, up, and on to the r
   // At the end of a leg but on another floor (walking under it): not done.
   assert.equal(nextIndoorStage(stages, 2, { building: "b", level: "L03" }, at(4, 9)), 2);
 });
+
+test("fitView: a floor plan high in a building is centred and fills the screen", () => {
+  // The top floor of a six-storey building (its slab and the top of its walls): every
+  // point is far above the ground, where the centring must not be worked out on the ground.
+  const view = { width: 1258, height: 702, padding: { top: 80, bottom: 40, left: 20, right: 80 } };
+  for (const floor of [4, 16.8, 40]) {
+    const points = [...rectangle(42, 18, 78, floor), ...rectangle(42, 18, 78, floor + 2.2)];
+    const fit = fitView(points, { ...view, pitch: 52, bearing: -12, maxZoom: 24 });
+    const screen = points.map((point) => screenOf(point, { ...view, ...fit, pitch: 52, bearing: -12 }));
+    const xs = screen.map((s) => s[0]), ys = screen.map((s) => s[1]);
+    const { top, bottom, left, right } = view.padding;
+    assert.ok(Math.min(...xs) >= left - 0.6 && Math.max(...xs) <= view.width - right + 0.6, `floor at ${floor} m: inside left and right`);
+    assert.ok(Math.min(...ys) >= top - 0.6 && Math.max(...ys) <= view.height - bottom + 0.6, `floor at ${floor} m: inside top and bottom`);
+    assert.ok(Math.abs((Math.min(...xs) + Math.max(...xs)) / 2 - (left + (view.width - left - right) / 2)) < 1, `floor at ${floor} m: in the middle`);
+  }
+});

@@ -56,7 +56,7 @@ import { normalizeDegrees } from "../utils/local-frame.js";
 import { buildSignature, prepareModels, resolveSizeMultiplier } from "./model-features.js";
 import { bakeImpostor, createImpostorMesh, IMPOSTOR_FRAME_BUDGET, IMPOSTOR_HEIGHTS } from "./model-impostors.js";
 import { modelManifestEntry } from "./model-manifest.js";
-import { addModelLights, createPart, disposeFadedMaterials, disposeObject3D, removePart, sidedMaterials, twoPass } from "./model-parts.js";
+import { addModelLights, createPart, disposeFadedMaterials, disposeObject3D, NO_CUT, removePart, sidedMaterials, twoPass } from "./model-parts.js";
 import { acquireRenderer, metricFrameMatrix, releaseRenderer, sharedGltfLoader } from "./three-shared.js";
 
 const placementsByKey = new Map(); // set key -> placements
@@ -64,6 +64,7 @@ const lastSignatureByKey = new Map();
 const hiddenKeys = new Set(); // model sets hidden by the layer manager
 const fadedBuildings = new Set(); // building_id of building models drawn see-through
 const hiddenBuildings = new Set(); // building_id of building models not drawn (their floor plan is open)
+const cutBuildings = new Map(); // building_id -> height (m) above which the model is not drawn (an upper floor plan is open)
 let modelsVisible = true;
 let modelLayer = null;
 let lastStats = { placements: 0, drawn: 0, culled: 0, pendingDrawable: 0, loading: 0, levels: {} };
@@ -418,11 +419,13 @@ function createModelsLayer() {
     const matrices = part.mesh.instanceMatrix.array;
     const place = part.place.array;
     const yaw = part.yaw.array;
+    const cut = part.cut.array;
     for (let i = 0; i < count; i += 1) {
       const placement = instances[i];
       matrix.multiplyMatrices(placement.fit, part.meshMatrix).toArray(matrices, i * 16);
       place.set(placement.place, i * 4);
       yaw.set(placement.yaw, i * 2);
+      cut[i] = (placement.buildingId !== null && cutBuildings.get(placement.buildingId)) || NO_CUT;
     }
     if (count) {
       part.mesh.instanceMatrix.clearUpdateRanges();
@@ -434,6 +437,9 @@ function createModelsLayer() {
       part.yaw.clearUpdateRanges();
       part.yaw.addUpdateRange(0, count * 2);
       part.yaw.needsUpdate = true;
+      part.cut.clearUpdateRanges();
+      part.cut.addUpdateRange(0, count);
+      part.cut.needsUpdate = true;
     }
   }
 
@@ -659,6 +665,18 @@ export function setHiddenModelBuildings(map, ids) {
   if (next.size === hiddenBuildings.size && [...next].every((id) => hiddenBuildings.has(id))) return;
   hiddenBuildings.clear();
   next.forEach((id) => hiddenBuildings.add(id));
+  map.triggerRepaint();
+}
+
+// Building models drawn only up to a height: the buildings whose floor plan of an
+// upper floor is open stand under that plan, cut off where it lies
+// (indoor/indoor-controller.js). cuts: { building_id: metres above the ground }; {} = none.
+export function setCutModelBuildings(map, cuts) {
+  const next = Object.entries(cuts || {}).filter(([, height]) => Number.isFinite(height) && height > 0);
+  if (next.length === cutBuildings.size && next.every(([id, height]) => cutBuildings.get(String(id)) === height)) return;
+  cutBuildings.clear();
+  next.forEach(([id, height]) => cutBuildings.set(String(id), height));
+  placementVersion += 1; // the instance data is written again
   map.triggerRepaint();
 }
 

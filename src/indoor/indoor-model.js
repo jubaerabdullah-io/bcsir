@@ -14,7 +14,9 @@ import { classLabel, featureKeys, featureName, firstProperty, isConnectorClass, 
 // renderings. The rooms are floors (flat, a little above the slab), the walls are
 // thin and pale, cut off at wallHeightM with a dark top edge, doors are wooden
 // leaves under a lintel, and furniture stands in the rooms. Heights are drawn
-// heights in metres: the open floor is shown at ground level.
+// heights in metres above the floor's slab, which lies at the floor's height in the
+// building (level.elevation, indoor-store.js): every drawn feature carries it as
+// `elev`, and the layers add it (indoor-layers.js).
 export const INDOOR_STYLE = {
   floor: "#eef1f4",
   corridor: "#ffffff",
@@ -23,6 +25,7 @@ export const INDOOR_STYLE = {
   wallHeightM: 2.2,
   wallThicknessM: 0.12,
   floorHeightM: 0.08,
+  slabThicknessM: 0.3, // of the slab of an upper floor, seen over the storeys below it
   corridorHeightM: 0.1,
   unitHeightM: 0.12,
   door: "#a8724a",
@@ -126,7 +129,7 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
   const problems = [];
   const render = [];
   const labels = [];
-  const where = { building: buildingKey, level: level.id };
+  const where = { building: buildingKey, level: level.id, elev: Number(level.elevation) || 0 };
   // The floor's colour: only "#rrggbb" is mixed, anything else leaves the plain look.
   const tint = /^#[0-9a-f]{6}$/i.test(level.color || "") ? level.color : null;
   const tinted = (color, part) => (tint ? mixColors(color, tint, FLOOR_TINT[part]) : color);
@@ -284,6 +287,7 @@ export function buildLevelModel({ buildingKey, level, files, footprint = null, c
     id: level.id,
     buildingKey,
     level,
+    elevation: where.elev,
     floor,
     corridors,
     units,

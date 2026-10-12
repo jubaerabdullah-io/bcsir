@@ -55,7 +55,7 @@ test("vector-tile labels choose the loaded photo badge by render_id", () => {
     ["match", ["to-string", ["get", "render_id"]], "102", "bcsir-badge:a", "111", "bcsir-badge:b", FALLBACK_BADGE]);
 });
 
-test("the pin on the selected building stands where its label does, or on the ground", () => {
+test("the pin on the selected building stands where its label does, or on its open floor", () => {
   const feature = buildings.features.find((item) => item.properties.id === 111);
   const label = buildingLabelPoints({ features: [feature] }).features[0];
   const roof = buildingPinData(feature).features[0];
@@ -63,6 +63,8 @@ test("the pin on the selected building stands where its label does, or on the gr
   assert.equal(roof.properties.height, label.properties.render_top_m + 1);
   assert.equal(roof.properties.ground, false);
   assert.equal(buildingPinData(feature, { ground: true }).features[0].properties.height, 0);
+  // Its floor plan is open on an upper floor: on top of that floor's walls.
+  assert.equal(buildingPinData(feature, { ground: true, groundHeight: 12.6 }).features[0].properties.height, 12.6);
   assert.equal(buildingPinData(null).features.length, 0);
 });
 

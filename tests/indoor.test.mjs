@@ -11,7 +11,7 @@ import { orgAssetKey, orgAssetPath } from "../src/core/asset-paths.js";
 import { pointInRings } from "../src/utils/geo-utils.js";
 import { buildLevelModel, FLOOR_COLORS, floorColor, INDOOR_STYLE, mixColors, UNIT_COLORS } from "../src/indoor/indoor-model.js";
 import { connectorSeconds, createBuildingRouter, groupShafts } from "../src/indoor/indoor-router.js";
-import { createIndoorStore } from "../src/indoor/indoor-store.js";
+import { createIndoorStore, floorElevations } from "../src/indoor/indoor-store.js";
 import { defaultLevel, featureKeys, folderKey, levelFileKind, parseLevelFolder, poiClass, sortLevels, unitClass } from "../src/indoor/levels.js";
 import { createNavGrid } from "../src/indoor/nav-grid.js";
 import { describeTrip, planIndoorTrip } from "../src/indoor/trip.js";
@@ -348,4 +348,33 @@ test("BCSIR Secretariat: routes run straight along the corridors, turn squarely 
       }
     }
   }
+});
+
+test("floor heights: the ground floor on the ground, each floor above it a storey higher", () => {
+  const levels = ["B1", "L01", "L02", "L03", "L04"].map(parseLevelFolder);
+  const even = floorElevations(levels, { base: 0, top: 16 });
+  assert.deepEqual(["B1", "L01", "L02", "L03", "L04"].map((id) => even.get(id)), [0, 0, 4, 8, 12], "the height shared out evenly; a basement is drawn on the ground");
+  const storeys = floorElevations(levels, { base: 1, top: 16, groundHeight: 4.5, floorHeight: 3 });
+  assert.deepEqual(["L01", "L02", "L03", "L04"].map((id) => storeys.get(id)), [1, 5.5, 8.5, 11.5], "a higher ground storey, from the building's base");
+  assert.deepEqual([...floorElevations(levels, {}).values()], [0, 0, 0, 0, 0], "no height known: every floor on the ground");
+  assert.equal(floorElevations(levels, { base: 0, top: 6, floorHeight: 3 }).get("L04"), 5, "never above the roof");
+
+  // The Secretariat: the storeys of its 3D model (building.json), under a 20.5 m roof.
+  const org = buildOrgIndex(root, "bcsir");
+  const feature = JSON.parse(readFileSync(path.join(root, "public/data/bcsir", org.datasets.buildings), "utf8")).features.find((item) => item.properties.id === 127);
+  const store = createIndoorStore({ org, loadFiles: (building, level) => readLevelFiles(root, "bcsir", building, level), heightOf: () => ({ base: feature.properties.base_m, top: feature.properties.top_m }) });
+  const key = store.forBuildingId(127).key;
+  assert.deepEqual(store.building(key).levels.map((level) => Number(store.elevation(key, level.id).toFixed(2))), [0, 4, 7.2, 10.4, 13.6, 16.8]);
+  assert.ok(store.elevation(key, "L06") < feature.properties.top_m, "the top floor lies under the roof");
+});
+
+test("floor heights: everything drawn of a floor carries its height", async () => {
+  const org = buildOrgIndex(root, "bcsir");
+  const store = createIndoorStore({ org, loadFiles: (building, level) => readLevelFiles(root, "bcsir", building, level), heightOf: () => ({ base: 0, top: 20.5 }) });
+  const key = store.forBuildingId(127).key;
+  const [ground, fourth] = await Promise.all([store.level(key, "L01"), store.level(key, "L04")]);
+  assert.ok(ground.render.features.every((feature) => feature.properties.elev === 0) && ground.labels.features.every((feature) => feature.properties.elev === 0));
+  assert.ok(fourth.render.features.length > 10 && fourth.render.features.every((feature) => feature.properties.elev === 10.4) && fourth.labels.features.every((feature) => feature.properties.elev === 10.4));
+  assert.equal(fourth.elevation, 10.4);
+  assert.ok(fourth.units.every((unit) => unit.elev === 10.4), "a room knows the height it lies at");
 });

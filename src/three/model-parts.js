@@ -53,19 +53,26 @@ export function disposeObject3D(root) {
 //   bcsirPlace = (east, north, up) offset in metres from the layer origin, and the
 //                ratio of the placement's Mercator scale to the origin's;
 //   bcsirYaw   = (cos, sin) of the rotation.
+//   bcsirCut   = height in metres above the ground above which the model is not
+//                drawn (NO_CUT: all of it). A building whose upper floor plan is
+//                open is cut off there, so its lower storeys still stand under the
+//                plan (setCutModelBuildings in models3d.js).
 // instanceMatrix holds the fit (scale, centring) in the GLB's own Y-up frame, so
 // lighting (mvPosition, normals) is computed in that frame exactly as before.
 // Non-instanced use of the same materials (the impostor views) keeps three.js's projection.
+export const NO_CUT = 1e9;
 const PLACE_VERTEX = THREE.ShaderChunk.project_vertex.replace(
   "gl_Position = projectionMatrix * mvPosition;",
   `#ifdef USE_INSTANCING
 	vec3 bcsirLocal = mvPosition.xyz;
+	vBcsirCut = bcsirCut - ( bcsirPlace.z + bcsirPlace.w * bcsirLocal.y );
 	gl_Position = projectionMatrix * vec4(
 		bcsirPlace.x + bcsirPlace.w * ( bcsirYaw.x * bcsirLocal.x - bcsirYaw.y * bcsirLocal.z ),
 		bcsirPlace.y - bcsirPlace.w * ( bcsirYaw.y * bcsirLocal.x + bcsirYaw.x * bcsirLocal.z ),
 		bcsirPlace.z + bcsirPlace.w * bcsirLocal.y,
 		1.0 );
 #else
+	vBcsirCut = 1.0;
 	gl_Position = projectionMatrix * mvPosition;
 #endif`
 );
@@ -74,7 +81,9 @@ function preparePlacedMaterial(material) {
   if (material.userData.bcsirPlaced) return;
   material.userData.bcsirPlaced = true;
   material.onBeforeCompile = (shader) => {
-    shader.vertexShader = `attribute vec4 bcsirPlace;\nattribute vec2 bcsirYaw;\n${shader.vertexShader.replace("#include <project_vertex>", PLACE_VERTEX)}`;
+    shader.vertexShader = `attribute vec4 bcsirPlace;\nattribute vec2 bcsirYaw;\nattribute float bcsirCut;\nvarying float vBcsirCut;\n${shader.vertexShader.replace("#include <project_vertex>", PLACE_VERTEX)}`;
+    // Nothing of the model is drawn above its cut height.
+    shader.fragmentShader = `varying float vBcsirCut;\n${shader.fragmentShader.replace("void main() {", "void main() {\n\tif ( vBcsirCut < 0.0 ) discard;")}`;
   };
   material.customProgramCacheKey = () => "bcsir-placed";
   material.needsUpdate = true;
@@ -141,8 +150,10 @@ export function createPart(sourceMesh, capacity, faded = false) {
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
   const place = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
   const yaw = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 2), 2).setUsage(THREE.DynamicDrawUsage);
+  const cut = new THREE.InstancedBufferAttribute(new Float32Array(capacity).fill(NO_CUT), 1).setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute("bcsirPlace", place);
   geometry.setAttribute("bcsirYaw", yaw);
+  geometry.setAttribute("bcsirCut", cut);
   const materials = Array.isArray(sourceMesh.material) ? sourceMesh.material : [sourceMesh.material];
   materials.forEach(preparePlacedMaterial);
   const instanced = (material, renderOrder = 0) => {
@@ -173,6 +184,7 @@ export function createPart(sourceMesh, capacity, faded = false) {
     sourceMaterial: sourceMesh.material,
     place,
     yaw,
+    cut,
     meshMatrix: sourceMesh.matrixWorld.clone(),
     transparent: materials.some((material) => material.transparent),
     drawn: [], // placements whose instance data is on the GPU, in order

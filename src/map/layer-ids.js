@@ -36,9 +36,7 @@ export const MODELS_LAYER = "3d-models";
 // Floor-plan layers (indoor/indoor-layers.js) that are picked from or kept on top.
 export const INDOOR_LAYERS = {
   units: "indoor-units",
-  routeOther: "indoor-route-other",
-  routeCasing: "indoor-route-casing",
-  routeLine: "indoor-route-line",
+  routeLine: "indoor-route-line", // custom layer (indoor/indoor-route-layer.js)
   labels: "indoor-unit-labels",
   pois: "indoor-pois"
 };
@@ -47,8 +45,6 @@ export const INDOOR_LAYERS = {
 // (models3d.js keepMapOverlaysOnTop): indoor routes and labels, the route, building
 // labels and the pin on the selected building.
 export const OVERLAY_LAYERS = [
-  INDOOR_LAYERS.routeOther,
-  INDOOR_LAYERS.routeCasing,
   INDOOR_LAYERS.routeLine,
   INDOOR_LAYERS.labels,
   INDOOR_LAYERS.pois,

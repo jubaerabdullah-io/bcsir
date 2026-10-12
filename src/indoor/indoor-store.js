@@ -10,11 +10,36 @@ import { buildLevelModel, floorColor } from "./indoor-model.js";
 import { createBuildingRouter, groupShafts } from "./indoor-router.js";
 import { defaultLevel, sortLevels } from "./levels.js";
 
+// Height of every floor's slab above the ground, by floor id. The lowest floor that
+// is not a basement lies on the ground (at `base`), and each floor above it one
+// storey higher: the ground storey is `groundHeight` high and the others
+// `floorHeight` (building.json "ground_height_m", "floor_height_m"); without those
+// the building's height (top - base) is shared out evenly, so the top floor lies one
+// storey under the roof. Basements are drawn on the ground. With no height known
+// (top <= base) every floor lies on the ground.
+export function floorElevations(levels, { base = 0, top = 0, groundHeight = null, floorHeight = null } = {}) {
+  const above = sortLevels(levels).filter((level) => level.ordinal >= 0);
+  const storeys = above.length ? above : sortLevels(levels);
+  const height = Math.max(0, top - base);
+  const even = storeys.length ? height / storeys.length : 0;
+  const first = groundHeight > 0 ? groundHeight : floorHeight > 0 ? floorHeight : even;
+  const next = floorHeight > 0 ? floorHeight : groundHeight > 0 ? groundHeight : even;
+  const elevations = new Map(levels.map((level) => [level.id, base]));
+  storeys.forEach((level, index) => {
+    const raised = index === 0 ? 0 : first + (index - 1) * next;
+    // Never above the roof: a floor too many for the building's height stays under it.
+    elevations.set(level.id, base + (height > 0 ? Math.min(raised, Math.max(0, height - 1)) : 0));
+  });
+  return elevations;
+}
+
 // org: the organisation's index. loadFiles(building, level) resolves to the floor's
 // parsed files ({ level, corridor: [], units: [{ file, class, data }], walls: [],
 // pois: [{ file, data }], doors: [] }). footprintOf(building) returns the building's
 // footprint geometry (used when a floor has no outline file), or null.
-export function createIndoorStore({ org, loadFiles, footprintOf = () => null }) {
+// heightOf(building) returns { base, top } of the building in metres, or null: the
+// floors then lie at their heights in the building (floorElevations), else on the ground.
+export function createIndoorStore({ org, loadFiles, footprintOf = () => null, heightOf = () => null }) {
   const places = org?.places || [];
   const placeByUid = new Map(places.map((place) => [place.uid, place]));
   const buildings = (org?.indoor || []).map((entry) => {
@@ -39,6 +64,18 @@ export function createIndoorStore({ org, loadFiles, footprintOf = () => null }) 
   const byKey = new Map(buildings.map((building) => [building.key, building]));
   const byBuildingId = new Map(buildings.filter((building) => building.buildingId !== null).map((building) => [String(building.buildingId), building]));
 
+  // Height (m above the ground) of a floor's slab in its building. Worked out when
+  // first asked for: the buildings file is read by then.
+  function elevation(key, levelId) {
+    const building = byKey.get(key);
+    if (!building) return 0;
+    if (!building.elevations) {
+      const size = heightOf(building);
+      building.elevations = floorElevations(building.levels, { base: Number(size?.base) || 0, top: Number(size?.top) || 0, groundHeight: building.entry.ground_height_m, floorHeight: building.entry.floor_height_m });
+    }
+    return building.elevations.get(levelId) ?? 0;
+  }
+
   // The prepared floor (indoor-model.js). A floor that fails to load is retried next time.
   function level(key, levelId) {
     const building = byKey.get(key);
@@ -46,7 +83,7 @@ export function createIndoorStore({ org, loadFiles, footprintOf = () => null }) 
     if (!entry) return Promise.reject(new Error(`No floor ${levelId} in ${key}`));
     if (!building.models.has(levelId)) {
       const promise = Promise.resolve(loadFiles(building, entry)).then((files) => {
-        const model = buildLevelModel({ buildingKey: key, level: entry, files, footprint: footprintOf(building) });
+        const model = buildLevelModel({ buildingKey: key, level: { ...entry, elevation: elevation(key, levelId) }, files, footprint: footprintOf(building) });
         if (model.problems.length) console.warn(`${building.entry.folder}/${levelId}: some features were skipped.\n  ${model.problems.join("\n  ")}`);
         return model;
       });
@@ -113,6 +150,9 @@ export function createIndoorStore({ org, loadFiles, footprintOf = () => null }) 
     places,
     place: (uid) => placeByUid.get(uid) || null,
     level,
+    elevation,
+    // The buildings file changed: the floors' heights are worked out again.
+    forgetHeights() { buildings.forEach((building) => { building.elevations = null; building.models.clear(); }); },
     entranceAnchor,
     placeAnchor,
     routeBetween,

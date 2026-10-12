@@ -5,8 +5,9 @@
 // It is a symbol layer, not an HTML marker like that one: it stands on top of the
 // building's photo badge at roof height (symbol-height-offset, as the labels in
 // bcsir-layers.js), which a marker cannot, and is scaled with the badge. Other
-// labels never hide it. While the building's floor plan is open its shell and
-// label are hidden, so the pin stands on the ground instead.
+// labels never hide it. While the building's floor plan is open its label is
+// hidden and its shell is gone from the open floor up, so the pin stands on top of
+// what is drawn of it instead: the walls of the open floor.
 import { BUILDING_PIN_LAYER } from "../map/layer-ids.js";
 import { labelAnchor } from "../utils/geo-utils.js";
 import { BADGE_ICON_SIZE, BADGE_RADIUS } from "./building-labels.js";
@@ -48,8 +49,10 @@ function drawPin() {
 }
 
 // The pin's point for a building (render copy): where its label stands, at the same
-// height (the pin's point then touches the top of the badge); on the ground when `ground`.
-export function buildingPinData(feature, { ground = false } = {}) {
+// height (the pin's point then touches the top of the badge). `ground`: its floor
+// plan is open, and the pin stands at `groundHeight` (the top of the open floor's
+// walls; 0: on the ground) with no badge under it.
+export function buildingPinData(feature, { ground = false, groundHeight = 0 } = {}) {
   const point = feature ? labelAnchor(feature) : null;
   if (!point) return EMPTY;
   return {
@@ -59,7 +62,7 @@ export function buildingPinData(feature, { ground = false } = {}) {
       properties: {
         render_id: feature.properties.render_id,
         ground,
-        height: ground ? 0 : (Number(feature.properties.render_top_m) || 0) + 1
+        height: ground ? Math.max(0, Number(groundHeight) || 0) : (Number(feature.properties.render_top_m) || 0) + 1
       },
       geometry: { type: "Point", coordinates: point }
     }]
@@ -68,7 +71,7 @@ export function buildingPinData(feature, { ground = false } = {}) {
 
 export function createBuildingPin(map) {
   let feature = null;
-  let hiddenShells = new Set(); // render ids of the buildings whose floor plan is open
+  let openShells = new Map(); // render id -> height (m) of the top of what is drawn of a building whose floor plan is open
 
   if (!map.hasImage(IMAGE)) map.addImage(IMAGE, drawPin(), { pixelRatio: PIXEL_RATIO });
   map.addSource(SOURCE, { type: "geojson", data: EMPTY });
@@ -88,8 +91,9 @@ export function createBuildingPin(map) {
   });
 
   const draw = () => {
-    const ground = Boolean(feature) && hiddenShells.has(String(feature.properties?.render_id));
-    map.getSource(SOURCE)?.setData(buildingPinData(feature, { ground }));
+    const id = feature ? String(feature.properties?.render_id) : null;
+    const ground = Boolean(feature) && openShells.has(id);
+    map.getSource(SOURCE)?.setData(buildingPinData(feature, { ground, groundHeight: ground ? openShells.get(id) : 0 }));
   };
 
   return {
@@ -98,8 +102,9 @@ export function createBuildingPin(map) {
       feature = next || null;
       draw();
     },
-    setHiddenShells(ids) {
-      hiddenShells = new Set((ids || []).map(String));
+    // The buildings whose floor plan is open: [{ id: render id, topM }] ([] = none).
+    setOpenShells(shells) {
+      openShells = new Map((shells || []).map((shell) => [String(shell.id), Number(shell.topM) || 0]));
       if (feature) draw();
     }
   };

@@ -244,6 +244,10 @@ function scanIndoor(directory, buildings, problems) {
       name: String(config.name || properties.name_en || folder).trim(),
       short_name: String(config.short_name || properties.name_en_short || "").trim() || null,
       sample: config.sample === true,
+      // Storey heights for the floor plans' heights in the building (indoor-store.js
+      // floorElevations); without them the building's height is shared out evenly.
+      ground_height_m: Number(config.ground_height_m) > 0 ? Number(config.ground_height_m) : null,
+      floor_height_m: Number(config.floor_height_m) > 0 ? Number(config.floor_height_m) : null,
       center: center ? center.map(round7) : null,
       bbox: Number.isFinite(bbox[0]) ? bbox.map(round7) : null,
       levels: sortLevels(levels)

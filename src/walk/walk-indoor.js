@@ -3,6 +3,8 @@
 // Outdoors every building is solid. A building with floor plans opens when the
 // walker comes near one of its entrances: its shell is hidden and the floor of that
 // entrance is drawn, as when a floor is chosen on the map (indoor-controller.js).
+// An upper floor lies at its height in the building, on the storeys below it, and
+// the walker stands up there on it (floorElevation).
 // He walks in through the entrance and is then inside: on that floor, between its
 // walls and through its doors (navigation/collision.js). The room he walks into is
 // named. At a lift or stairs, the floor selector (or Page Up / Page Down) takes him
@@ -243,7 +245,12 @@ export function createWalkIndoor({ indoor, getBuildingFeature, getWorld, getWalk
       const site = isEnabled() ? siteById(buildingId) : null;
       return site?.entrances.length ? `The walk starts outside ${site.name}: go in through ${site.entrances[0].name}.` : null;
     },
-    floorElevation: () => (state.indoor ? INDOOR_STYLE.walkFloorM : 0),
+    // Height of the floor the walker stands on: the floor of his storey in the building.
+    floorElevation: () => {
+      if (!state.indoor) return 0;
+      const site = siteById(state.indoor.buildingId);
+      return (site ? indoor.elevation(site.building.key, state.indoor.level) : 0) + INDOOR_STYLE.walkFloorM;
+    },
     speedFactor: () => (state.indoor ? INDOOR_PACE : 1),
     levelLabel: () => (inside ? `${inside.site.building.shortName} ${inside.site.building.levelById.get(inside.level)?.short || inside.level}` : "Ground"),
     // The floor selector while walking: true when the choice was handled here.

@@ -1,243 +1,315 @@
 #!/usr/bin/env node
-// Usage: npm run models:character
+// Usage: npm run models:character [-- <source.glb> [<output.glb>]]
 //
-// Builds public/models/shared/characters/male.glb, the walker shown in Walk Mode's
-// third-person view (src/walk/walk-character.js): a lightweight low-poly man (about
-// 600 triangles, 1.75 m tall, feet at the origin, facing +Z, Y up, metres) on a
-// 17-bone skeleton, with three looping animations and a jump pose:
-//   Idle  breathing, arms at rest              (3 s)
-//   Walk  leg and arm swing, 2 m/s pace       (0.8 s per two steps)
-//   Run   bigger swing, bent elbows, lean     (0.6 s per two steps, 4.3 m/s pace)
-//   Jump  knees drawn up, arms raised           (held while in the air)
-// Every body part is a rigid, tapered box (or a rounded head) bound to one bone.
-// Materials are named Skin, Hair, Shirt, Trousers and Shoes, so the map recolours
-// them for each character (WALK_CHARACTERS in src/core/config.js). Any other GLB with
-// animations named Idle, Walk and Run (and optionally those materials) can replace it.
-import { mkdir, stat } from "node:fs/promises";
+// Builds public/models/shared/characters/nathan.glb, the walker shown in Walk Mode's
+// third-person view (src/walk/walk-character.js), from the scanned man with a
+// motion-captured walk that was added to that folder:
+//   nathan_animated_003_-_walking_3d_man.glb  ("Nathan Animated 003 - Walking 3D Man"
+//   by Renderpeople, CC-BY-4.0; 20 MB, an 8192 px texture, one clip "Take 001")
+//
+// The source is one recording of a man walking on the spot: two full strides of a
+// real person, so every joint moves as a person's does (the thigh swings from the
+// hip, the knee bends through the swing and is straight when the heel lands, the
+// foot rolls from heel to toe, the pelvis and the chest turn against each other,
+// the arms swing against the legs with the elbows closing as they come forward).
+// The map needs more than that one clip, and a much lighter file:
+//   Walk  the recording, sampled at 30 frames a second and closed into a loop (its
+//         last frame is followed by its first again, with nothing skipped)
+//   Idle  standing: the legs straight as the model was scanned, the trunk, head and
+//         arms as the man holds them on average while he walks (arms hanging at his
+//         sides), breathing slowly
+//   Run   a jog made from the recording: the same motion of every joint taken
+//         further (longer swing of the thighs, knees drawn up higher, the arms bent
+//         at the elbow and pumping, the trunk leaning forward) and faster, with the
+//         feet kept on the ground
+//   the texture at 1024 px; the model stands in its Idle pose when no clip plays.
+// The script prints the pace (m/s over the ground) the Walk and the Run are made
+// for, at the height the character is drawn at: WALK_CHARACTERS in
+// src/core/config.js holds them (walkPace, runPace), so the feet do not slide.
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Document, NodeIO } from "@gltf-transform/core";
+import { NodeIO } from "@gltf-transform/core";
+import { prune } from "@gltf-transform/functions";
+import sharp from "sharp";
+import * as THREE from "three";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const OUTPUT = path.join(root, "public/models/shared/characters/male.glb");
+const SOURCE = path.resolve(process.argv[2] || path.join(root, "public/models/shared/characters/nathan_animated_003_-_walking_3d_man.glb"));
+const OUTPUT = path.resolve(process.argv[3] || path.join(root, "public/models/shared/characters/nathan.glb"));
 
-// ---- Skeleton (rest pose: no rotation; translations relative to the parent) ----------
-const BONES = [
-  ["Hips", null, [0, 0.98, 0]],
-  ["Spine", "Hips", [0, 0.1, 0]],
-  ["Chest", "Spine", [0, 0.22, 0]],
-  ["Neck", "Chest", [0, 0.26, 0]],
-  ["Head", "Neck", [0, 0.08, 0]],
-  ["UpperArm.L", "Chest", [0.21, 0.2, 0]],
-  ["LowerArm.L", "UpperArm.L", [0, -0.29, 0]],
-  ["Hand.L", "LowerArm.L", [0, -0.26, 0]],
-  ["UpperArm.R", "Chest", [-0.21, 0.2, 0]],
-  ["LowerArm.R", "UpperArm.R", [0, -0.29, 0]],
-  ["Hand.R", "LowerArm.R", [0, -0.26, 0]],
-  ["UpperLeg.L", "Hips", [0.1, -0.06, 0]],
-  ["LowerLeg.L", "UpperLeg.L", [0, -0.44, 0]],
-  ["Foot.L", "LowerLeg.L", [0, -0.42, 0]],
-  ["UpperLeg.R", "Hips", [-0.1, -0.06, 0]],
-  ["LowerLeg.R", "UpperLeg.R", [0, -0.44, 0]],
-  ["Foot.R", "LowerLeg.R", [0, -0.42, 0]]
-];
-const boneIndex = new Map(BONES.map(([name], i) => [name, i]));
-const worldPos = new Map();
-for (const [name, parent, t] of BONES) {
-  const p = parent ? worldPos.get(parent) : [0, 0, 0];
-  worldPos.set(name, [p[0] + t[0], p[1] + t[1], p[2] + t[2]]);
-}
-
-// ---- Geometry ------------------------------------------------------------------------
-const MATERIALS = { Skin: [0.62, 0.42, 0.3], Hair: [0.08, 0.06, 0.05], Shirt: [0.2, 0.42, 0.7], Trousers: [0.16, 0.17, 0.2], Shoes: [0.07, 0.07, 0.07], Eyes: [0.05, 0.05, 0.06] };
-const parts = Object.fromEntries(Object.keys(MATERIALS).map((name) => [name, { positions: [], normals: [], joints: [], indices: [] }]));
-
-function quad(part, bone, a, b, c, d) {
-  const g = parts[part];
-  const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
-  let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-  const l = Math.hypot(...n) || 1; n = n.map((x) => x / l);
-  const base = g.positions.length / 3;
-  for (const p of [a, b, c, d]) { g.positions.push(...p); g.normals.push(...n); g.joints.push(boneIndex.get(bone), 0, 0, 0); }
-  g.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-}
-
-// Tapered box: centre x/z, from y0 (bottom size w0 x d0) to y1 (top size w1 x d1).
-function taper(part, bone, [cx, cz], y0, y1, [w0, d0], [w1, d1], dz = [0, 0]) {
-  const b = (w, d, y, oz) => [[cx - w / 2, y, cz - d / 2 + oz], [cx + w / 2, y, cz - d / 2 + oz], [cx + w / 2, y, cz + d / 2 + oz], [cx - w / 2, y, cz + d / 2 + oz]];
-  const lo = b(w0, d0, y0, dz[0]), hi = b(w1, d1, y1, dz[1]);
-  quad(part, bone, lo[3], lo[2], hi[2], hi[3]); // front (+z)
-  quad(part, bone, lo[1], lo[0], hi[0], hi[1]); // back
-  quad(part, bone, lo[2], lo[1], hi[1], hi[2]); // +x
-  quad(part, bone, lo[0], lo[3], hi[3], hi[0]); // -x
-  quad(part, bone, hi[3], hi[2], hi[1], hi[0]); // top
-  quad(part, bone, lo[0], lo[1], lo[2], lo[3]); // bottom
-}
-const box = (part, bone, [cx, cy, cz], [w, h, d]) => taper(part, bone, [cx, cz], cy - h / 2, cy + h / 2, [w, d], [w, d]);
-
-// Rounded head: a low-poly ellipsoid (only the part above `cutY` for the hair cap).
-function ellipsoid(part, bone, [cx, cy, cz], [rx, ry, rz], { rings = 7, segments = 10, from = 0, to = 1 } = {}) {
-  const at = (i, j) => {
-    const theta = (i / rings) * Math.PI, phi = (j / segments) * Math.PI * 2;
-    return [cx + rx * Math.sin(theta) * Math.sin(phi), cy + ry * Math.cos(theta), cz + rz * Math.sin(theta) * Math.cos(phi)];
-  };
-  for (let i = Math.floor(from * rings); i < Math.ceil(to * rings); i += 1) for (let j = 0; j < segments; j += 1) quad(part, bone, at(i + 1, j), at(i + 1, j + 1), at(i, j + 1), at(i, j));
-}
-
-// Legs and shoes.
-for (const [s, side] of [[1, "L"], [-1, "R"]]) {
-  const hip = worldPos.get(`UpperLeg.${side}`), knee = worldPos.get(`LowerLeg.${side}`), ankle = worldPos.get(`Foot.${side}`);
-  taper("Trousers", `UpperLeg.${side}`, [hip[0], 0], knee[1] + 0.02, hip[1] + 0.04, [0.13, 0.14], [0.16, 0.17]);
-  taper("Trousers", `LowerLeg.${side}`, [knee[0], 0], ankle[1] + 0.02, knee[1] + 0.02, [0.105, 0.115], [0.13, 0.14]);
-  box("Shoes", `Foot.${side}`, [ankle[0], 0.045, 0.045], [0.11, 0.09, 0.26]);
-  // Arms: sleeve, forearm, hand.
-  const shoulder = worldPos.get(`UpperArm.${side}`), elbow = worldPos.get(`LowerArm.${side}`), wrist = worldPos.get(`Hand.${side}`);
-  taper("Shirt", `UpperArm.${side}`, [shoulder[0] + s * 0.01, 0], elbow[1], shoulder[1] + 0.03, [0.09, 0.09], [0.11, 0.11]);
-  taper("Skin", `LowerArm.${side}`, [elbow[0], 0], wrist[1], elbow[1], [0.065, 0.07], [0.08, 0.085]);
-  box("Skin", `Hand.${side}`, [wrist[0], wrist[1] - 0.05, 0.005], [0.07, 0.1, 0.045]);
-}
-// Pelvis, abdomen, chest (tapered to the shoulders), neck.
-box("Trousers", "Hips", [0, 0.96, 0], [0.34, 0.16, 0.2]);
-taper("Shirt", "Spine", [0, 0], 1.02, 1.2, [0.33, 0.2], [0.34, 0.2]);
-taper("Shirt", "Chest", [0, 0], 1.2, 1.52, [0.34, 0.2], [0.44, 0.22]);
-box("Skin", "Neck", [0, 1.57, 0], [0.1, 0.1, 0.1]);
-// Head, hair cap, eyes and nose.
-const head = worldPos.get("Head");
-ellipsoid("Skin", "Head", [0, head[1] + 0.1, 0.01], [0.095, 0.12, 0.105]);
-ellipsoid("Hair", "Head", [0, head[1] + 0.115, -0.003], [0.102, 0.12, 0.112], { from: 0, to: 0.43 });
-for (const s of [1, -1]) box("Eyes", "Head", [s * 0.035, head[1] + 0.11, 0.108], [0.022, 0.014, 0.01]);
-box("Skin", "Head", [0, head[1] + 0.08, 0.112], [0.024, 0.04, 0.03]);
-
-// ---- Animations ----------------------------------------------------------------------
-const quat = ([x, y, z]) => { // Euler XYZ (radians) -> quaternion [x, y, z, w]
-  const [cx, sx, cy, sy, cz, sz] = [Math.cos(x / 2), Math.sin(x / 2), Math.cos(y / 2), Math.sin(y / 2), Math.cos(z / 2), Math.sin(z / 2)];
-  return [sx * cy * cz + cx * sy * sz, cx * sy * cz - sx * cy * sz, cx * cy * sz + sx * sy * cz, cx * cy * cz - sx * sy * sz];
-};
-const pos = (x) => Math.max(0, x);
-// Each clip: duration, samples, and per bone a function of the phase p (0..2π) -> Euler.
-const CLIPS = {
-  Idle: {
-    duration: 3, samples: 25,
-    hips: (p) => [0, 0.98 + 0.004 * Math.sin(p), 0],
-    bones: {
-      Chest: (p) => [0.03 * Math.sin(p), 0, 0],
-      Head: (p) => [0.02 * Math.sin(p + 1), 0.06 * Math.sin(p / 1), 0],
-      "UpperArm.L": (p) => [0.03 * Math.sin(p), 0, 0.07 + 0.015 * Math.sin(p)],
-      "UpperArm.R": (p) => [0.03 * Math.sin(p), 0, -0.07 - 0.015 * Math.sin(p)],
-      "LowerArm.L": () => [-0.12, 0, 0],
-      "LowerArm.R": () => [-0.12, 0, 0]
-    }
-  },
-  Walk: {
-    duration: 0.8, samples: 17,
-    hips: (p) => [0, 0.975 + 0.022 * Math.cos(2 * p), 0],
-    bones: {
-      Hips: (p) => [0, 0.08 * Math.sin(p), 0],
-      Spine: () => [0.04, 0, 0],
-      Chest: (p) => [0, -0.12 * Math.sin(p), 0],
-      Head: (p) => [-0.03, 0.05 * Math.sin(p), 0],
-      "UpperLeg.L": (p) => [-0.45 * Math.sin(p), 0, 0],
-      "UpperLeg.R": (p) => [0.45 * Math.sin(p), 0, 0],
-      "LowerLeg.L": (p) => [0.08 + 0.6 * pos(Math.cos(p)) ** 1.4, 0, 0],
-      "LowerLeg.R": (p) => [0.08 + 0.6 * pos(-Math.cos(p)) ** 1.4, 0, 0],
-      "Foot.L": (p) => [-0.2 * pos(Math.cos(p)), 0, 0],
-      "Foot.R": (p) => [-0.2 * pos(-Math.cos(p)), 0, 0],
-      "UpperArm.L": (p) => [0.38 * Math.sin(p), 0, 0.07],
-      "UpperArm.R": (p) => [-0.38 * Math.sin(p), 0, -0.07],
-      "LowerArm.L": (p) => [-0.25 - 0.12 * pos(-Math.sin(p)), 0, 0],
-      "LowerArm.R": (p) => [-0.25 - 0.12 * pos(Math.sin(p)), 0, 0]
-    }
-  },
-  Run: {
-    duration: 0.6, samples: 17,
-    hips: (p) => [0, 0.95 + 0.05 * Math.cos(2 * p), 0],
-    bones: {
-      Hips: (p) => [0, 0.12 * Math.sin(p), 0],
-      Spine: () => [0.18, 0, 0],
-      Chest: (p) => [0, -0.18 * Math.sin(p), 0],
-      Head: () => [-0.15, 0, 0],
-      "UpperLeg.L": (p) => [-0.8 * Math.sin(p) - 0.1, 0, 0],
-      "UpperLeg.R": (p) => [0.8 * Math.sin(p) - 0.1, 0, 0],
-      "LowerLeg.L": (p) => [0.2 + 1.3 * pos(Math.cos(p)) ** 1.2, 0, 0],
-      "LowerLeg.R": (p) => [0.2 + 1.3 * pos(-Math.cos(p)) ** 1.2, 0, 0],
-      "Foot.L": (p) => [-0.35 * pos(Math.cos(p)), 0, 0],
-      "Foot.R": (p) => [-0.35 * pos(-Math.cos(p)), 0, 0],
-      "UpperArm.L": (p) => [0.75 * Math.sin(p), 0, 0.1],
-      "UpperArm.R": (p) => [-0.75 * Math.sin(p), 0, -0.1],
-      "LowerArm.L": () => [-1.25, 0, 0],
-      "LowerArm.R": () => [-1.25, 0, 0]
-    }
-  },
-  // Held while in the air (Space in Walk Mode): knees drawn up, arms raised.
-  Jump: {
-    duration: 1, samples: 2,
-    hips: () => [0, 0.93, 0],
-    bones: {
-      Spine: () => [0.12, 0, 0],
-      Head: () => [-0.1, 0, 0],
-      "UpperLeg.L": () => [-0.9, 0, 0],
-      "LowerLeg.L": () => [1.3, 0, 0],
-      "UpperLeg.R": () => [-0.3, 0, 0],
-      "LowerLeg.R": () => [0.9, 0, 0],
-      "Foot.L": () => [-0.3, 0, 0],
-      "UpperArm.L": () => [-0.9, 0, 0.35],
-      "UpperArm.R": () => [-0.9, 0, -0.35],
-      "LowerArm.L": () => [-0.7, 0, 0],
-      "LowerArm.R": () => [-0.7, 0, 0]
-    }
-  }
+const FPS = 30;
+const TEXTURE_PX = 1024;
+const DRAWN_HEIGHT_M = 1.8; // WALK_CHARACTERS height: the paces are printed for it
+const IDLE = { seconds: 4, fps: 15, breath: 0.016 }; // breath: radians the chest rises and falls
+// The jog: how much further each joint goes than in the walk (1 = as walked), and
+// how much faster the strides follow each other.
+const RUN = {
+  rate: 1.62, // strides per second, as a multiple of the walk's
+  gain: { upperleg: 1.38, lowerleg: 1.55, foot: 1.15, ball: 1, upperarm: 1.7, shoulder: 1.2, spine: 1.25, hip: 1.25 },
+  elbow: 1.15, // radians the elbows are bent further
+  lean: 0.14, // radians the trunk leans forward
+  bounce: 1.6 // the rise and fall of the hips, as a multiple of the walk's
 };
 
-// ---- glTF document -------------------------------------------------------------------
-const doc = new Document();
-const buffer = doc.createBuffer();
-const accessor = (array, type) => doc.createAccessor().setArray(array).setType(type).setBuffer(buffer);
-const scene = doc.createScene("Walker");
-const nodes = new Map();
-for (const [name, parent, t] of BONES) {
-  const node = doc.createNode(name).setTranslation(t);
-  nodes.set(name, node);
-  (parent ? nodes.get(parent) : scene).addChild(node);
-}
-const skin = doc.createSkin("Walker")
-  .setSkeleton(nodes.get("Hips"))
-  .setInverseBindMatrices(accessor(new Float32Array(BONES.flatMap(([name]) => { const p = worldPos.get(name); return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -p[0], -p[1], -p[2], 1]; })), "MAT4"));
-for (const [name] of BONES) skin.addJoint(nodes.get(name));
+const io = new NodeIO();
+const document = await io.read(SOURCE);
+const gltf = document.getRoot();
+const skin = gltf.listSkins()[0];
+const source = gltf.listAnimations()[0];
+if (!skin || !source) throw new Error(`${SOURCE}: a skinned model with one animation is expected`);
+const joints = skin.listJoints();
+const jointSet = new Set(joints);
+// "rp_nathan_animated_003_walking_upperleg_l_074" -> "upperleg_l"
+const short = (node) => node.getName().replace(/^rp_[a-z]+_animated_\d+_[a-z]+_/, "").replace(/_\d+$/, "");
+const byName = new Map(joints.map((joint) => [short(joint), joint]));
+const need = (name) => { const joint = byName.get(name); if (!joint) throw new Error(`The skeleton has no joint "${name}"`); return joint; };
+const parentOf = new Map();
+for (const joint of joints) for (const child of joint.listChildren()) if (jointSet.has(child)) parentOf.set(child, joint);
 
-const mesh = doc.createMesh("Walker");
-let triangles = 0;
-for (const [name, color] of Object.entries(MATERIALS)) {
-  const g = parts[name];
-  if (!g.indices.length) continue;
-  const material = doc.createMaterial(name).setBaseColorFactor([...color, 1]).setMetallicFactor(0).setRoughnessFactor(name === "Hair" ? 0.6 : 0.85);
-  mesh.addPrimitive(doc.createPrimitive()
-    .setAttribute("POSITION", accessor(new Float32Array(g.positions), "VEC3"))
-    .setAttribute("NORMAL", accessor(new Float32Array(g.normals), "VEC3"))
-    .setAttribute("JOINTS_0", accessor(new Uint8Array(g.joints), "VEC4"))
-    .setAttribute("WEIGHTS_0", accessor(new Float32Array(g.joints.map((_, i) => (i % 4 === 0 ? 1 : 0))), "VEC4"))
-    .setIndices(accessor(new Uint16Array(g.indices), "SCALAR"))
-    .setMaterial(material));
-  triangles += g.indices.length / 3;
+// ---- The recording, sampled evenly ------------------------------------------------------
+const channels = new Map(); // node -> { translation?: sampler, rotation?: sampler }
+for (const channel of source.listChannels()) {
+  const node = channel.getTargetNode();
+  if (!channels.has(node)) channels.set(node, {});
+  channels.get(node)[channel.getTargetPath()] = channel.getSampler();
 }
-scene.addChild(doc.createNode("WalkerMesh").setMesh(mesh).setSkin(skin));
+const sourceEnd = Math.max(...source.listSamplers().map((sampler) => sampler.getInput().getMax([])[0]));
+const FRAMES = Math.round(sourceEnd * FPS) + 1; // the loop: frame FRAMES is frame 0 again
+const quat = (values, at = 0) => new THREE.Quaternion(values[at], values[at + 1], values[at + 2], values[at + 3]);
+const vec = (values, at = 0) => new THREE.Vector3(values[at], values[at + 1], values[at + 2]);
 
-for (const [clipName, clip] of Object.entries(CLIPS)) {
-  const animation = doc.createAnimation(clipName);
-  const times = new Float32Array(Array.from({ length: clip.samples }, (_, i) => (i / (clip.samples - 1)) * clip.duration));
-  const input = accessor(times, "SCALAR");
-  const phase = (i) => (i / (clip.samples - 1)) * Math.PI * 2;
-  const channel = (node, pathName, values, type) => {
-    const sampler = doc.createAnimationSampler().setInput(input).setOutput(accessor(new Float32Array(values), type)).setInterpolation("LINEAR");
-    animation.addSampler(sampler).addChannel(doc.createAnimationChannel().setTargetNode(node).setTargetPath(pathName).setSampler(sampler));
+function sampleAt(sampler, time, size) {
+  const times = sampler.getInput().getArray(), values = sampler.getOutput().getArray();
+  let i = 0;
+  while (i < times.length - 1 && times[i + 1] <= time) i += 1;
+  const j = Math.min(i + 1, times.length - 1);
+  const span = times[j] - times[i];
+  const t = span > 0 ? Math.min(1, Math.max(0, (time - times[i]) / span)) : 0;
+  if (size === 4) return quat(values, i * 4).slerp(quat(values, j * 4), t);
+  return vec(values, i * 3).lerp(vec(values, j * 3), t);
+}
+
+// walk.get(node) = { rotation: [Quaternion per frame], translation: [Vector3 per frame] }
+// (only the properties the recording moves), frames 0..FRAMES - 1.
+const walk = new Map();
+for (const [node, own] of channels) {
+  const track = {};
+  if (own.rotation) track.rotation = Array.from({ length: FRAMES }, (_, frame) => sampleAt(own.rotation, frame / FPS, 4));
+  if (own.translation) track.translation = Array.from({ length: FRAMES }, (_, frame) => sampleAt(own.translation, frame / FPS, 3));
+  // The same side of each quaternion as the frame before, so frames blend the short way.
+  track.rotation?.forEach((q, frame, all) => { if (frame && all[frame - 1].dot(q) < 0) q.set(-q.x, -q.y, -q.z, -q.w); });
+  walk.set(node, track);
+}
+
+// ---- Poses and where they put the joints ------------------------------------------------
+// A pose: node -> { q, t } for the joints it sets; the others keep the file's values.
+const restOf = (node) => ({ q: quat(node.getRotation()), t: vec(node.getTranslation()) });
+const poseOfFrame = (tracks, frame) => new Map([...tracks].map(([node, track]) => [node, { q: track.rotation?.[frame] ?? restOf(node).q, t: track.translation?.[frame] ?? restOf(node).t }]));
+const ONE = new THREE.Vector3(1, 1, 1);
+// World matrix of every joint (the nodes above the skeleton leave it where it is).
+function worldOf(pose) {
+  const world = new Map();
+  const visit = (node, parent) => {
+    const { q, t } = pose.get(node) || restOf(node);
+    const matrix = parent.clone().multiply(new THREE.Matrix4().compose(t, q, vec(node.getScale())));
+    world.set(node, matrix);
+    for (const child of node.listChildren()) if (jointSet.has(child)) visit(child, matrix);
   };
-  channel(nodes.get("Hips"), "translation", Array.from({ length: clip.samples }, (_, i) => clip.hips(phase(i))).flat(), "VEC3");
-  for (const [name] of BONES) {
-    const fn = clip.bones[name] || (() => [0, 0, 0]);
-    channel(nodes.get(name), "rotation", Array.from({ length: clip.samples }, (_, i) => quat(fn(phase(i)))).flat(), "VEC4");
-  }
+  for (const joint of joints) if (!parentOf.has(joint)) visit(joint, new THREE.Matrix4());
+  return world;
 }
-doc.getRoot().getAsset().generator = "scripts/build-character.mjs";
+const positionIn = (world, name) => new THREE.Vector3().setFromMatrixPosition(world.get(need(name)));
+const rotationIn = (world, node) => new THREE.Quaternion().setFromRotationMatrix(world.get(node));
 
-await mkdir(path.dirname(OUTPUT), { recursive: true });
-await new NodeIO().write(OUTPUT, doc);
-console.log(`Wrote ${path.relative(root, OUTPUT)}: ${triangles} triangles, ${BONES.length} bones, animations ${Object.keys(CLIPS).join(", ")}, ${((await stat(OUTPUT)).size / 1024).toFixed(0)} KB`);
+// The pose the model was scanned and bound in (arms out, legs straight), from the
+// skin's inverse bind matrices.
+const inverseBind = skin.getInverseBindMatrices().getArray();
+const bindWorld = new Map(joints.map((joint, index) => [joint, new THREE.Matrix4().fromArray(inverseBind, index * 16).invert()]));
+const bind = new Map();
+for (const joint of joints) {
+  const parent = parentOf.get(joint);
+  if (!parent) continue;
+  const q = new THREE.Quaternion(), t = new THREE.Vector3();
+  bindWorld.get(parent).clone().invert().multiply(bindWorld.get(joint)).decompose(t, q, new THREE.Vector3());
+  bind.set(joint, { q, t });
+}
+
+// ---- Idle -------------------------------------------------------------------------------
+const mean = (quaternions) => {
+  const sum = new THREE.Vector4();
+  for (const q of quaternions) sum.add(new THREE.Vector4(q.x, q.y, q.z, q.w).multiplyScalar(quaternions[0].dot(q) < 0 ? -1 : 1));
+  return new THREE.Quaternion(sum.x, sum.y, sum.z, sum.w).normalize();
+};
+const LEGS = /^(root|hip|upperleg|lowerleg|foot|ball)(_|$)/;
+const idlePose = new Map();
+for (const joint of joints) {
+  const track = walk.get(joint) || {};
+  const standing = LEGS.test(short(joint)) ? bind.get(joint) : null;
+  if (!standing && !track.rotation && !track.translation) continue;
+  idlePose.set(joint, {
+    q: standing ? standing.q.clone() : track.rotation ? mean(track.rotation) : restOf(joint).q,
+    // Only a joint the recording moves is moved: the others keep their place on their bone.
+    t: !track.translation ? restOf(joint).t : standing ? standing.t.clone() : track.translation.reduce((sum, t) => sum.add(t), new THREE.Vector3()).divideScalar(FRAMES)
+  });
+}
+// The feet on the ground: as low as the walking man's lower foot stands.
+const ankleHeight = (world) => Math.min(positionIn(world, "foot_l").y, positionIn(world, "foot_r").y);
+const walkAnkle = Array.from({ length: FRAMES }, (_, frame) => ankleHeight(worldOf(poseOfFrame(walk, frame))));
+const groundAnkle = walkAnkle.reduce((sum, value) => sum + value, 0) / FRAMES; // one foot is always down
+const hip = need("hip");
+idlePose.get(hip).t.y += groundAnkle - ankleHeight(worldOf(idlePose));
+
+// A turn about one of the body's own directions (x: its left, y: up, z: the way it
+// faces), given to a joint as it stands in `world`.
+const AXES = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+function turned(pose, world, name, axis, angle) {
+  const node = need(name);
+  const facing = rotationIn(world, node);
+  const local = facing.clone().invert().multiply(new THREE.Quaternion().setFromAxisAngle(AXES[axis], angle)).multiply(facing);
+  return (pose.get(node) || restOf(node)).q.clone().multiply(local);
+}
+
+const idleWorld = worldOf(idlePose);
+const idleKeys = Math.round(IDLE.seconds * IDLE.fps) + 1;
+const idleTracks = new Map([...idlePose].map(([node, { q, t }]) => [node, { rotation: [q, q], ...(walk.get(node)?.translation ? { translation: [t, t] } : {}) }]));
+// Breathing: the chest rises, the neck keeps the head still.
+for (const [name, share] of [["spine_02", -0.6], ["spine_03", -0.4], ["neck", 0.8]]) {
+  idleTracks.get(need(name)).rotation = Array.from({ length: idleKeys }, (_, key) => turned(idlePose, idleWorld, name, "x", share * IDLE.breath * Math.sin((key / (idleKeys - 1)) * Math.PI * 2)));
+}
+
+// ---- Run --------------------------------------------------------------------------------
+// Each joint goes `gain` times as far from where it is held on average as it does
+// in the walk.
+function powered(q, gain) { // the turn `q`, taken `gain` times as far
+  const sign = q.w < 0 ? -1 : 1;
+  const sine = Math.hypot(q.x, q.y, q.z);
+  if (sine < 1e-7) return q.clone();
+  const angle = 2 * Math.atan2(sine, q.w * sign);
+  return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(q.x, q.y, q.z).multiplyScalar(sign / sine), angle * gain);
+}
+function amplified(rotation, gain) {
+  const centre = mean(rotation);
+  return rotation.map((q) => centre.clone().multiply(powered(centre.clone().invert().multiply(q), gain)));
+}
+const gainOf = (name) => Object.entries(RUN.gain).find(([key]) => name.startsWith(key))?.[1] ?? 1;
+const run = new Map([...walk].map(([node, track]) => [node, {
+  ...(track.rotation ? { rotation: gainOf(short(node)) === 1 ? track.rotation.map((q) => q.clone()) : amplified(track.rotation, gainOf(short(node))) } : {}),
+  ...(track.translation ? { translation: track.translation.map((t) => t.clone()) } : {})
+}]));
+// The elbows bent: about the axis each one bends about in the walk, the way that
+// brings the hand nearer the shoulder.
+for (const side of ["l", "r"]) {
+  const lower = need(`lowerarm_${side}`);
+  const rotation = walk.get(lower).rotation;
+  const centre = mean(rotation);
+  const axis = new THREE.Vector3();
+  for (const q of rotation) {
+    const d = centre.clone().invert().multiply(q);
+    const v = new THREE.Vector3(d.x, d.y, d.z).multiplyScalar(d.w < 0 ? -1 : 1);
+    axis.add(axis.dot(v) < 0 ? v.negate() : v);
+  }
+  axis.normalize();
+  const reach = (angle) => {
+    const pose = poseOfFrame(walk, 0);
+    pose.get(lower).q = pose.get(lower).q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(axis, angle));
+    const world = worldOf(pose);
+    return positionIn(world, `upperarm_${side}`).distanceTo(positionIn(world, `hand_${side}`));
+  };
+  const bend = new THREE.Quaternion().setFromAxisAngle(axis, reach(0.3) < reach(-0.3) ? RUN.elbow : -RUN.elbow);
+  run.get(lower).rotation = run.get(lower).rotation.map((q) => q.clone().multiply(bend));
+  // The upper arm a little back, so the bent forearm swings beside the body.
+  const upper = need(`upperarm_${side}`);
+  run.get(upper).rotation = run.get(upper).rotation.map((q, frame) => turned(new Map([[upper, { q }]]), worldOf(poseOfFrame(walk, frame)), `upperarm_${side}`, "x", 0.25));
+}
+// The trunk leans into the run.
+{
+  const spine = need("spine_01");
+  run.get(spine).rotation = run.get(spine).rotation.map((q, frame) => turned(new Map([[spine, { q }]]), worldOf(poseOfFrame(walk, frame)), "spine_01", "x", RUN.lean));
+  const head = need("neck");
+  run.get(head).rotation = run.get(head).rotation.map((q, frame) => turned(new Map([[head, { q }]]), worldOf(poseOfFrame(walk, frame)), "neck", "x", -RUN.lean * 0.6));
+}
+// The hips rise and fall more, and are then set so the lower foot stands on the ground.
+{
+  const heights = walk.get(hip).translation.map((t) => t.y);
+  const middle = heights.reduce((sum, value) => sum + value, 0) / FRAMES;
+  run.get(hip).translation.forEach((t, frame) => { t.y = middle + (heights[frame] - middle) * RUN.bounce; });
+  const drop = run.get(hip).translation.map((_, frame) => groundAnkle - ankleHeight(worldOf(poseOfFrame(run, frame))));
+  // Smoothed over a few frames: the feet meet the ground without a jolt, and the body
+  // still leaves it a little between two steps.
+  const smooth = drop.map((_, frame) => [-2, -1, 0, 1, 2].reduce((sum, offset) => sum + drop[(frame + offset + FRAMES) % FRAMES], 0) / 5);
+  run.get(hip).translation.forEach((t, frame) => { t.y += smooth[frame]; });
+}
+
+// ---- Pace: how fast the ground passes under the standing foot ----------------------------
+function paceOf(tracks, seconds) {
+  const z = (frame, name) => positionIn(worldOf(poseOfFrame(tracks, frame % FRAMES)), name).z;
+  const y = (frame, name) => positionIn(worldOf(poseOfFrame(tracks, frame % FRAMES)), name).y;
+  const speeds = [];
+  for (let frame = 0; frame < FRAMES; frame += 1) for (const name of ["foot_l", "foot_r"]) {
+    const other = name === "foot_l" ? "foot_r" : "foot_l";
+    // The foot that carries the weight: the lower one, moving back.
+    if (y(frame, name) < y(frame, other) - 2 && y(frame + 1, name) < y(frame + 1, other) - 2) speeds.push((z(frame, name) - z(frame + 1, name)) / (seconds / FRAMES));
+  }
+  speeds.sort((a, b) => a - b);
+  return speeds[Math.floor(speeds.length / 2)]; // model units a second
+}
+
+// ---- Written into the file --------------------------------------------------------------
+const buffer = gltf.listBuffers()[0];
+const walkSeconds = FRAMES / FPS;
+const runSeconds = walkSeconds / RUN.rate;
+const paces = { walk: paceOf(walk, walkSeconds), run: paceOf(run, runSeconds) };
+function addClip(name, tracks, seconds) {
+  const animation = document.createAnimation(name);
+  const inputs = new Map(); // key count -> times
+  const input = (count) => {
+    if (!inputs.has(count)) inputs.set(count, document.createAccessor().setType("SCALAR").setBuffer(buffer).setArray(Float32Array.from({ length: count }, (_, key) => (key / (count - 1)) * seconds)));
+    return inputs.get(count);
+  };
+  for (const [node, track] of tracks) for (const [targetPath, type, size] of [["rotation", "VEC4", 4], ["translation", "VEC3", 3]]) {
+    const frames = track[targetPath];
+    if (!frames) continue;
+    // A loop: its first frame again at the end (a two-frame track holds one pose).
+    const keys = frames.length > 2 ? [...frames, frames[0]] : frames;
+    const values = new Float32Array(keys.length * size);
+    keys.forEach((value, key) => value.toArray(values, key * size));
+    const sampler = document.createAnimationSampler().setInput(input(keys.length)).setOutput(document.createAccessor().setType(type).setBuffer(buffer).setArray(values)).setInterpolation("LINEAR");
+    animation.addSampler(sampler).addChannel(document.createAnimationChannel().setTargetNode(node).setTargetPath(targetPath).setSampler(sampler));
+  }
+  return animation;
+}
+for (const channel of source.listChannels()) channel.dispose();
+for (const sampler of source.listSamplers()) sampler.dispose();
+source.dispose();
+addClip("Idle", idleTracks, IDLE.seconds);
+addClip("Walk", walk, walkSeconds);
+addClip("Run", run, runSeconds);
+// The model stands in its Idle pose when no clip plays (and is measured in it).
+for (const [node, { q, t }] of idlePose) node.setRotation(q.toArray()).setTranslation(t.toArray());
+
+// One colour texture, much smaller: the character is a few hundred pixels tall on screen.
+for (const texture of gltf.listTextures()) {
+  const image = texture.getImage();
+  if (!image) continue;
+  const [width, height] = texture.getSize() || [0, 0];
+  if (Math.max(width, height) <= TEXTURE_PX) continue;
+  const resized = await sharp(Buffer.from(image)).resize(TEXTURE_PX, TEXTURE_PX, { fit: "inside" }).jpeg({ quality: 86, mozjpeg: true }).toBuffer();
+  texture.setImage(new Uint8Array(resized)).setMimeType("image/jpeg");
+}
+// Skin and cloth, lit by the map's lights alone: nothing of it is metal.
+for (const material of gltf.listMaterials()) material.setMetallicFactor(0).setRoughnessFactor(Math.max(0.85, material.getRoughnessFactor()));
+
+await document.transform(prune());
+await io.write(OUTPUT, document);
+
+const standing = worldOf(idlePose);
+const tall = Math.max(...skin.listJoints().map((joint) => new THREE.Vector3().setFromMatrixPosition(standing.get(joint)).y));
+const boundHeight = (() => { const position = gltf.listMeshes()[0].listPrimitives()[0].getAttribute("POSITION"); return position.getMax([])[1] - position.getMin([])[1]; })();
+const metres = DRAWN_HEIGHT_M / boundHeight; // metres per model unit at the drawn height
+const size = (await stat(OUTPUT)).size;
+console.log(`${path.relative(root, OUTPUT)}: ${(size / 1024).toFixed(0)} KB (source ${((await stat(SOURCE)).size / 1048576).toFixed(1)} MB)`);
+console.log(`  clips: Idle ${IDLE.seconds} s, Walk ${walkSeconds.toFixed(3)} s (${FRAMES} frames, two strides), Run ${runSeconds.toFixed(3)} s`);
+console.log(`  model: ${boundHeight.toFixed(1)} units tall as bound, top joint at ${tall.toFixed(1)} standing; drawn ${DRAWN_HEIGHT_M} m tall`);
+console.log(`  idle: hands at ${["hand_l", "hand_r"].map((name) => positionIn(standing, name).toArray().map((v) => v.toFixed(0)).join(" ")).join(" | ")}, feet at ${["foot_l", "foot_r"].map((name) => positionIn(standing, name).toArray().map((v) => v.toFixed(0)).join(" ")).join(" | ")}, head at ${positionIn(standing, "head").toArray().map((v) => v.toFixed(0)).join(" ")}`);
+console.log(`  walkPace: ${(paces.walk * metres).toFixed(2)} m/s, runPace: ${(paces.run * metres).toFixed(2)} m/s  (WALK_CHARACTERS in src/core/config.js)`);

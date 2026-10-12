@@ -5,8 +5,11 @@
 // drawn from outside until a floor is chosen: with the floor selector (it appears
 // for the building at the centre of the view, or the selected one), by a search
 // result, by a route, or by zooming far in. Opening a
-// floor hides the building's shell (extrusion or GLB model) and draws that floor's
-// plan at ground level. Several buildings can be open at once (a route from one
+// floor draws that floor's plan at the floor's height in the building
+// (indoor-store.js floorElevations) and takes away the building's shell (extrusion
+// or GLB model) from that height up: the ground floor lies on the ground with no
+// shell at all, the second floor on top of the ground storey, and the top floor on
+// the whole building less its top storey and roof. Several buildings can be open at once (a route from one
 // building to another shows both); the floor selector controls one of them.
 // Selecting another building takes the selector away from a building with floors
 // and shows that building from outside again, unless the route runs through it.
@@ -18,6 +21,7 @@ import { orgDataPath } from "../core/org.js";
 import { fetchPublicJSON } from "../core/paths.js";
 import { axisBearings, cameraForPoints, circlePoints } from "../map/camera-fit.js";
 import { FIT_PADDING } from "../map/fit-padding.js";
+import { elevateMarker } from "../map/altitude.js";
 import { ROUTE_LAYERS } from "../map/layer-ids.js";
 import { createFloorControl } from "./floor-control.js";
 import { addIndoorLayers, INDOOR_HIT_LAYERS, INDOOR_SOURCE, setIndoorData, setIndoorRoute, setIndoorWalkView } from "./indoor-layers.js";
@@ -33,6 +37,7 @@ const FLOOR_LAYERS = ["indoor-floor", "indoor-corridor", "indoor-walls"];
 const FLOOR_MAX_ZOOM = 20.5; // a floor plan is framed at most this close
 const PLACE_REACH_M = 8; // a chosen room or point is framed with this much around it
 const PLACE_ZOOM = [19.4, 20.8]; // ... between these zooms
+const GROUND_M = 0.05; // a floor no higher than this above the building's base lies on the ground
 // Location pin on the chosen room or point.
 const PIN = '<svg viewBox="0 0 32 42" aria-hidden="true"><path d="M16 1.5C8 1.5 1.5 7.9 1.5 15.8 1.5 26.4 16 40.5 16 40.5S30.5 26.4 30.5 15.8C30.5 7.9 24 1.5 16 1.5Z" fill="#ea4335" stroke="#fff" stroke-width="2.5"/><circle cx="16" cy="15.5" r="5.6" fill="#7f1d1d"/></svg>';
 
@@ -54,7 +59,12 @@ async function fetchLevelFiles(building, level) {
 }
 
 // getBuildingFeature(id)   the buildings-file feature with that id (render copy), or null
-// setHiddenShells(ids)     hides the shells of those buildings (render ids); [] shows all
+// setOpenShells(shells)    the buildings whose floor plan is open ([] = none), each
+//                          { id: render id, cutM, topM }: its shell is drawn only below
+//                          cutM (metres above the ground; 0: not at all), and topM is
+//                          the top of what is drawn of it (the walls of the open floor)
+// hasModelShell(id)        true when that building (render id) is drawn by a GLB model,
+//                          which is cut itself; else its lower storeys are drawn here
 // isBusy()                 true while floors must not open by themselves (walk mode, navigation)
 // onPlaceShown(place)      a room or point was selected (the building card should close)
 // onPlaceHidden()          the card of the selected room or point went
@@ -63,13 +73,17 @@ async function fetchLevelFiles(building, level) {
 // onFloorPick(key, level)  a floor was chosen on the floor selector: true when it is
 //                          handled elsewhere (walk mode takes the walker to that floor)
 // onExteriorPick(key)      the same for the outside-view button of the selector
-export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, isBusy = () => false, onPlaceShown, onPlaceHidden, onRoutePlace, onChange, onMessage, onFloorPick, onExteriorPick }) {
-  const store = createIndoorStore({ org, loadFiles: fetchLevelFiles, footprintOf: (building) => getBuildingFeature(building.buildingId)?.geometry || null });
+export function createIndoor({ map, org, getBuildingFeature, setOpenShells, hasModelShell = () => false, isBusy = () => false, onPlaceShown, onPlaceHidden, onRoutePlace, onChange, onMessage, onFloorPick, onExteriorPick }) {
+  const sizeOf = (building) => {
+    const properties = getBuildingFeature(building.buildingId)?.properties;
+    return properties ? { base: Number(properties.render_base_m) || 0, top: Number(properties.render_top_m) || 0 } : null;
+  };
+  const store = createIndoorStore({ org, loadFiles: fetchLevelFiles, footprintOf: (building) => getBuildingFeature(building.buildingId)?.geometry || null, heightOf: sizeOf });
   const hasFloors = store.buildings.length > 0;
   const open = new Map(); // building key -> shown floor id
   const models = new Map(); // building key -> the shown floor's model
   const dismissed = new Set(); // buildings closed by hand: not opened again by zooming in
-  const markers = [];
+  const markers = []; // [{ marker, lower }]: the floor-change buttons, each kept at its floor's height
   const autoOpenZoom = org.floors?.auto_open_zoom === undefined ? AUTO_OPEN_ZOOM : org.floors.auto_open_zoom;
   let generation = 0;
   let pinned = null; // building the floor selector stays on (selected or opened last)
@@ -91,6 +105,7 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   pinElement.setAttribute("role", "img");
   const pin = new maplibregl.Marker({ element: pinElement, anchor: "bottom", offset: [0, -8] });
   let pinUid = null; // the room or point the pin stands on
+  let lowerPin = null; // puts the pin back on the ground (altitude.js elevateMarker)
 
   const floorControl = createFloorControl({
     onSelect: (levelId) => focus && !onFloorPick?.(focus, levelId) && openLevel(focus, levelId),
@@ -107,6 +122,11 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   const levelOf = (key, levelId) => store.building(key)?.levelById.get(levelId) || null;
   const levelShort = (key, levelId) => levelOf(key, levelId)?.short || levelId;
   const buildingName = (key) => store.building(key)?.name || key;
+  // Height of a floor's slab above the ground, and of the floor shown in a building.
+  const elevation = (key, levelId) => store.elevation(key, levelId);
+  const shownElevation = (key) => (open.has(key) ? elevation(key, open.get(key)) : 0);
+  // Keeps an HTML marker at `metres` above the ground; returns how to undo that.
+  const raise = (marker, metres) => (metres > 0 ? elevateMarker(map, marker, metres) : () => {});
 
   // ---- Which building the floor selector is for ------------------------------------
   function buildingNear(lngLat) {
@@ -166,8 +186,11 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   // and not while walking). It drops in when it moves to another place.
   function showPin() {
     const place = selected && !walkView && selected !== endpoints.source && selected !== endpoints.destination ? models.get(selected.split("/")[0])?.place(selected) : null;
+    lowerPin?.();
+    lowerPin = null;
     if (!place) { pin.remove(); pinUid = null; return; }
     pin.setLngLat(place.point);
+    lowerPin = raise(pin, elevation(place.building, place.level));
     pinElement.setAttribute("aria-label", `Chosen: ${place.name || place.classLabel}`);
     if (pinUid !== place.uid) {
       pinElement.classList.remove("place-pin-drop");
@@ -197,13 +220,15 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     let ring = polygons.flatMap((rings) => rings[0] || []);
     const box = building?.entry.bbox;
     if (!ring.length && box) ring = [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]];
-    return ring.flatMap((point) => [[point[0], point[1], 0], [point[0], point[1], INDOOR_STYLE.wallHeightM]]);
+    const floor = shownElevation(key);
+    return ring.flatMap((point) => [[point[0], point[1], floor], [point[0], point[1], floor + INDOOR_STYLE.wallHeightM]]);
   }
 
-  // A room (its outline) or point, with PLACE_REACH_M around it.
+  // A room (its outline) or point, with PLACE_REACH_M around it, at its floor's height.
   function placePoints(place) {
     const outline = place.kind === "unit" ? place.polygons.flatMap((rings) => rings[0]) : [];
-    return [...outline, ...circlePoints(place.point, PLACE_REACH_M)];
+    const floor = elevation(place.building, place.level);
+    return [...outline, ...circlePoints(place.point, PLACE_REACH_M)].map((point) => [point[0], point[1], floor]);
   }
 
   // What the View presets keep in view (camera-controls.js): the chosen room or
@@ -217,14 +242,14 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   }
 
   function drawRoute() {
-    markers.splice(0).forEach((marker) => marker.remove());
+    markers.splice(0).forEach(({ marker, lower }) => { lower(); marker.remove(); });
     if (!hasFloors) return;
     const features = [];
     for (const leg of legs) {
       const shownLevel = open.get(leg.building);
       if (shownLevel === undefined) continue; // the building is shown from outside
       if (leg.type === "walk") {
-        features.push({ type: "Feature", properties: { shown: shownLevel === leg.level }, geometry: { type: "LineString", coordinates: leg.coordinates } });
+        features.push({ type: "Feature", properties: { shown: shownLevel === leg.level, elev: elevation(leg.building, leg.level) }, geometry: { type: "LineString", coordinates: leg.coordinates } });
         continue;
       }
       // Lift or stairs: a button on the floor where the route leaves, and one where it arrives.
@@ -237,7 +262,8 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
         element.title = title;
         element.setAttribute("aria-label", title);
         element.addEventListener("click", (event) => { event.stopPropagation(); openLevel(leg.building, target); });
-        markers.push(new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -14] }).setLngLat(point).addTo(map));
+        const marker = new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -14] }).setLngLat(point).addTo(map);
+        markers.push({ marker, lower: raise(marker, elevation(leg.building, shownLevel)) });
       };
       const arrow = leg.direction === "up" ? "↑" : "↓";
       if (shownLevel === leg.fromLevel) add(leg.point, `<b>${arrow}</b> ${levelShort(leg.building, leg.toLevel)}`, `${kind} ${leg.direction} to ${levelOf(leg.building, leg.toLevel)?.name || leg.toLevel}: show that floor`, leg.toLevel, false);
@@ -265,8 +291,23 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
       render.push(...model.render.features);
       labels.push(...model.labels.features);
     });
+    // The shell of each open building: gone from its open floor up.
+    const shells = [];
+    for (const key of models.keys()) {
+      const feature = featureOf(store.building(key));
+      const id = feature?.properties?.render_id;
+      if (id === undefined || id === null) continue;
+      const base = Number(feature.properties.render_base_m) || 0;
+      const floor = shownElevation(key);
+      const cutM = floor - base > GROUND_M ? floor : 0;
+      shells.push({ id: String(id), cutM, topM: floor + INDOOR_STYLE.wallHeightM });
+      // Without a GLB model, the storeys below are an extrusion of the footprint.
+      if (cutM && !hasModelShell(String(id))) {
+        geometryPolygons(feature.geometry).forEach((rings, part) => render.unshift({ type: "Feature", properties: { kind: "shell", uid: `${key}/shell/${part + 1}`, building: key, elev: 0, base, height: cutM - INDOOR_STYLE.slabThicknessM, color: feature.properties.render_color || INDOOR_STYLE.wall }, geometry: { type: "Polygon", coordinates: rings } }));
+      }
+    }
     setIndoorData(map, { type: "FeatureCollection", features: render }, { type: "FeatureCollection", features: labels });
-    setHiddenShells([...models.keys()].map((key) => featureOf(store.building(key))?.properties?.render_id).filter((id) => id !== undefined && id !== null).map(String));
+    setOpenShells?.(shells);
     if (selected && !models.get(selected.split("/")[0])?.place(selected)) { selected = null; placeCard.hide(); }
     applyStates();
     drawRoute();
@@ -277,7 +318,9 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   // Brings a building's floor into view, as large as the free part of the screen
   // allows: turned along the building's axes when that shows it clearly larger (a
   // long building runs up a phone held upright). Nothing moves while the view is
-  // already on the building about that close.
+  // already on the building about that close, unless the floor now shown lies at
+  // another height than the one the view was on (it would be partly out of view).
+  const framedAt = new Map(); // building key -> height of the floor the view was last on
   function frame(key) {
     const building = store.building(key);
     const points = outlinePoints(key);
@@ -285,7 +328,10 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     const camera = cameraForPoints(map, points, { pitch: Math.min(map.getPitch(), 52), bearings: bearingsOf(key), keepBearing: true, minGain: 0.15, padding: FIT_PADDING.building(), maxZoom: FLOOR_MAX_ZOOM });
     if (!camera) return;
     const box = building.entry.bbox;
-    if (map.getZoom() >= camera.zoom - 0.35 && (!box || inBox(map.getCenter().toArray(), box))) return;
+    const floor = shownElevation(key);
+    const sameHeight = Math.abs((framedAt.get(key) ?? 0) - floor) < 0.5;
+    framedAt.set(key, floor);
+    if (sameHeight && map.getZoom() >= camera.zoom - 0.35 && (!box || inBox(map.getCenter().toArray(), box))) return;
     map.flyTo({ ...camera, duration: 900, essential: true });
   }
 
@@ -306,6 +352,7 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
   function closeBuilding(key, { remember = true } = {}) {
     if (!open.has(key)) return;
     open.delete(key);
+    framedAt.delete(key);
     if (remember) dismissed.add(key);
     if (selected && selected.split("/")[0] === key) { selected = null; placeCard.hide(); }
     refresh();
@@ -407,6 +454,17 @@ export function createIndoor({ map, org, getBuildingFeature, setHiddenShells, is
     selectedPlace: () => selected,
     focusedBuilding: () => focus,
     cameraFocus,
+    // Height (m above the ground) of a floor in its building, and of the floor
+    // shown in an open building (0 when it is shown from outside).
+    elevation,
+    shownElevation,
+    // The buildings are drawn differently (a GLB model loaded, the buildings file
+    // changed): the open floors and the shells under them are drawn again.
+    redraw({ heights = false } = {}) {
+      if (!hasFloors) return;
+      if (heights) store.forgetHeights();
+      if (open.size) refresh();
+    },
     // Walk mode sees the open floors from inside (indoor-layers.js), without the pin.
     setWalkView(on) {
       walkView = on;

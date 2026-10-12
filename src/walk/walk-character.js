@@ -1,7 +1,7 @@
 // The walker shown in Walk Mode's third-person view.
 //
 // One small MapLibre custom layer ("walk-character") draws the chosen character
-// (WALK_CHARACTERS in config.js; models/shared/characters/male.glb, built by
+// (WALK_CHARACTERS in config.js; models/shared/characters/nathan.glb, built by
 // `npm run models:character`) at the player's map position and floor height,
 // turned to `facing` (compass degrees). It shares the Three.js renderer of the
 // other 3D layers (three-shared.js) and the map's depth buffer, so buildings and
@@ -22,7 +22,7 @@ const LAYER_ID = "walk-character";
 const HEIGHT_M = 1.75; // the model is scaled to this height (unless the character sets one)
 const WALK_PACE = 2.0; // m/s the Walk clip is animated for (unless the character sets walkPace)
 const RUN_PACE = 4.3; // m/s the Run clip is animated for (runPace)
-const JOG_FROM = 2.6; // m/s from which the Run clip plays without Shift
+const JOG_FROM = 2.3; // m/s from which the Run clip plays without Shift
 const IDLE_FPS = 24; // repaints per second while only the idle animation plays
 const FADE_S = 0.25;
 
@@ -60,6 +60,8 @@ export function createWalkCharacter(map, { onError } = {}) {
     const scene = gltf.scene;
     scene.traverse((object) => { if (object.isMesh) { object.frustumCulled = false; object.material = object.material.clone(); } });
     applyColors(scene, character.colors);
+    // Measured as it stands (a skinned model's box follows its bones, which must be in place first).
+    scene.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(scene);
     const scale = (Number(character.height) || HEIGHT_M) / Math.max(0.1, box.max.y - box.min.y);
     scene.scale.setScalar(scale);
